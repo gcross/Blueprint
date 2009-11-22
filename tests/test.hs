@@ -22,7 +22,7 @@ import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
-import Blueprint.Miscellaneous
+import Blueprint.Resources
 -- @-node:gcross.20091121210308.1808:<< Import needed modules >>
 -- @nl
 
@@ -38,15 +38,15 @@ main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20091121210308.1816:<< Tests >>
     -- @+others
-    -- @+node:gcross.20091121210308.1817:Blueprint.Miscellaneous
-    [testGroup "Blueprint.Miscellaneous"
+    -- @+node:gcross.20091121210308.1817:Blueprint.Resources
+    [testGroup "Blueprint.Resources"
         -- @    @+others
         -- @+node:gcross.20091121210308.1818:splitDot
         [testProperty "splitDot" $ (uncurry (==)) . (id &&& splitDot . unsplitDot) . filter (not . null) . map (filter (/= '.'))
         -- @-node:gcross.20091121210308.1818:splitDot
         -- @-others
         ]
-    -- @-node:gcross.20091121210308.1817:Blueprint.Miscellaneous
+    -- @-node:gcross.20091121210308.1817:Blueprint.Resources
     -- @-others
     -- @-node:gcross.20091121210308.1816:<< Tests >>
     -- @nl

@@ -11,6 +11,7 @@ import Control.Arrow
 import qualified Data.ByteString.Lazy as L
 import Data.Digest.Pure.MD5
 import Data.Either
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -30,7 +31,7 @@ data Resource = Resource
     {   resourceName :: !String
     ,   resourceType :: !String
     ,   resourceFilePath :: !FilePath
-    ,   resourceDigest :: Either String MD5Digest
+    ,   resourceDigest :: Either (Map String String) MD5Digest
     } deriving (Eq,Show)
 -- @-node:gcross.20091121210308.1279:Resource
 -- @+node:gcross.20091121210308.1284:Resources
@@ -38,6 +39,17 @@ type Resources = Map (String,String) Resource
 -- @-node:gcross.20091121210308.1284:Resources
 -- @-node:gcross.20091121210308.1277:Types
 -- @+node:gcross.20091121210308.1280:Functions
+-- @+node:gcross.20091121210308.2037:splitDot
+splitDot :: String -> [String]
+splitDot "" = []
+splitDot s =
+    let (first_part, rest_string) = break (== '.') s
+    in first_part : if null rest_string then [] else splitDot . tail $ rest_string
+-- @-node:gcross.20091121210308.2037:splitDot
+-- @+node:gcross.20091121210308.2035:unsplitDot
+unsplitDot = intercalate "."
+-- @nonl
+-- @-node:gcross.20091121210308.2035:unsplitDot
 -- @+node:gcross.20091121210308.1293:applyPrefix
 applyPrefix :: String -> String -> String
 applyPrefix "" = id
@@ -93,6 +105,26 @@ toResources =
     .
     map ((resourceName &&& resourceType) &&& id)
 -- @-node:gcross.20091121210308.1288:toResources
+-- @+node:gcross.20091121210308.2033:getFilePathForNameAndType
+getFilePathForNameAndType :: FilePath -> String -> String -> FilePath
+getFilePathForNameAndType directory name typ =
+    let partial_path = (joinPath (directory:splitDot name))
+    in if null typ then partial_path else partial_path <.> typ
+-- @-node:gcross.20091121210308.2033:getFilePathForNameAndType
+-- @+node:gcross.20091121210308.2039:addResource
+addResource :: Resource -> Resources -> Resources
+addResource resource = Map.insert ((resourceName &&& resourceType) resource) resource
+-- @-node:gcross.20091121210308.2039:addResource
+-- @+node:gcross.20091121210308.2040:makeCompositeErrorMessage
+makeCompositeErrorMessage :: Map String String -> String
+makeCompositeErrorMessage =
+    unlines
+    .
+    map (\(name,message) -> "Error compiling " ++ name ++ ":\n\n" ++ message)
+    .
+    Map.toList
+-- @nonl
+-- @-node:gcross.20091121210308.2040:makeCompositeErrorMessage
 -- @-node:gcross.20091121210308.1280:Functions
 -- @-others
 -- @-node:gcross.20091121210308.1276:@thin Resources.hs
