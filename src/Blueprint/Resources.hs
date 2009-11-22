@@ -30,7 +30,7 @@ data Resource = Resource
     {   resourceName :: !String
     ,   resourceType :: !String
     ,   resourceFilePath :: !FilePath
-    ,   resourceDigest :: MD5Digest
+    ,   resourceDigest :: Either String MD5Digest
     } deriving (Eq,Show)
 -- @-node:gcross.20091121210308.1279:Resource
 -- @+node:gcross.20091121210308.1284:Resources
@@ -83,7 +83,7 @@ createResourceFor prefix filepath =
         {   resourceName = applyPrefix prefix name
         ,   resourceType = if extension == "" then "" else tail extension
         ,   resourceFilePath = filepath
-        ,   resourceDigest = digestOf filepath
+        ,   resourceDigest = Right . digestOf $ filepath
         }
 -- @-node:gcross.20091121210308.1286:createResourceFor
 -- @+node:gcross.20091121210308.1288:toResources
