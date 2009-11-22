@@ -7,6 +7,10 @@ module Blueprint.Tools.GHC where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
 import System.Directory
+import System.IO.Unsafe
+import System.Process
+
+import Blueprint.Miscellaneous
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
 
@@ -24,14 +28,18 @@ data GHCCompilerOptions = GHCCompilerOptions ()
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091121210308.1273:Configuration
 -- @+node:gcross.20091121210308.1274:ghcTools
-ghcTools :: Maybe GHCTool
-ghcTools = unsafePerformIO $
-    path_to_ghc <- findExecutable "ghc"
-    version_as_string <- readProcess path_to_ghc [] ""
-    return $
-        GHCTool
-            {   ghcVersion = map read . split '.'
--- @nonl
+ghcTools :: Maybe GHCTools
+ghcTools = unsafePerformIO $ do
+    maybe_path_to_ghc <- findExecutable "ghc"
+    case maybe_path_to_ghc of
+        Nothing -> return Nothing
+        Just path_to_ghc -> do
+            version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
+            return . Just $
+                GHCTools
+                    {   ghcVersion = map read . splitDot $ version_as_string
+                    ,   ghcCompilerPath = path_to_ghc
+                    }
 -- @-node:gcross.20091121210308.1274:ghcTools
 -- @-node:gcross.20091121210308.1273:Configuration
 -- @+node:gcross.20091121210308.1275:Tools
