@@ -53,6 +53,8 @@ dependenciesOf =
     .
     L.readFile
 -- @-node:gcross.20091121210308.2017:dependenciesOf
+-- @-node:gcross.20091121210308.2016:Functions
+-- @+node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2018:modulesExposedBy
 modulesExposedBy :: GHCTools -> String -> Maybe [String]
 modulesExposedBy tools package_name =
@@ -74,7 +76,18 @@ getPackages tools names =
         ([],packages) -> Right . Map.unions $ packages
         (not_found,_) -> Left not_found
 -- @-node:gcross.20091121210308.2021:getPackages
--- @-node:gcross.20091121210308.2016:Functions
+-- @+node:gcross.20091121210308.2024:findPackagesExposingModule
+findPackagesExposingModule :: GHCTools -> String -> [String]
+findPackagesExposingModule tools package_name =
+    words
+    .
+    unsafePerformIO
+    .
+    readProcess (ghcPackageQueryPath tools) ["--simple-output","find-module",package_name]
+    $
+    ""
+-- @-node:gcross.20091121210308.2024:findPackagesExposingModule
+-- @-node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.1273:Configuration
 -- @+node:gcross.20091121210308.1274:ghcTools
 ghcTools :: Maybe GHCTools
@@ -93,6 +106,8 @@ ghcTools = unsafePerformIO $ do
 -- @-node:gcross.20091121210308.1274:ghcTools
 -- @-node:gcross.20091121210308.1273:Configuration
 -- @+node:gcross.20091121210308.1275:Tools
+-- @+node:gcross.20091121210308.2022:ghcCompile
+-- @-node:gcross.20091121210308.2022:ghcCompile
 -- @-node:gcross.20091121210308.1275:Tools
 -- @-others
 -- @-node:gcross.20091121204836.1242:@thin GHC.hs
