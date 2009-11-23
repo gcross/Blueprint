@@ -12,6 +12,7 @@ module Blueprint.Cache where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1313:<< Import needed modules >>
+import Control.Monad
 import Control.Parallel.Strategies
 
 import Data.Binary
@@ -33,13 +34,16 @@ import Blueprint.Resources
 -- @+others
 -- @+node:gcross.20091122100142.1314:Types
 -- @+node:gcross.20091122100142.1321:CachedDependencies
-data CachedDependencies = CachedDependencies
+data (Binary a, Eq a) => CachedDependencies a = CachedDependencies
         {   digestOfSourceFile :: MD5Digest
         ,   digestsOfProducedFiles :: [MD5Digest]
         ,   digestOfDependentModules :: [(ResourceId,MD5Digest)]
+        ,   cachedMiscellaneousInformation :: a
         }
 
-$( derive makeBinary ''CachedDependencies )
+instance (Binary a, Eq a) => Binary (CachedDependencies a) where
+    put (CachedDependencies a b c d) = put a >> put b >> put c >> put d
+    get = liftM4 CachedDependencies get get get get
 -- @-node:gcross.20091122100142.1321:CachedDependencies
 -- @+node:gcross.20091122100142.1323:Builder
 type Builder = IO (Maybe ErrorMessage)
@@ -60,11 +64,13 @@ reportUnknownResources filepath =
 -- @-node:gcross.20091122100142.1328:reportUnknownResources
 -- @+node:gcross.20091122100142.1322:analyzeDependenciesAndRebuildIfNecessary
 analyzeDependenciesAndRebuildIfNecessary ::
+    (Binary a, Eq a) =>
     Builder ->
     Scanner ->
     Resources ->
     FilePath ->
     [FilePath] ->
+    a ->
     Resource ->
     Either ErrorMessage [MD5Digest]
 
@@ -74,6 +80,7 @@ analyzeDependenciesAndRebuildIfNecessary
     resources
     cache_filepath
     product_filepaths
+    miscellaneous_cache_information
     source_resource
   = unsafePerformIO $ do
     file_exists <- doesFileExist cache_filepath
@@ -86,13 +93,16 @@ analyzeDependenciesAndRebuildIfNecessary
                 else let (resource_ids,previously_seen_digests) = unzip . digestOfDependentModules $ cached_digests
                      in attemptGetResourceDigestsAndThenRun resource_ids $
                         \current_resource_digests ->
-                            if any (uncurry (/=)) $ zip current_resource_digests previously_seen_digests
-                                then rebuild (zip resource_ids current_resource_digests)
+                            let rebuildIt = rebuild (zip resource_ids current_resource_digests)
+                            in if any (uncurry (/=)) $ zip current_resource_digests previously_seen_digests
+                                then rebuildIt
                                 else do
                                     product_files_exist <- mapM doesFileExist product_filepaths
                                     if not (and product_files_exist)
-                                        then rebuild (zip resource_ids current_resource_digests)
-                                        else return . Right . digestsOfProducedFiles $ cached_digests
+                                        then rebuildIt
+                                        else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
+                                            then rebuildIt
+                                            else return . Right . digestsOfProducedFiles $ cached_digests
   where
     source_digest = (fromRight . resourceDigest) source_resource
 
@@ -133,6 +143,7 @@ analyzeDependenciesAndRebuildIfNecessary
                         {   digestOfSourceFile = source_digest
                         ,   digestsOfProducedFiles = product_digests
                         ,   digestOfDependentModules = dependent_module_digests
+                        ,   cachedMiscellaneousInformation = miscellaneous_cache_information
                         }
                 createDirectoryIfMissing True . takeDirectory $ cache_filepath
                 encodeFile cache_filepath cached_dependencies

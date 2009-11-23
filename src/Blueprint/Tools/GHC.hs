@@ -49,14 +49,6 @@ data GHCTools = GHCTools
     ,   ghcPackageQueryPath :: String
     } deriving (Show)
 -- @-node:gcross.20091121210308.1271:GHCTools
--- @+node:gcross.20091121210308.2029:GHCOptions
-data GHCOptions = GHCOptions
-    {   ghcOptionPackages :: [String]
-    ,   ghcOptionIncludeDirectories :: [FilePath]
-    }
-
-defaultOptions = GHCOptions [] []
--- @-node:gcross.20091121210308.2029:GHCOptions
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
 -- @-node:gcross.20091121210308.2025:PackageModules
@@ -78,18 +70,6 @@ readDependenciesOf =
         .
         matchAllText import_matching_regex
 -- @-node:gcross.20091121210308.2017:readDependenciesOf
--- @+node:gcross.20091121210308.2030:optionsToArguments
-optionsToArguments :: GHCOptions -> [String]
-optionsToArguments =
-    concat
-    .
-    flip map
-        [prefixWith "-package" . ghcOptionPackages
-        ,map ("-i" ++) . ghcOptionIncludeDirectories
-        ]
-    .
-    flip ($)
--- @-node:gcross.20091121210308.2030:optionsToArguments
 -- @+node:gcross.20091122100142.1335:prefixWith
 prefixWith :: String -> [String] -> [String]
 prefixWith _ [] = []
@@ -166,7 +146,7 @@ reportUnknownModules tools source_filepath =
 -- @+node:gcross.20091121210308.2022:ghcCompile
 ghcCompile ::
     GHCTools ->
-    GHCOptions ->
+    [String] ->
     PackageModules ->
     Resources ->
     FilePath ->
@@ -227,17 +207,10 @@ ghcCompile
                 else return . Left . reportUnknownModules tools source_filepath $ unknown_dependencies
 
         builder =
-            let option_arguments = optionsToArguments $ options
-                    {   ghcOptionIncludeDirectories =
-                            (interface_destination_directory:)
-                            .
-                            ghcOptionIncludeDirectories
-                            $
-                            options
-                    }
-                arguments = 
-                    option_arguments ++
-                    ["-c",source_filepath
+            let arguments = 
+                    options ++
+                    ["-i"++interface_destination_directory
+                    ,"-c",source_filepath
                     ,"-o",object_filepath
                     ,"-ohi",interface_filepath
                     ]
@@ -258,17 +231,18 @@ ghcCompile
                     known_resources
                     (cache_directory </> source_name <.> "o")
                     [object_filepath,interface_filepath]
+                    (unwords options)
                     source_resource
             of Left error_message -> (Left error_message,Left error_message)
                Right [object_digest,interface_digest] -> (Right object_digest,Right interface_digest)
-               _ -> error "Programmer error:  Builder returned the wrong number of digests!"
+               x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
 
     in (object_resource,interface_resource)
 -- @-node:gcross.20091121210308.2022:ghcCompile
 -- @+node:gcross.20091121210308.2038:ghcCompileAll
 ghcCompileAll ::
     GHCTools ->
-    GHCOptions ->
+    [String] ->
     PackageModules ->
     FilePath ->
     FilePath ->

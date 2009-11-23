@@ -29,7 +29,7 @@ main = do
         compiled_resources = 
             ghcCompileAll
                 tools
-                defaultOptions
+                []
                 package_modules
                 "objects"
                 "haskell-interfaces"
