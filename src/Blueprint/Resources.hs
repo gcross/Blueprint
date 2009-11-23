@@ -17,7 +17,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import System.Directory
-import System.Environment.Executable
 import System.FilePath
 import System.IO.Unsafe
 
@@ -70,9 +69,6 @@ applyPrefix prefix = (prefix ++) . ('.':)
 digestOf :: FilePath -> MD5Digest
 digestOf = md5 . unsafePerformIO . L.readFile
 -- @-node:gcross.20091121210308.1285:digestOf
--- @+node:gcross.20091121210308.1283:programPath
-programPath = "" -- fst . unsafePerformIO $ splitExecutablePath
--- @-node:gcross.20091121210308.1283:programPath
 -- @+node:gcross.20091121210308.1292:resourcesIn
 resourcesIn = resourcesWithPrefixIn ""
 -- @-node:gcross.20091121210308.1292:resourcesIn

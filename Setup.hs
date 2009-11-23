@@ -17,14 +17,12 @@ main = do
             ,"pureMD5"
             ,"containers"
             ,"directory"
-            ,"executable-path"
             ,"filepath"
             ,"array"
             ,"process"
             ,"regex-tdfa"
             ,"either-unwrap"
             ,"binary"
-            ,"derive"
             ,"parallel"
             ]
         Just tools = ghcTools
