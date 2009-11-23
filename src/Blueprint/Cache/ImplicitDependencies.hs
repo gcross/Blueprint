@@ -31,7 +31,7 @@ import Blueprint.Resources
 
 -- @+others
 -- @+node:gcross.20091122100142.1314:Types
--- @+node:gcross.20091122100142.1321:CachedDependencies
+-- @+node:gcross.20091122100142.1321:CachedImplicitDependencies
 data (Binary a, Eq a) => CachedImplicitDependencies a = CachedImplicitDependencies
         {   digestOfSourceFile :: MD5Digest
         ,   digestsOfProducedFiles :: [MD5Digest]
@@ -42,7 +42,7 @@ data (Binary a, Eq a) => CachedImplicitDependencies a = CachedImplicitDependenci
 instance (Binary a, Eq a) => Binary (CachedImplicitDependencies a) where
     put (CachedImplicitDependencies a b c d) = put a >> put b >> put c >> put d
     get = liftM4 CachedImplicitDependencies get get get get
--- @-node:gcross.20091122100142.1321:CachedDependencies
+-- @-node:gcross.20091122100142.1321:CachedImplicitDependencies
 -- @+node:gcross.20091122100142.1323:Builder
 type Builder = IO (Maybe ErrorMessage)
 -- @-node:gcross.20091122100142.1323:Builder
@@ -60,7 +60,7 @@ reportUnknownResources filepath =
     .
     map show
 -- @-node:gcross.20091122100142.1328:reportUnknownResources
--- @+node:gcross.20091122100142.1322:analyzeDependenciesAndRebuildIfNecessary
+-- @+node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
 analyzeImplicitDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) =>
     Builder ->
@@ -146,7 +146,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                 createDirectoryIfMissing True . takeDirectory $ cache_filepath
                 encodeFile cache_filepath cached_dependencies
                 return . Right $ product_digests
--- @-node:gcross.20091122100142.1322:analyzeDependenciesAndRebuildIfNecessary
+-- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others
 -- @-node:gcross.20091122100142.1310:@thin ImplicitDependencies.hs
