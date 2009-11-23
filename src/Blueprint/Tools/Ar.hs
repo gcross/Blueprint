@@ -11,6 +11,8 @@ module Blueprint.Tools.Ar where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1362:<< Import needed modules >>
+import Control.Monad
+
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -36,9 +38,7 @@ data ArTools = ArTools { arPath :: FilePath } deriving (Show)
 arTools :: Maybe ArTools
 arTools = unsafePerformIO $ do
     maybe_path_to_ar <- findExecutable "ar"
-    case maybe_path_to_ar of
-        Nothing -> return Nothing
-        Just path_to_ar -> return . Just $ ArTools path_to_ar
+    return $ liftM ArTools maybe_path_to_ar
 -- @-node:gcross.20091122100142.1366:arTools
 -- @-node:gcross.20091122100142.1365:Configuration
 -- @+node:gcross.20091122100142.1367:Tools
