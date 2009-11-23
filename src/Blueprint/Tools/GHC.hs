@@ -35,7 +35,7 @@ import System.Process
 import Text.Regex.TDFA
 import Text.Regex.TDFA.ByteString.Lazy
 
-import Blueprint.Cache
+import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Resources
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
@@ -225,7 +225,7 @@ ghcCompile
                     (ExitSuccess,_,_) -> return Nothing
 
         (object_digest,interface_digest) =
-            case analyzeDependenciesAndRebuildIfNecessary
+            case analyzeImplicitDependenciesAndRebuildIfNecessary
                     builder
                     scanner
                     known_resources

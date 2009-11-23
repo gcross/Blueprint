@@ -1,5 +1,5 @@
 -- @+leo-ver=4-thin
--- @+node:gcross.20091122100142.1310:@thin Cache.hs
+-- @+node:gcross.20091122100142.1310:@thin ImplicitDependencies.hs
 -- @@language Haskell
 
 -- @<< Language extensions >>
@@ -8,7 +8,7 @@
 -- @-node:gcross.20091122100142.1312:<< Language extensions >>
 -- @nl
 
-module Blueprint.Cache where
+module Blueprint.Cache.ImplicitDependencies where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1313:<< Import needed modules >>
@@ -34,16 +34,16 @@ import Blueprint.Resources
 -- @+others
 -- @+node:gcross.20091122100142.1314:Types
 -- @+node:gcross.20091122100142.1321:CachedDependencies
-data (Binary a, Eq a) => CachedDependencies a = CachedDependencies
+data (Binary a, Eq a) => CachedImplicitDependencies a = CachedImplicitDependencies
         {   digestOfSourceFile :: MD5Digest
         ,   digestsOfProducedFiles :: [MD5Digest]
         ,   digestOfDependentModules :: [(ResourceId,MD5Digest)]
         ,   cachedMiscellaneousInformation :: a
         }
 
-instance (Binary a, Eq a) => Binary (CachedDependencies a) where
-    put (CachedDependencies a b c d) = put a >> put b >> put c >> put d
-    get = liftM4 CachedDependencies get get get get
+instance (Binary a, Eq a) => Binary (CachedImplicitDependencies a) where
+    put (CachedImplicitDependencies a b c d) = put a >> put b >> put c >> put d
+    get = liftM4 CachedImplicitDependencies get get get get
 -- @-node:gcross.20091122100142.1321:CachedDependencies
 -- @+node:gcross.20091122100142.1323:Builder
 type Builder = IO (Maybe ErrorMessage)
@@ -63,7 +63,7 @@ reportUnknownResources filepath =
     map show
 -- @-node:gcross.20091122100142.1328:reportUnknownResources
 -- @+node:gcross.20091122100142.1322:analyzeDependenciesAndRebuildIfNecessary
-analyzeDependenciesAndRebuildIfNecessary ::
+analyzeImplicitDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) =>
     Builder ->
     Scanner ->
@@ -74,7 +74,7 @@ analyzeDependenciesAndRebuildIfNecessary ::
     Resource ->
     Either ErrorMessage [MD5Digest]
 
-analyzeDependenciesAndRebuildIfNecessary
+analyzeImplicitDependenciesAndRebuildIfNecessary
     builder
     scanner
     resources
@@ -139,7 +139,7 @@ analyzeDependenciesAndRebuildIfNecessary
             Just error_message -> return . Left $ error_message
             Nothing -> do
                 let product_digests = map digestOf product_filepaths
-                    cached_dependencies = CachedDependencies
+                    cached_dependencies = CachedImplicitDependencies
                         {   digestOfSourceFile = source_digest
                         ,   digestsOfProducedFiles = product_digests
                         ,   digestOfDependentModules = dependent_module_digests
@@ -151,5 +151,5 @@ analyzeDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1322:analyzeDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others
--- @-node:gcross.20091122100142.1310:@thin Cache.hs
+-- @-node:gcross.20091122100142.1310:@thin ImplicitDependencies.hs
 -- @-leo
