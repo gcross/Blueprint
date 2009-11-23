@@ -3,9 +3,8 @@
 -- @@language Haskell
 
 -- @<< Language extensions >>
--- @+node:gcross.20091122100142.1312:<< Language extensions >>
-{-# LANGUAGE TemplateHaskell #-}
--- @-node:gcross.20091122100142.1312:<< Language extensions >>
+-- @+node:gcross.20091122100142.1370:<< Language extensions >>
+-- @-node:gcross.20091122100142.1370:<< Language extensions >>
 -- @nl
 
 module Blueprint.Cache.ImplicitDependencies where
@@ -16,7 +15,6 @@ import Control.Monad
 import Control.Parallel.Strategies
 
 import Data.Binary
-import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Either.Unwrap
 import Data.Function
