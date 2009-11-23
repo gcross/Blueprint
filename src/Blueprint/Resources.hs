@@ -46,6 +46,10 @@ type ErrorMessage = (Map String String)
 -- @-node:gcross.20091122100142.1333:ErrorMessage
 -- @-node:gcross.20091121210308.1277:Types
 -- @+node:gcross.20091121210308.1280:Functions
+-- @+node:gcross.20091122100142.1388:resourceId
+resourceId :: Resource -> ResourceId
+resourceId = (resourceName &&& resourceType)
+-- @-node:gcross.20091122100142.1388:resourceId
 -- @+node:gcross.20091121210308.2037:splitDot
 splitDot :: String -> [String]
 splitDot "" = []
@@ -169,6 +173,15 @@ attemptGetResourceDigests resources resource_ids =
         Left unknown_resource_ids -> Left . Left $ unknown_resource_ids
         Right resource_list -> either (Left . Right) Right $ attemptGetDigests resource_list
 -- @-node:gcross.20091122100142.1332:attemptGetResourceDigests
+-- @+node:gcross.20091122100142.1384:reportUnknownResources
+reportUnknownResources :: String -> [ResourceId] -> Map String String
+reportUnknownResources filepath =
+    Map.singleton filepath
+    .
+    unlines
+    .
+    map show
+-- @-node:gcross.20091122100142.1384:reportUnknownResources
 -- @-node:gcross.20091121210308.1280:Functions
 -- @-others
 -- @-node:gcross.20091121210308.1276:@thin Resources.hs

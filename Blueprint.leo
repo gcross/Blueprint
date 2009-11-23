@@ -15,9 +15,11 @@
 <v t="gcross.20091121204836.1240"><vh>@path Blueprint</vh>
 <v t="gcross.20091122100142.1349"><vh>@path Cache</vh>
 <v t="gcross.20091122100142.1310"><vh>@thin ImplicitDependencies.hs</vh></v>
+<v t="gcross.20091122100142.1369"><vh>@thin ExplicitDependencies.hs</vh></v>
 </v>
 <v t="gcross.20091121210308.1276"><vh>@thin Resources.hs</vh></v>
 <v t="gcross.20091121204836.1241"><vh>@path Tools</vh>
+<v t="gcross.20091122100142.1360"><vh>@thin Ar.hs</vh></v>
 <v t="gcross.20091121204836.1242"><vh>@thin GHC.hs</vh></v>
 </v>
 </v>

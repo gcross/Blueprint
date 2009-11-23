@@ -2,9 +2,11 @@
 -- @+node:gcross.20091121210308.1291:@thin Setup.hs
 -- @@language Haskell
 
+import Data.Maybe
 import qualified Data.Map as Map
 
 import Blueprint.Resources
+import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
 
 main = do
@@ -29,14 +31,19 @@ main = do
         compiled_resources = 
             ghcCompileAll
                 tools
-                []
+                ["-package-name blueprint"]
                 package_modules
                 "objects"
                 "haskell-interfaces"
                 "hash-cache"
                 src_resources
-        Just demanded_resource = Map.lookup ("Blueprint.Tools.GHC","o") compiled_resources
-    case resourceDigest demanded_resource of
+        library = formStaticLibrary
+            (fromJust arTools)
+            "hash-cache"
+            (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
+            "libblueprint"
+            "lib/libblueprint.a"
+    case resourceDigest library of
         Left error_message -> putStrLn $ makeCompositeErrorMessage error_message
         Right digest -> putStrLn . show $ digest
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs

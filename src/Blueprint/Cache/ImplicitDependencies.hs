@@ -51,15 +51,6 @@ type Scanner = IO (Either ErrorMessage [ResourceId])
 -- @-node:gcross.20091122100142.1324:Scanner
 -- @-node:gcross.20091122100142.1314:Types
 -- @+node:gcross.20091122100142.1317:Function
--- @+node:gcross.20091122100142.1328:reportUnknownResources
-reportUnknownResources :: String -> [ResourceId] -> Map String String
-reportUnknownResources filepath =
-    Map.singleton filepath
-    .
-    unlines
-    .
-    map show
--- @-node:gcross.20091122100142.1328:reportUnknownResources
 -- @+node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
 analyzeImplicitDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) =>
