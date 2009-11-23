@@ -21,6 +21,9 @@ main = do
             ,"process"
             ,"regex-tdfa"
             ,"either-unwrap"
+            ,"binary"
+            ,"derive"
+            ,"parallel"
             ]
         Just tools = ghcTools
         compiled_resources = 
@@ -28,8 +31,9 @@ main = do
                 tools
                 defaultOptions
                 package_modules
-                "obj"
-                "haskint"
+                "objects"
+                "haskell-interfaces"
+                "hash-cache"
                 src_resources
         Just demanded_resource = Map.lookup ("Blueprint.Tools.GHC","o") compiled_resources
     case resourceDigest demanded_resource of

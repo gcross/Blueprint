@@ -2,15 +2,23 @@
 -- @+node:gcross.20091121204836.1242:@thin GHC.hs
 -- @@language Haskell
 
+-- @<< Language extensions >>
+-- @+node:gcross.20091122100142.1309:<< Language extensions >>
+-- @-node:gcross.20091122100142.1309:<< Language extensions >>
+-- @nl
+
 module Blueprint.Tools.GHC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
 import Control.Arrow
+import Control.Monad
 
 import Data.Array
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
+import Data.Data
+import Data.Digest.Pure.MD5
 import Data.Either
 import Data.Either.Unwrap
 import Data.List
@@ -27,6 +35,7 @@ import System.Process
 import Text.Regex.TDFA
 import Text.Regex.TDFA.ByteString.Lazy
 
+import Blueprint.Cache
 import Blueprint.Resources
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
@@ -58,29 +67,34 @@ import_matching_regex = fromRight . compile defaultCompOpt defaultExecOpt . L8.p
 -- @-node:gcross.20091121210308.2015:regular expressions
 -- @-node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2016:Functions
--- @+node:gcross.20091121210308.2017:dependenciesOf
-dependenciesOf :: FilePath -> [String]
-dependenciesOf =
-    map (L8.unpack . fst . (! 2))
-    .
-    matchAllText import_matching_regex
-    .
-    unsafePerformIO
-    .
+-- @+node:gcross.20091121210308.2017:readDependenciesOf
+readDependenciesOf :: FilePath -> IO [String]
+readDependenciesOf =
     L.readFile
--- @-node:gcross.20091121210308.2017:dependenciesOf
+    >=>
+    return
+        .
+        map (L8.unpack . fst . (! 2))
+        .
+        matchAllText import_matching_regex
+-- @-node:gcross.20091121210308.2017:readDependenciesOf
 -- @+node:gcross.20091121210308.2030:optionsToArguments
 optionsToArguments :: GHCOptions -> [String]
 optionsToArguments =
     concat
     .
     flip map
-        [("-package":) . intersperse "-package" . ghcOptionPackages
+        [prefixWith "-package" . ghcOptionPackages
         ,map ("-i" ++) . ghcOptionIncludeDirectories
         ]
     .
     flip ($)
 -- @-node:gcross.20091121210308.2030:optionsToArguments
+-- @+node:gcross.20091122100142.1335:prefixWith
+prefixWith :: String -> [String] -> [String]
+prefixWith _ [] = []
+prefixWith s list = s:intersperse s list
+-- @-node:gcross.20091122100142.1335:prefixWith
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2018:modulesExposedBy
@@ -150,7 +164,16 @@ reportUnknownModules tools source_filepath =
 -- @-node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.1275:Tools
 -- @+node:gcross.20091121210308.2022:ghcCompile
-ghcCompile :: GHCTools -> GHCOptions -> PackageModules -> Resources -> FilePath -> FilePath -> Resource -> (Resource,Resource)
+ghcCompile ::
+    GHCTools ->
+    GHCOptions ->
+    PackageModules ->
+    Resources ->
+    FilePath ->
+    FilePath ->
+    FilePath ->
+    Resource ->
+    (Resource,Resource)
 ghcCompile
     tools
     options
@@ -158,92 +181,87 @@ ghcCompile
     known_resources
     object_destination_directory
     interface_destination_directory
-    source
+    cache_directory
+    source_resource
     =
-    let source_filepath = resourceFilePath source
-        resource_name = resourceName source
-        object_filepath = getFilePathForNameAndType object_destination_directory resource_name "o"
+    let source_filepath = resourceFilePath source_resource
+        source_name = resourceName source_resource
+        object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
         object_resource =
             Resource
-                {   resourceName = resource_name
+                {   resourceName = source_name
                 ,   resourceType = "o"
                 ,   resourceFilePath = object_filepath
-                ,   resourceDigest = fst object_and_interface_digests
+                ,   resourceDigest = object_digest
                 }
-        interface_filepath = getFilePathForNameAndType interface_destination_directory resource_name "hi"
+        interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "hi"
         interface_resource =
             Resource
-                {   resourceName = resource_name
+                {   resourceName = source_name
                 ,   resourceType = "hi"
                 ,   resourceFilePath = interface_filepath
-                ,   resourceDigest = snd object_and_interface_digests
+                ,   resourceDigest = interface_digest
                 }
-        required_modules =  source_filepath
-        (unknown_dependencies,(package_dependencies,resource_dependencies)) =
-            (second partitionEithers)
-            .
-            partitionEithers
-            .
-            map (\module_name ->
-                case (Map.lookup (module_name,"hi") known_resources, Map.lookup module_name known_package_modules) of
-                    (Just resource,_) -> Right (Right resource)
-                    (_,Just package_name) -> Right (Left package_name)
-                    (Nothing,Nothing) -> Left module_name
-            )
-            .
-            dependenciesOf
-            $
-            source_filepath
-        object_and_interface_digests =
-            if not . null $ unknown_dependencies
-                then let error_message = reportUnknownModules tools source_filepath unknown_dependencies
-                        in (Left error_message, Left error_message)
-                else
-                    let option_arguments = optionsToArguments $ options
-                            {   ghcOptionPackages =
-                                    (package_dependencies ++)
-                                    .
-                                    ghcOptionPackages
-                                    $
-                                    options
-                            ,   ghcOptionIncludeDirectories =
-                                    (interface_destination_directory:)
-                                    .
-                                    ghcOptionIncludeDirectories
-                                    $
-                                    options
-                            }
-                        arguments = 
-                            option_arguments ++
-                            ["-c",source_filepath
-                            ,"-o",object_filepath
-                            ,"-ohi",interface_filepath
-                            ]
-                        compilation_result = unsafePerformIO $ do
-                            let path_to_ghc = ghcCompilerPath tools
-                            createDirectoryIfMissing True . takeDirectory $ object_filepath
-                            createDirectoryIfMissing True . takeDirectory $ interface_filepath
-                            putStrLn . unwords $ (path_to_ghc:arguments)
-                            readProcessWithExitCode path_to_ghc arguments ""
-                        dependency_errors =
-                            catMaybes
-                            .
-                            (map $ \dependency_resource ->
-                                case resourceDigest dependency_resource of
-                                    Left errors -> Just errors
-                                    Right _ -> Nothing
-                            )
-                            $
-                            resource_dependencies
 
-                    in if (not . null) dependency_errors
-                        then let my_errors = Map.unions dependency_errors in (Left my_errors,Left my_errors)  
-                        else case compilation_result of
-                                (ExitFailure _,_,error_message) ->
-                                    let my_error = Map.singleton source_filepath error_message
-                                    in (Left my_error,Left my_error)
-                                (ExitSuccess,_,_) ->
-                                    (Right (digestOf object_filepath), Right (digestOf interface_filepath))
+        scanner = do
+            dependencies <- readDependenciesOf source_filepath
+
+            let (unknown_dependencies,resource_dependencies) =
+                    partitionEithers
+                    .
+                    catMaybes
+                    .
+                    map (\module_name ->
+                        if Map.member module_name known_package_modules
+                            then Nothing
+                            else let resource_id = (module_name,"hi")
+                                  in if Map.member resource_id known_resources
+                                        then Just . Right $ resource_id
+                                        else Just . Left $ module_name
+                    )
+                    $
+                    dependencies
+
+            if null unknown_dependencies
+                then return . Right $ resource_dependencies
+                else return . Left . reportUnknownModules tools source_filepath $ unknown_dependencies
+
+        builder =
+            let option_arguments = optionsToArguments $ options
+                    {   ghcOptionIncludeDirectories =
+                            (interface_destination_directory:)
+                            .
+                            ghcOptionIncludeDirectories
+                            $
+                            options
+                    }
+                arguments = 
+                    option_arguments ++
+                    ["-c",source_filepath
+                    ,"-o",object_filepath
+                    ,"-ohi",interface_filepath
+                    ]
+                path_to_ghc = ghcCompilerPath tools
+            in do
+                createDirectoryIfMissing True . takeDirectory $ object_filepath
+                createDirectoryIfMissing True . takeDirectory $ interface_filepath
+                putStrLn . unwords $ (path_to_ghc:arguments)
+                compilation_result <- readProcessWithExitCode path_to_ghc arguments ""
+                case compilation_result of
+                    (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                    (ExitSuccess,_,_) -> return Nothing
+
+        (object_digest,interface_digest) =
+            case analyzeDependenciesAndRebuildIfNecessary
+                    builder
+                    scanner
+                    known_resources
+                    (cache_directory </> source_name <.> "o")
+                    [object_filepath,interface_filepath]
+                    source_resource
+            of Left error_message -> (Left error_message,Left error_message)
+               Right [object_digest,interface_digest] -> (Right object_digest,Right interface_digest)
+               _ -> error "Programmer error:  Builder returned the wrong number of digests!"
 
     in (object_resource,interface_resource)
 -- @-node:gcross.20091121210308.2022:ghcCompile
@@ -254,6 +272,7 @@ ghcCompileAll ::
     PackageModules ->
     FilePath ->
     FilePath ->
+    FilePath ->
     Resources ->
     Resources
 ghcCompileAll
@@ -262,6 +281,7 @@ ghcCompileAll
     known_package_modules
     object_destination_directory
     interface_destination_directory
+    cache_directory
     old_resources
     =
     let new_resources = go old_resources (Map.elems old_resources)
@@ -276,6 +296,7 @@ ghcCompileAll
                                 new_resources
                                 object_destination_directory
                                 interface_destination_directory
+                                cache_directory
                                 resource
                      in go (addResource object_resource . addResource interface_resource $ accum_resources) rest_resources
                 else go accum_resources rest_resources

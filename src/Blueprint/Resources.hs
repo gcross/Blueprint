@@ -7,6 +7,7 @@ module Blueprint.Resources where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1278:<< Import needed modules >>
 import Control.Arrow
+import Control.Parallel.Strategies
 
 import qualified Data.ByteString.Lazy as L
 import Data.Digest.Pure.MD5
@@ -31,12 +32,18 @@ data Resource = Resource
     {   resourceName :: !String
     ,   resourceType :: !String
     ,   resourceFilePath :: !FilePath
-    ,   resourceDigest :: Either (Map String String) MD5Digest
+    ,   resourceDigest :: Either ErrorMessage MD5Digest
     } deriving (Eq,Show)
 -- @-node:gcross.20091121210308.1279:Resource
 -- @+node:gcross.20091121210308.1284:Resources
-type Resources = Map (String,String) Resource
+type Resources = Map ResourceId Resource
 -- @-node:gcross.20091121210308.1284:Resources
+-- @+node:gcross.20091122100142.1326:ResourceId
+type ResourceId = (String,String)
+-- @-node:gcross.20091122100142.1326:ResourceId
+-- @+node:gcross.20091122100142.1333:ErrorMessage
+type ErrorMessage = (Map String String)
+-- @-node:gcross.20091122100142.1333:ErrorMessage
 -- @-node:gcross.20091121210308.1277:Types
 -- @+node:gcross.20091121210308.1280:Functions
 -- @+node:gcross.20091121210308.2037:splitDot
@@ -125,6 +132,43 @@ makeCompositeErrorMessage =
     Map.toList
 -- @nonl
 -- @-node:gcross.20091121210308.2040:makeCompositeErrorMessage
+-- @+node:gcross.20091122100142.1329:attemptGetResources
+attemptGetResources :: Resources -> [ResourceId] -> Either [ResourceId] [Resource]
+attemptGetResources resources resource_ids =
+    let (unknown_resource_ids,fetched_resources) =
+            partitionEithers
+            .
+            map (\resource_id ->
+                case Map.lookup resource_id resources of
+                    Nothing -> Left resource_id
+                    Just resource -> Right resource
+            )
+            $
+            resource_ids
+    in if null unknown_resource_ids
+        then Right fetched_resources
+        else Left unknown_resource_ids
+-- @-node:gcross.20091122100142.1329:attemptGetResources
+-- @+node:gcross.20091122100142.1331:attemptGetDigests
+attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
+attemptGetDigests resources =
+    let (error_messages,digests) =
+            partitionEithers
+            .
+            parMap rwhnf resourceDigest
+            $
+            resources
+    in if null error_messages
+        then Right digests
+        else Left . Map.unions $ error_messages
+-- @-node:gcross.20091122100142.1331:attemptGetDigests
+-- @+node:gcross.20091122100142.1332:attemptGetResourceDigests
+attemptGetResourceDigests :: Resources -> [ResourceId] -> Either (Either [ResourceId] (Map String String)) [MD5Digest]
+attemptGetResourceDigests resources resource_ids =
+    case attemptGetResources resources resource_ids of
+        Left unknown_resource_ids -> Left . Left $ unknown_resource_ids
+        Right resource_list -> either (Left . Right) Right $ attemptGetDigests resource_list
+-- @-node:gcross.20091122100142.1332:attemptGetResourceDigests
 -- @-node:gcross.20091121210308.1280:Functions
 -- @-others
 -- @-node:gcross.20091121210308.1276:@thin Resources.hs
