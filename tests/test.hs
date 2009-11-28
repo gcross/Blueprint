@@ -22,7 +22,7 @@ import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
-import Blueprint.Resources
+import Blueprint.Miscellaneous
 -- @-node:gcross.20091121210308.1808:<< Import needed modules >>
 -- @nl
 
