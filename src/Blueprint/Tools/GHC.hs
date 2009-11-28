@@ -12,6 +12,7 @@ module Blueprint.Tools.GHC where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
 import Control.Arrow
+import Control.Applicative.Infix
 import Control.Monad
 
 import Data.Array
@@ -37,6 +38,8 @@ import Text.Regex.TDFA.ByteString.Lazy
 
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Cache.ImplicitDependencies
+import Blueprint.Configuration
+import Blueprint.Miscellaneous
 import Blueprint.Resources
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
@@ -49,11 +52,28 @@ data GHCTools = GHCTools
     ,   ghcCompilerPath :: String
     ,   ghcPackageQueryPath :: String
     } deriving (Show)
+
 -- @-node:gcross.20091121210308.1271:GHCTools
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
 -- @-node:gcross.20091121210308.2025:PackageModules
 -- @-node:gcross.20091121210308.1270:Types
+-- @+node:gcross.20091127142612.1405:Instances
+-- @+node:gcross.20091127142612.1406:ConfigurationData GHCTools
+instance ConfigurationData GHCTools where
+    readConfig =
+        liftM3 GHCTools
+            (fmap readVersion $ getConfig "version")
+            (getConfig "path to compiler")
+            (getConfig "path to package manager")
+    writeConfig =
+        (setConfig "version" . showVersion . ghcVersion)
+        <^(>>)^>
+        (setConfig "path to compiler" . ghcCompilerPath)
+        <^(>>)^>
+        (setConfig "path to package manager" . ghcPackageQueryPath)
+-- @-node:gcross.20091127142612.1406:ConfigurationData GHCTools
+-- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
 import_matching_regex = fromRight . compile defaultCompOpt defaultExecOpt . L8.pack $ "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]+)[\\s;]?"
@@ -151,7 +171,7 @@ ghcTools = unsafePerformIO $ do
             version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
             return . Just $
                 GHCTools
-                    {   ghcVersion = map read . splitDot $ version_as_string
+                    {   ghcVersion = readVersion version_as_string
                     ,   ghcCompilerPath = path_to_ghc
                     ,   ghcPackageQueryPath = path_to_ghc ++ "-pkg"
                     }

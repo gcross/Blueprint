@@ -23,6 +23,7 @@ import System.IO.Unsafe
 import Debug.Trace
 
 import Blueprint.Error
+import Blueprint.Miscellaneous
 -- @-node:gcross.20091121210308.1278:<< Import needed modules >>
 -- @nl
 
@@ -49,17 +50,6 @@ type ResourceId = (String,String)
 resourceId :: Resource -> ResourceId
 resourceId = (resourceName &&& resourceType)
 -- @-node:gcross.20091122100142.1388:resourceId
--- @+node:gcross.20091121210308.2037:splitDot
-splitDot :: String -> [String]
-splitDot "" = []
-splitDot s =
-    let (first_part, rest_string) = break (== '.') s
-    in first_part : if null rest_string then [] else splitDot . tail $ rest_string
--- @-node:gcross.20091121210308.2037:splitDot
--- @+node:gcross.20091121210308.2035:unsplitDot
-unsplitDot = intercalate "."
--- @nonl
--- @-node:gcross.20091121210308.2035:unsplitDot
 -- @+node:gcross.20091121210308.1293:applyPrefix
 applyPrefix :: String -> String -> String
 applyPrefix "" = id
