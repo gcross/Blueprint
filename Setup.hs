@@ -2,6 +2,9 @@
 -- @+node:gcross.20091121210308.1291:@thin Setup.hs
 -- @@language Haskell
 
+import Control.Applicative
+import Control.Applicative.Infix
+
 import Data.ConfigFile
 import Data.Either.Unwrap
 import Data.Maybe
@@ -30,29 +33,33 @@ package_names =
     ,"InfixApplicative"
     ]
 
-main = do
+configuration = runConfigurer "Blueprint.cfg" $
+    liftA2 (,)
+        (configureUsingSection "GHC")
+        (configureUsingSection "Binutils")
+
+build = configuration >>= \(ghc_tools,ar_tools) ->
     let src_resources = resourcesIn "src"
-        Right package_modules = getPackages tools package_names
-        Right tools = automaticallyConfigure
+        Right package_modules = getPackages ghc_tools package_names
         compiled_resources = 
             ghcCompileAll
-                tools
-                [] -- "-package-name blueprint"]
+                ghc_tools
+                ["-O2"] -- "-package-name blueprint"]
                 package_modules
                 "objects"
                 "haskell-interfaces"
                 "digest-cache"
                 src_resources
         library = formStaticLibrary
-            (fromJust arTools)
+            ar_tools
             "digest-cache"
             (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
             "libblueprint"
             "lib/libblueprint.a"
         (setup_object,_) =
             ghcCompile
-                tools
-                []
+                ghc_tools
+                ["-O2"]
                 package_modules
                 compiled_resources
                 "objects"
@@ -60,18 +67,17 @@ main = do
                 "digest-cache"
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
-            tools
+            ghc_tools
             ["-package " ++ package_name | package_name <- package_names]
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
-    case resourceDigest library of
-        Left error_message -> putStrLn $ makeCompositeErrorMessage error_message
-        Right digest -> putStrLn . show $ digest
-    case resourceDigest setup_program of
-        Left error_message -> putStrLn $ makeCompositeErrorMessage error_message
-        Right digest -> putStrLn . show $ digest
+    in resourceDigest library <^(,)^> resourceDigest setup_program
 
+main = putStrLn $
+    case build of
+        Left error_message -> makeCompositeErrorMessage error_message
+        Right digests -> show digests
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs
 -- @-leo

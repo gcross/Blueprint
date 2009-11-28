@@ -4,6 +4,7 @@
 
 -- @<< Language extensions >>
 -- @+node:gcross.20091127142612.1398:<< Language extensions >>
+{-# LANGUAGE TypeSynonymInstances #-}
 -- @-node:gcross.20091127142612.1398:<< Language extensions >>
 -- @nl
 
@@ -43,6 +44,11 @@ instance (Monoid e, Error e, Monad m) => Applicative (ErrorT e m) where
     pure = return
     e_fn <*> e_arg = ErrorT $ liftM2 (<*>) (runErrorT e_fn) (runErrorT e_arg)
 -- @-node:gcross.20091127142612.1388:Applicative (ErrorT e m a)
+-- @+node:gcross.20091128000856.1416:Error (ErrorMessage)
+instance Error ErrorMessage where
+    noMsg = Map.empty
+    strMsg = flip Map.singleton ""
+-- @-node:gcross.20091128000856.1416:Error (ErrorMessage)
 -- @-node:gcross.20091127142612.1385:Instances
 -- @+node:gcross.20091127142612.1396:Functions
 -- @+node:gcross.20091127142612.1397:extractResultsOrError

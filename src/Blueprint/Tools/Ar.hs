@@ -22,6 +22,7 @@ import System.FilePath
 import System.IO.Unsafe
 import System.Process
 
+import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Resources
 -- @-node:gcross.20091122100142.1362:<< Import needed modules >>
@@ -33,13 +34,23 @@ import Blueprint.Resources
 data ArTools = ArTools { arPath :: FilePath } deriving (Show)
 -- @-node:gcross.20091122100142.1364:ArTools
 -- @-node:gcross.20091122100142.1363:Types
+-- @+node:gcross.20091128000856.1422:Instances
+-- @+node:gcross.20091128000856.1423:ConfigurationData ArTools
+instance ConfigurationData ArTools where
+    readConfig = liftM ArTools (getConfig "path to ar")
+    writeConfig = (setConfig "path to ar" . arPath)
+-- @-node:gcross.20091128000856.1423:ConfigurationData ArTools
+-- @+node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
+instance AutomaticallyConfigurable ArTools where
+    automaticallyConfigure = unsafePerformIO $ do
+        maybe_path_to_ar <- findExecutable "ar"
+        return $ 
+            case maybe_path_to_ar of
+                Nothing -> Left $ Map.singleton "ArTools" "ar not found!"
+                Just path_to_ar -> Right $ ArTools path_to_ar
+-- @-node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
+-- @-node:gcross.20091128000856.1422:Instances
 -- @+node:gcross.20091122100142.1365:Configuration
--- @+node:gcross.20091122100142.1366:arTools
-arTools :: Maybe ArTools
-arTools = unsafePerformIO $ do
-    maybe_path_to_ar <- findExecutable "ar"
-    return $ liftM ArTools maybe_path_to_ar
--- @-node:gcross.20091122100142.1366:arTools
 -- @-node:gcross.20091122100142.1365:Configuration
 -- @+node:gcross.20091122100142.1367:Tools
 -- @+node:gcross.20091122100142.1368:formStaticLibrary
