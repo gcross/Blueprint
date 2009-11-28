@@ -13,9 +13,6 @@ module Blueprint.Tools.Ar where
 -- @+node:gcross.20091122100142.1362:<< Import needed modules >>
 import Control.Monad
 
-import Data.Map (Map)
-import qualified Data.Map as Map
-
 import System.Directory
 import System.Exit
 import System.FilePath
@@ -24,6 +21,7 @@ import System.Process
 
 import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
+import Blueprint.Error
 import Blueprint.Resources
 -- @-node:gcross.20091122100142.1362:<< Import needed modules >>
 -- @nl
@@ -46,12 +44,10 @@ instance AutomaticallyConfigurable ArTools where
         maybe_path_to_ar <- findExecutable "ar"
         return $ 
             case maybe_path_to_ar of
-                Nothing -> Left $ Map.singleton "ArTools" "ar not found!"
+                Nothing -> Left $ errorMessageText "configuring ArTools" "ar was not found in the path!"
                 Just path_to_ar -> Right $ ArTools path_to_ar
 -- @-node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
 -- @-node:gcross.20091128000856.1422:Instances
--- @+node:gcross.20091122100142.1365:Configuration
--- @-node:gcross.20091122100142.1365:Configuration
 -- @+node:gcross.20091122100142.1367:Tools
 -- @+node:gcross.20091122100142.1368:formStaticLibrary
 formStaticLibrary ::
@@ -94,7 +90,14 @@ formStaticLibrary
             arguments
             ""
         case compilation_result of
-            (ExitFailure _,_,error_message) -> return . Just . Map.singleton library_resource_filepath $ error_message
+            (ExitFailure _,_,error_message) ->
+                return
+                .
+                Just
+                .
+                errorMessageTextWithLines ("linking " ++ library_resource_name)
+                $
+                error_message
             (ExitSuccess,_,_) -> return Nothing
 
 -- @-node:gcross.20091122100142.1368:formStaticLibrary

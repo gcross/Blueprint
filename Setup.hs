@@ -2,18 +2,30 @@
 -- @+node:gcross.20091121210308.1291:@thin Setup.hs
 -- @@language Haskell
 
+module Main where
+
+-- @<< Import needed modules >>
+-- @+node:gcross.20091128000856.1439:<< Import needed modules >>
 import Control.Applicative
 import Control.Applicative.Infix
 
-import Data.ConfigFile
+import Data.ConfigFile hiding (options)
 import Data.Either.Unwrap
 import Data.Maybe
 import qualified Data.Map as Map
 
+import Text.PrettyPrint.ANSI.Leijen
+
 import Blueprint.Configuration
+import Blueprint.Error
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
+-- @nonl
+-- @-node:gcross.20091128000856.1439:<< Import needed modules >>
+-- @nl
+
+import Debug.Trace
 
 package_names =
     ["base"
@@ -31,7 +43,10 @@ package_names =
     ,"mtl"
     ,"ConfigFile"
     ,"InfixApplicative"
+    ,"ansi-wl-pprint"
     ]
+
+options = ["-O2"]
 
 configuration = runConfigurer "Blueprint.cfg" $
     liftA2 (,)
@@ -44,7 +59,7 @@ build = configuration >>= \(ghc_tools,ar_tools) ->
         compiled_resources = 
             ghcCompileAll
                 ghc_tools
-                ["-O2"] -- "-package-name blueprint"]
+                options
                 package_modules
                 "objects"
                 "haskell-interfaces"
@@ -59,7 +74,7 @@ build = configuration >>= \(ghc_tools,ar_tools) ->
         (setup_object,_) =
             ghcCompile
                 ghc_tools
-                ["-O2"]
+                options
                 package_modules
                 compiled_resources
                 "objects"
@@ -68,16 +83,16 @@ build = configuration >>= \(ghc_tools,ar_tools) ->
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
             ghc_tools
-            ["-package " ++ package_name | package_name <- package_names]
+            (options ++ ["-package " ++ package_name | package_name <- package_names])
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
     in resourceDigest library <^(,)^> resourceDigest setup_program
 
-main = putStrLn $
+main =
     case build of
-        Left error_message -> makeCompositeErrorMessage error_message
-        Right digests -> show digests
+        Left error_message -> putDoc . formatErrorMessage $ error_message
+        Right digests -> putStrLn "Build complete!"
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs
 -- @-leo

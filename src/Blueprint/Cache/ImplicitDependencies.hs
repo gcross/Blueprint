@@ -25,6 +25,8 @@ import System.Directory
 import System.FilePath
 import System.IO.Unsafe
 
+import Text.PrettyPrint.ANSI.Leijen
+
 import Blueprint.Error
 import Blueprint.Resources
 -- @-node:gcross.20091122100142.1313:<< Import needed modules >>
@@ -103,7 +105,11 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                 .
                 Left
                 .
-                reportUnknownResources (resourceFilePath source_resource)
+                errorMessage ("finding the resources associated with the following implicit dependencies in " ++ resourceName source_resource)
+                .
+                vcat
+                .
+                map (text . show)
                 $
                 unknown_resource_ids
             Left (Right error_message) -> return . Left $ error_message

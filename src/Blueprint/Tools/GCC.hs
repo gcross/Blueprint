@@ -11,6 +11,7 @@ module Blueprint.Tools.GCC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091123114318.1339:<< Import needed modules >>
+import Control.Applicative.Infix
 import Control.Monad
 
 import Data.Map (Map)
@@ -22,7 +23,11 @@ import System.FilePath
 import System.IO.Unsafe
 import System.Process
 
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
+
 import Blueprint.Cache.SingleDependency
+import Blueprint.Configuration
+import Blueprint.Error
 import Blueprint.Resources
 -- @-node:gcross.20091123114318.1339:<< Import needed modules >>
 -- @nl
@@ -36,15 +41,37 @@ data GCCTools = GCCTools
         } deriving (Show)
 -- @-node:gcross.20091123114318.1343:GCCTools
 -- @-node:gcross.20091123114318.1342:Types
--- @+node:gcross.20091123114318.1346:Configuration
--- @+node:gcross.20091123114318.1347:gccTools
-gccTools :: Maybe GCCTools
-gccTools = unsafePerformIO $ do
-    maybe_path_to_gcc <- findExecutable "gcc"
-    maybe_path_to_gfortran <- findExecutable "gfortran"
-    return $ liftM2 GCCTools maybe_path_to_gcc maybe_path_to_gfortran
--- @-node:gcross.20091123114318.1347:gccTools
--- @-node:gcross.20091123114318.1346:Configuration
+-- @+node:gcross.20091128000856.1436:Instances
+-- @+node:gcross.20091128000856.1437:ConfigurationData GCCTools
+instance ConfigurationData GCCTools where
+    readConfig = liftM2 GCCTools
+        (getConfig "path to gcc")
+        (getConfig "path to gfortran")
+    writeConfig =
+        (setConfig "path to gcc" . gccCCompilerPath)
+        <^(>>)^>
+        (setConfig "path to gfortran" . gccFortranCompilerPath)
+-- @-node:gcross.20091128000856.1437:ConfigurationData GCCTools
+-- @+node:gcross.20091128000856.1438:AutomaticallyConfigurable GCCTools
+instance AutomaticallyConfigurable GCCTools where
+    automaticallyConfigure = unsafePerformIO $ do
+        maybe_path_to_gcc <- findExecutable "gcc"
+        maybe_path_to_gfortran <- findExecutable "gfortran"
+        return $ 
+            case (maybe_path_to_gcc,maybe_path_to_gfortran) of
+                (Just path_to_gcc,Just path_to_gfortran) ->
+                    Right (GCCTools path_to_gcc path_to_gfortran)
+                (Nothing,Nothing) ->
+                    Left . errorMessage "configuring GCCTools" $
+                        (text "gcc was not found in the path")
+                        <$>
+                        (text "gfortran was not found in the path")
+                (Nothing,_) ->
+                    Left . errorMessageText "configuring GCCTools" $ "gcc was not found in the path"
+                (_,Nothing) ->
+                    Left . errorMessageText "configuring GCCTools" $ "gfortran was not found in the path"
+-- @-node:gcross.20091128000856.1438:AutomaticallyConfigurable GCCTools
+-- @-node:gcross.20091128000856.1436:Instances
 -- @+node:gcross.20091123114318.1367:Tools
 -- @+node:gcross.20091123114318.1372:C compilation
 -- @+node:gcross.20091123114318.1368:gccCompileC
@@ -86,7 +113,14 @@ gccCompileC
             putStrLn . unwords $ (path_to_gcc:arguments)
             compilation_result <- readProcessWithExitCode path_to_gcc arguments ""
             case compilation_result of
-                (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                (ExitFailure _,_,error_message) ->
+                    return
+                    .
+                    Just
+                    .
+                    errorMessageTextWithLines ("compiling " ++ source_name)
+                    $
+                    error_message
                 (ExitSuccess,_,_) -> return Nothing
 
     object_digest =
@@ -176,7 +210,14 @@ gccCompileFortran
             putStrLn . unwords $ (path_to_gfortran:arguments)
             compilation_result <- readProcessWithExitCode path_to_gfortran arguments ""
             case compilation_result of
-                (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                (ExitFailure _,_,error_message) ->
+                    return
+                    .
+                    Just
+                    .
+                    errorMessageTextWithLines ("compiling " ++ source_name)
+                    $
+                    error_message
                 (ExitSuccess,_,_) -> return Nothing
 
     object_digest =

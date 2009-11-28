@@ -11,6 +11,9 @@ module Blueprint.Miscellaneous where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091127142612.1415:<< Import needed modules >>
+import Control.Parallel
+import Control.Parallel.Strategies
+
 import Data.List
 -- @-node:gcross.20091127142612.1415:<< Import needed modules >>
 -- @nl
@@ -35,6 +38,11 @@ readVersion = map read . splitDot
 showVersion :: [Int] -> String
 showVersion = unsplitDot . map show
 -- @-node:gcross.20091127142612.1422:readVersion/showVersion
+-- @+node:gcross.20091128000856.1440:myParListWHNF
+myParListWHNF :: Strategy [a]
+myParListWHNF []     = []
+myParListWHNF (x:xs) = x `par` (x:myParListWHNF xs)
+-- @-node:gcross.20091128000856.1440:myParListWHNF
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs

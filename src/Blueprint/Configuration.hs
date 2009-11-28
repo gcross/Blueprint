@@ -23,8 +23,7 @@ import Control.Monad.Trans
 import Control.Monad.Writer
 
 import Data.ConfigFile
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Either.Unwrap
 
 import System.IO
 import System.IO.Error
@@ -115,12 +114,13 @@ applyReaderToConfig config_parser section_name = ($ (config_parser,section_name)
 runConfigurer :: FilePath -> Configurer a -> Either ErrorMessage a
 runConfigurer configuration_filepath configurer = unsafePerformIO $ do
     either_old_configuration <- 
-        (fmap (either (Left . cpErrorMessage) Right) (readfile emptyCP configuration_filepath))
+        fmap (mapLeft (errorMessageText ("parsing configuration file " ++ configuration_filepath) . show)) 
+             (readfile emptyCP configuration_filepath)
         `catch`
         (\exception -> return $
             if isDoesNotExistError exception
                 then Right emptyCP
-                else Left (Map.singleton (show exception) "")
+                else Left . errorMessageText ("opening " ++ configuration_filepath) . show $ exception
         )
     case either_old_configuration of
         Left error_message -> return (Left error_message)
@@ -131,8 +131,8 @@ runConfigurer configuration_filepath configurer = unsafePerformIO $ do
                 return result
 -- @-node:gcross.20091128000856.1412:runConfigurer
 -- @+node:gcross.20091128000856.1414:cpErrorMessage
-cpErrorMessage :: CPError -> ErrorMessage
-cpErrorMessage cp_error = Map.singleton (show cp_error) ""
+cpErrorMessage :: String -> CPError -> ErrorMessage
+cpErrorMessage section_name = errorMessageText ("parsing section " ++ section_name) . show
 -- @-node:gcross.20091128000856.1414:cpErrorMessage
 -- @+node:gcross.20091128000856.1415:configureUsingSection
 configureUsingSection :: (ConfigurationData a, AutomaticallyConfigurable a) => String -> Configurer a
@@ -143,7 +143,7 @@ configureUsingSection section_name = do
             case fst cp_error of
                 NoSection _ -> reconfigure
                 NoOption _ -> reconfigure
-                _ -> ErrorT (return . Left . cpErrorMessage $ cp_error)
+                _ -> ErrorT (return . Left . cpErrorMessage section_name $ cp_error)
         Right result -> return result
   where
     reconfigure :: (ConfigurationData a, AutomaticallyConfigurable a) =>  Configurer a

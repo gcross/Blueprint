@@ -12,6 +12,7 @@ import Control.Parallel.Strategies
 import qualified Data.ByteString.Lazy as L
 import Data.Digest.Pure.MD5
 import Data.Either
+import Data.Either.Unwrap
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -19,8 +20,6 @@ import qualified Data.Map as Map
 import System.Directory
 import System.FilePath
 import System.IO.Unsafe
-
-import Debug.Trace
 
 import Blueprint.Error
 import Blueprint.Miscellaneous
@@ -36,7 +35,7 @@ data Resource = Resource
     ,   resourceFilePath :: !FilePath
     ,   resourceDigest :: Either ErrorMessage MD5Digest
     ,   resourceDependencies :: [ResourceId]
-    } deriving (Eq,Show)
+    }
 -- @-node:gcross.20091121210308.1279:Resource
 -- @+node:gcross.20091121210308.1284:Resources
 type Resources = Map ResourceId Resource
@@ -113,16 +112,6 @@ getFilePathForNameAndType directory name typ =
 addResource :: Resource -> Resources -> Resources
 addResource resource = Map.insert ((resourceName &&& resourceType) resource) resource
 -- @-node:gcross.20091121210308.2039:addResource
--- @+node:gcross.20091121210308.2040:makeCompositeErrorMessage
-makeCompositeErrorMessage :: Map String String -> String
-makeCompositeErrorMessage =
-    unlines
-    .
-    map (\(name,message) -> "Error compiling " ++ name ++ ":\n\n" ++ message)
-    .
-    Map.toList
--- @nonl
--- @-node:gcross.20091121210308.2040:makeCompositeErrorMessage
 -- @+node:gcross.20091122100142.1329:attemptGetResources
 attemptGetResources :: Resources -> [ResourceId] -> Either [ResourceId] [Resource]
 attemptGetResources resources =
@@ -136,24 +125,18 @@ attemptGetResources resources =
 -- @-node:gcross.20091122100142.1329:attemptGetResources
 -- @+node:gcross.20091122100142.1331:attemptGetDigests
 attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
-attemptGetDigests = extractResultsOrError . parMap rwhnf resourceDigest
+attemptGetDigests = extractResultsOrError . myParListWHNF . map resourceDigest
+-- @nonl
 -- @-node:gcross.20091122100142.1331:attemptGetDigests
 -- @+node:gcross.20091122100142.1332:attemptGetResourceDigests
-attemptGetResourceDigests :: Resources -> [ResourceId] -> Either (Either [ResourceId] (Map String String)) [MD5Digest]
+attemptGetResourceDigests :: Resources -> [ResourceId] -> Either (Either [ResourceId] ErrorMessage) [MD5Digest]
 attemptGetResourceDigests resources resource_ids =
-    case attemptGetResources resources resource_ids of
-        Left unknown_resource_ids -> Left . Left $ unknown_resource_ids
-        Right resource_list -> either (Left . Right) Right $ attemptGetDigests resource_list
+    either
+        (Left . Left)
+        (mapLeft Right . attemptGetDigests)
+    $
+    attemptGetResources resources resource_ids
 -- @-node:gcross.20091122100142.1332:attemptGetResourceDigests
--- @+node:gcross.20091122100142.1384:reportUnknownResources
-reportUnknownResources :: String -> [ResourceId] -> Map String String
-reportUnknownResources filepath =
-    Map.singleton filepath
-    .
-    unlines
-    .
-    map show
--- @-node:gcross.20091122100142.1384:reportUnknownResources
 -- @-node:gcross.20091121210308.1280:Functions
 -- @-others
 -- @-node:gcross.20091121210308.1276:@thin Resources.hs

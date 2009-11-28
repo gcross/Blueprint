@@ -27,6 +27,7 @@ import System.IO.Unsafe
 
 import Blueprint.Error
 import Blueprint.Resources
+
 -- @-node:gcross.20091122100142.1374:<< Import needed modules >>
 -- @nl
 
@@ -64,25 +65,23 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
     product_filepaths
     miscellaneous_cache_information
     source_resources
-  = case attemptGetDigests source_resources of
-        Left error_message -> Left error_message
-        Right source_digests -> unsafePerformIO $ do
-            let source_digests_as_map = Map.fromList $ zip (map resourceId source_resources) source_digests
-                rebuildIt = rebuild source_digests_as_map
-            file_exists <- doesFileExist cache_filepath
-            if not file_exists
-                then rebuildIt
-                else do
-                    cached_digests <- decodeFile cache_filepath
-                    let cached_digests_as_map = digestsOfDependencies cached_digests
-                        compared_digests = Map.intersectionWith (==) source_digests_as_map cached_digests_as_map 
-                    if    (Map.size source_digests_as_map /= Map.size compared_digests)
-                       || (Map.size cached_digests_as_map /= Map.size compared_digests)
-                       || not (Map.fold (&&) True compared_digests)
+  = flip (either Left) (attemptGetDigests source_resources) $ \source_digests -> unsafePerformIO $ do
+        let source_digests_as_map = Map.fromList $ zip (map resourceId source_resources) source_digests
+            rebuildIt = rebuild source_digests_as_map
+        file_exists <- doesFileExist cache_filepath
+        if not file_exists
+            then rebuildIt
+            else do
+                cached_digests <- decodeFile cache_filepath
+                let cached_digests_as_map = digestsOfDependencies cached_digests
+                    compared_digests = Map.intersectionWith (==) source_digests_as_map cached_digests_as_map 
+                if    (Map.size source_digests_as_map /= Map.size compared_digests)
+                   || (Map.size cached_digests_as_map /= Map.size compared_digests)
+                   || not (Map.fold (&&) True compared_digests)
+                    then rebuildIt
+                    else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
                         then rebuildIt
-                        else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
-                            then rebuildIt
-                            else return . Right . digestsOfProducts $ cached_digests
+                        else return . Right . digestsOfProducts $ cached_digests
   where
     rebuild source_digests_as_map = do
         build_result <- builder

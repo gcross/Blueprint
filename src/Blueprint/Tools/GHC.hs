@@ -33,14 +33,18 @@ import System.FilePath
 import System.IO.Unsafe
 import System.Process
 
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
+
 import Text.Regex.TDFA
 import Text.Regex.TDFA.ByteString.Lazy
 
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Configuration
+import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Resources
+
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
 
@@ -78,7 +82,7 @@ instance AutomaticallyConfigurable GHCTools where
     automaticallyConfigure = unsafePerformIO $ do
         maybe_path_to_ghc <- findExecutable "ghc"
         case maybe_path_to_ghc of
-            Nothing -> return . Left $ Map.singleton "GHCTools" "ghc not found!"
+            Nothing -> return . Left . errorMessageText "configuring GHCTools" $ "ghc was not found in the path!"
             Just path_to_ghc -> do
                 version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
                 return . Right $
@@ -177,16 +181,16 @@ findPackagesExposingModule tools package_name =
 -- @-node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules
-reportUnknownModules :: GHCTools -> String -> [String] -> Map String String
-reportUnknownModules tools source_filepath =
-    Map.singleton source_filepath
+reportUnknownModules :: GHCTools -> String -> [String] -> ErrorMessage
+reportUnknownModules tools source_name =
+    errorMessage ("tracing the following module dependencies for " ++ source_name)
     .
-    unlines
+    vcat
     .
-    map (\module_name ->
+    map (\module_name -> text $
         case findPackagesExposingModule tools module_name of
-            [] -> "\t" ++ module_name ++ " (no idea where to find it)"
-            packages -> "\t" ++ module_name ++ " which appears in packages " ++ (show packages)
+            [] -> module_name ++ " (no idea where to find it)"
+            packages -> module_name ++ " which appears in packages " ++ (show packages)
     )
 -- @-node:gcross.20091121210308.2032:reportUnknownModules
 -- @-node:gcross.20091121210308.2031:Error reporting
@@ -255,7 +259,7 @@ ghcCompile
 
         if null unknown_dependencies
             then return . Right $ resource_dependencies
-            else return . Left . reportUnknownModules tools source_filepath $ unknown_dependencies
+            else return . Left . reportUnknownModules tools source_name $ unknown_dependencies
 
     builder =
         let arguments = 
@@ -272,7 +276,14 @@ ghcCompile
             putStrLn . unwords $ (path_to_ghc:arguments)
             compilation_result <- readProcessWithExitCode path_to_ghc arguments ""
             case compilation_result of
-                (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                (ExitFailure _,_,error_message) ->
+                    return
+                    .
+                    Just
+                    .
+                    errorMessageTextWithLines ("compiling " ++ source_name)
+                    $
+                    error_message
                 (ExitSuccess,_,_) -> return Nothing
 
     ((object_digest,interface_digest),implicit_dependencies) =
@@ -373,7 +384,14 @@ ghcLinkProgram
             arguments
             ""
         case compilation_result of
-            (ExitFailure _,_,error_message) -> return . Just . Map.singleton program_resource_filepath $ error_message
+            (ExitFailure _,_,error_message) ->
+                return
+                .
+                Just
+                .
+                errorMessageTextWithLines ("linking " ++ program_resource_name)
+                $
+                error_message
             (ExitSuccess,_,_) -> return Nothing
 -- @-node:gcross.20091127142612.1402:ghcLinkProgram
 -- @-node:gcross.20091121210308.1275:Tools
