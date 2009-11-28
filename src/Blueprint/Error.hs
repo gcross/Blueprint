@@ -12,6 +12,7 @@ module Blueprint.Error where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091127142612.1384:<< Import needed modules >>
+import Control.Arrow
 import Control.Applicative
 import Control.Applicative.Infix
 import Control.Monad
@@ -19,9 +20,11 @@ import Control.Monad.Error
 
 import Data.Either
 import Data.Either.Unwrap
-import Data.Map (Map)
-import qualified Data.Map as Map
 import Data.Monoid
+
+import StringTable.Atom
+import StringTable.AtomMap (AtomMap)
+import qualified StringTable.AtomMap as Map
 
 import Text.PrettyPrint.ANSI.Leijen
 -- @-node:gcross.20091127142612.1384:<< Import needed modules >>
@@ -30,7 +33,7 @@ import Text.PrettyPrint.ANSI.Leijen
 -- @+others
 -- @+node:gcross.20091127142612.1391:Types
 -- @+node:gcross.20091127142612.1393:ErrorMessage
-type ErrorMessage = Map String Doc
+type ErrorMessage = AtomMap Doc
 -- @-node:gcross.20091127142612.1393:ErrorMessage
 -- @-node:gcross.20091127142612.1391:Types
 -- @+node:gcross.20091127142612.1385:Instances
@@ -50,7 +53,7 @@ instance (Monoid e, Error e, Monad m) => Applicative (ErrorT e m) where
 -- @+node:gcross.20091128000856.1416:Error (ErrorMessage)
 instance Error ErrorMessage where
     noMsg = strMsg "(and he did not even bother to include an error message!  :-/)"
-    strMsg = Map.singleton "caused by the programmer" . text
+    strMsg = errorMessage "caused by the programmer" . text
 -- @-node:gcross.20091128000856.1416:Error (ErrorMessage)
 -- @-node:gcross.20091127142612.1385:Instances
 -- @+node:gcross.20091127142612.1396:Functions
@@ -67,7 +70,7 @@ extractResultsOrErrors eithers =
 -- @-node:gcross.20091127142612.1400:extractResultsOrErrors
 -- @+node:gcross.20091128000856.1425:formatErrorMessage
 formatErrorMessage :: ErrorMessage -> Doc
-formatErrorMessage = vcat . map formatMessageWithHeading . Map.assocs
+formatErrorMessage = vcat . map (formatMessageWithHeading . first fromAtom) . Map.assocs
 -- @-node:gcross.20091128000856.1425:formatErrorMessage
 -- @+node:gcross.20091128000856.1427:formatMessageWithHeading
 formatMessageWithHeading :: (String,Doc) -> Doc
@@ -78,7 +81,7 @@ formatMessageWithHeading (heading,message) =
 -- @-node:gcross.20091128000856.1427:formatMessageWithHeading
 -- @+node:gcross.20091128000856.1428:errorMessage
 errorMessage :: String -> Doc -> ErrorMessage
-errorMessage heading message = Map.singleton heading message
+errorMessage heading message = Map.singleton (toAtom heading) message
 -- @-node:gcross.20091128000856.1428:errorMessage
 -- @+node:gcross.20091128000856.1429:errorMessageText
 errorMessageText :: String -> String -> ErrorMessage

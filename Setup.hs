@@ -44,6 +44,7 @@ package_names =
     ,"ConfigFile"
     ,"InfixApplicative"
     ,"ansi-wl-pprint"
+    ,"stringtable-atom"
     ]
 
 options = ["-O2"]
