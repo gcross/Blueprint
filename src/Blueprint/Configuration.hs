@@ -21,6 +21,8 @@ import Control.Monad.Trans
 import Control.Monad.Writer
 
 import Data.ConfigFile
+
+import Blueprint.Error
 -- @-node:gcross.20091126122246.1381:<< Import needed modules >>
 -- @nl
 
@@ -31,6 +33,10 @@ class ConfigurationData a where
     readConfig :: ConfigurationDataReader a
     writeConfig :: a -> ConfigurationDataWriter ()
 -- @-node:gcross.20091123215917.1371:ConfigurationData
+-- @+node:gcross.20091128000856.1408:AutomaticallyConfigurable
+class AutomaticallyConfigurable a where
+    automaticallyConfigure :: Either ErrorMessage a
+-- @-node:gcross.20091128000856.1408:AutomaticallyConfigurable
 -- @-node:gcross.20091123215917.1370:Classes
 -- @+node:gcross.20091126122246.1387:Instances
 -- @+node:gcross.20091126122246.1388:Monoid (ConfigParser -> ConfigParser)

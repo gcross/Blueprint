@@ -73,6 +73,21 @@ instance ConfigurationData GHCTools where
         <^(>>)^>
         (setConfig "path to package manager" . ghcPackageQueryPath)
 -- @-node:gcross.20091127142612.1406:ConfigurationData GHCTools
+-- @+node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
+instance AutomaticallyConfigurable GHCTools where
+    automaticallyConfigure = unsafePerformIO $ do
+        maybe_path_to_ghc <- findExecutable "ghc"
+        case maybe_path_to_ghc of
+            Nothing -> return . Left $ Map.singleton "GHCTools" "ghc not found!"
+            Just path_to_ghc -> do
+                version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
+                return . Right $
+                    GHCTools
+                        {   ghcVersion = readVersion version_as_string
+                        ,   ghcCompilerPath = path_to_ghc
+                        ,   ghcPackageQueryPath = path_to_ghc ++ "-pkg"
+                        }
+-- @-node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
@@ -160,23 +175,6 @@ findPackagesExposingModule tools package_name =
     ""
 -- @-node:gcross.20091121210308.2024:findPackagesExposingModule
 -- @-node:gcross.20091121210308.2023:Package Queries
--- @+node:gcross.20091121210308.1273:Configuration
--- @+node:gcross.20091121210308.1274:ghcTools
-ghcTools :: Maybe GHCTools
-ghcTools = unsafePerformIO $ do
-    maybe_path_to_ghc <- findExecutable "ghc"
-    case maybe_path_to_ghc of
-        Nothing -> return Nothing
-        Just path_to_ghc -> do
-            version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
-            return . Just $
-                GHCTools
-                    {   ghcVersion = readVersion version_as_string
-                    ,   ghcCompilerPath = path_to_ghc
-                    ,   ghcPackageQueryPath = path_to_ghc ++ "-pkg"
-                    }
--- @-node:gcross.20091121210308.1274:ghcTools
--- @-node:gcross.20091121210308.1273:Configuration
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules
 reportUnknownModules :: GHCTools -> String -> [String] -> Map String String

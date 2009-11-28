@@ -2,9 +2,12 @@
 -- @+node:gcross.20091121210308.1291:@thin Setup.hs
 -- @@language Haskell
 
+import Data.ConfigFile
+import Data.Either.Unwrap
 import Data.Maybe
 import qualified Data.Map as Map
 
+import Blueprint.Configuration
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
@@ -30,7 +33,7 @@ package_names =
 main = do
     let src_resources = resourcesIn "src"
         Right package_modules = getPackages tools package_names
-        Just tools = ghcTools
+        Right tools = automaticallyConfigure
         compiled_resources = 
             ghcCompileAll
                 tools
@@ -48,7 +51,7 @@ main = do
             "lib/libblueprint.a"
         (setup_object,_) =
             ghcCompile
-                (fromJust ghcTools)
+                tools
                 []
                 package_modules
                 compiled_resources
@@ -57,7 +60,7 @@ main = do
                 "digest-cache"
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
-            (fromJust ghcTools)
+            tools
             ["-package " ++ package_name | package_name <- package_names]
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
@@ -69,5 +72,6 @@ main = do
     case resourceDigest setup_program of
         Left error_message -> putStrLn $ makeCompositeErrorMessage error_message
         Right digest -> putStrLn . show $ digest
+
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs
 -- @-leo
