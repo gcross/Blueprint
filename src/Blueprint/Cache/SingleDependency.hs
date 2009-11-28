@@ -25,6 +25,7 @@ import System.Directory
 import System.FilePath
 import System.IO.Unsafe
 
+import Blueprint.Error
 import Blueprint.Resources
 -- @-node:gcross.20091123114318.1358:<< Import needed modules >>
 -- @nl

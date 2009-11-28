@@ -61,6 +61,7 @@ formStaticLibrary
         ,   resourceType = "a"
         ,   resourceFilePath = library_resource_filepath
         ,   resourceDigest = library_digest
+        ,   resourceDependencies = map resourceId object_resources
         }
   where
     library_digest = either Left (Right . head) $

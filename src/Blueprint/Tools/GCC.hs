@@ -62,44 +62,43 @@ gccCompileC
     cache_directory
     source_resource
     =
-    let source_filepath = resourceFilePath source_resource
-        source_name = resourceName source_resource
-        object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
-        object_resource =
-            Resource
-                {   resourceName = source_name
-                ,   resourceType = "o"
-                ,   resourceFilePath = object_filepath
-                ,   resourceDigest = object_digest
-                }
+    Resource
+        {   resourceName = source_name
+        ,   resourceType = "o"
+        ,   resourceFilePath = object_filepath
+        ,   resourceDigest = object_digest
+        ,   resourceDependencies = [resourceId source_resource]
+        }
+  where
+    source_filepath = resourceFilePath source_resource
+    source_name = resourceName source_resource
+    object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
 
-        builder =
-            let arguments = 
-                    options ++
-                    ["-c",source_filepath
-                    ,"-o",object_filepath
-                    ]
-                path_to_gcc = gccCCompilerPath tools
-            in do
-                createDirectoryIfMissing True . takeDirectory $ object_filepath
-                putStrLn . unwords $ (path_to_gcc:arguments)
-                compilation_result <- readProcessWithExitCode path_to_gcc arguments ""
-                case compilation_result of
-                    (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
-                    (ExitSuccess,_,_) -> return Nothing
+    builder =
+        let arguments = 
+                options ++
+                ["-c",source_filepath
+                ,"-o",object_filepath
+                ]
+            path_to_gcc = gccCCompilerPath tools
+        in do
+            createDirectoryIfMissing True . takeDirectory $ object_filepath
+            putStrLn . unwords $ (path_to_gcc:arguments)
+            compilation_result <- readProcessWithExitCode path_to_gcc arguments ""
+            case compilation_result of
+                (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                (ExitSuccess,_,_) -> return Nothing
 
-        object_digest =
-            case analyzeDependencyAndRebuildIfNecessary
-                    builder
-                    (cache_directory </> source_name <.> "o")
-                    [object_filepath]
-                    (unwords options)
-                    source_resource
-            of Left error_message -> Left error_message
-               Right [object_digest] -> Right object_digest
-               x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
-
-    in object_resource
+    object_digest =
+        case analyzeDependencyAndRebuildIfNecessary
+                builder
+                (cache_directory </> source_name <.> "o")
+                [object_filepath]
+                (unwords options)
+                source_resource
+        of Left error_message -> Left error_message
+           Right [object_digest] -> Right object_digest
+           x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
 -- @-node:gcross.20091123114318.1368:gccCompileC
 -- @+node:gcross.20091123114318.1371:gccCompileAllC
 gccCompileAllC ::
@@ -116,20 +115,21 @@ gccCompileAllC
     cache_directory
     old_resources
     =
-    let new_resources = go old_resources (Map.elems old_resources)
-        go accum_resources [] = accum_resources
-        go accum_resources (resource:rest_resources) =
-            if resourceType (resource) == "c"
-                then let object_resource =
-                            gccCompileC
-                                tools
-                                options
-                                object_destination_directory
-                                cache_directory
-                                resource
-                     in go (addResource object_resource accum_resources) rest_resources
-                else go accum_resources rest_resources
-    in new_resources
+    new_resources
+  where
+    new_resources = go old_resources (Map.elems old_resources)
+    go accum_resources [] = accum_resources
+    go accum_resources (resource:rest_resources) =
+        if resourceType (resource) == "c"
+            then let object_resource =
+                        gccCompileC
+                            tools
+                            options
+                            object_destination_directory
+                            cache_directory
+                            resource
+                 in go (addResource object_resource accum_resources) rest_resources
+            else go accum_resources rest_resources
 -- @-node:gcross.20091123114318.1371:gccCompileAllC
 -- @-node:gcross.20091123114318.1372:C compilation
 -- @+node:gcross.20091123114318.1376:Fortran compilation
@@ -150,57 +150,45 @@ gccCompileFortran
     cache_directory
     source_resource
     =
-    let source_filepath = resourceFilePath source_resource
-        source_name = resourceName source_resource
-        object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
-        object_resource =
-            Resource
-                {   resourceName = source_name
-                ,   resourceType = "o"
-                ,   resourceFilePath = object_filepath
-                ,   resourceDigest = object_digest
-                }
+    Resource
+        {   resourceName = source_name
+        ,   resourceType = "o"
+        ,   resourceFilePath = object_filepath
+        ,   resourceDigest = object_digest
+        ,   resourceDependencies = [resourceId source_resource]
+        }
+  where
+    source_filepath = resourceFilePath source_resource
+    source_name = resourceName source_resource
+    object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
 
-        interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "mod"
--- @+at
---          interface_resource =
---              Resource
---                  {   resourceName = source_name
---                  ,   resourceType = "mod"
---                  ,   resourceFilePath = interface_filepath
---                  ,   resourceDigest = interface_digest
---                  }
--- @-at
--- @@c
-        builder =
-            let arguments = 
-                    options ++
-                    ["-J"++interface_destination_directory
-                    ,"-c",source_filepath
-                    ,"-o",object_filepath
-                    ]
-                path_to_gfortran = gccFortranCompilerPath tools
-            in do
-                createDirectoryIfMissing True . takeDirectory $ interface_filepath
-                createDirectoryIfMissing True . takeDirectory $ object_filepath
-                putStrLn . unwords $ (path_to_gfortran:arguments)
-                compilation_result <- readProcessWithExitCode path_to_gfortran arguments ""
-                case compilation_result of
-                    (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
-                    (ExitSuccess,_,_) -> return Nothing
+    builder =
+        let arguments = 
+                options ++
+                ["-J"++interface_destination_directory
+                ,"-c",source_filepath
+                ,"-o",object_filepath
+                ]
+            path_to_gfortran = gccFortranCompilerPath tools
+        in do
+            createDirectoryIfMissing True . takeDirectory $ interface_destination_directory
+            createDirectoryIfMissing True . takeDirectory $ object_filepath
+            putStrLn . unwords $ (path_to_gfortran:arguments)
+            compilation_result <- readProcessWithExitCode path_to_gfortran arguments ""
+            case compilation_result of
+                (ExitFailure _,_,error_message) -> return . Just . Map.singleton source_filepath $ error_message
+                (ExitSuccess,_,_) -> return Nothing
 
-        object_digest =
-            case analyzeDependencyAndRebuildIfNecessary
-                    builder
-                    (cache_directory </> source_name <.> "o")
-                    [object_filepath]
-                    (unwords options)
-                    source_resource
-            of Left error_message -> Left error_message
-               Right [object_digest] -> Right object_digest
-               x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
-
-    in object_resource
+    object_digest =
+        case analyzeDependencyAndRebuildIfNecessary
+                builder
+                (cache_directory </> source_name <.> "o")
+                [object_filepath]
+                (unwords options)
+                source_resource
+        of Left error_message -> Left error_message
+           Right [object_digest] -> Right object_digest
+           x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
 -- @-node:gcross.20091123114318.1377:gccCompileFortran
 -- @+node:gcross.20091123114318.1378:gccCompileAllFortran
 gccCompileAllFortran ::
@@ -219,21 +207,23 @@ gccCompileAllFortran
     cache_directory
     old_resources
     =
-    let new_resources = go old_resources (Map.elems old_resources)
-        go accum_resources [] = accum_resources
-        go accum_resources (resource:rest_resources) =
-            if resourceType (resource) `elem` ["f","f77","f90","f95"]
-                then let object_resource =
-                            gccCompileFortran
-                                tools
-                                options
-                                object_destination_directory
-                                interface_destination_directory
-                                cache_directory
-                                resource
-                     in go (addResource object_resource $ accum_resources) rest_resources
-                else go accum_resources rest_resources
-    in new_resources
+    new_resources
+  where
+    new_resources = go old_resources (Map.elems old_resources)
+    go accum_resources [] = accum_resources
+    go accum_resources (resource:rest_resources) =
+        if resourceType (resource) `elem` ["f","f77","f90","f95"]
+            then let object_resource =
+                        gccCompileFortran
+                            tools
+                            options
+                            object_destination_directory
+                            interface_destination_directory
+                            cache_directory
+                            resource
+                 in go (addResource object_resource $ accum_resources) rest_resources
+            else go accum_resources rest_resources
+
 -- @-node:gcross.20091123114318.1378:gccCompileAllFortran
 -- @-node:gcross.20091123114318.1376:Fortran compilation
 -- @-node:gcross.20091123114318.1367:Tools

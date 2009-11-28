@@ -25,6 +25,7 @@ import System.Directory
 import System.FilePath
 import System.IO.Unsafe
 
+import Blueprint.Error
 import Blueprint.Resources
 -- @-node:gcross.20091122100142.1313:<< Import needed modules >>
 -- @nl
@@ -61,7 +62,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary ::
     [FilePath] ->
     a ->
     Resource ->
-    Either ErrorMessage [MD5Digest]
+    Either ErrorMessage ([MD5Digest],[ResourceId])
 
 analyzeImplicitDependenciesAndRebuildIfNecessary
     builder
@@ -82,7 +83,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                 else let (resource_ids,previously_seen_digests) = unzip . digestOfDependentModules $ cached_digests
                      in attemptGetResourceDigestsAndThenRun resource_ids $
                         \current_resource_digests ->
-                            let rebuildIt = rebuild (zip resource_ids current_resource_digests)
+                            let rebuildIt = rebuild resource_ids current_resource_digests
                             in if any (uncurry (/=)) $ zip current_resource_digests previously_seen_digests
                                 then rebuildIt
                                 else do
@@ -91,14 +92,10 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                                         then rebuildIt
                                         else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
                                             then rebuildIt
-                                            else return . Right . digestsOfProducedFiles $ cached_digests
+                                            else return . Right $ (digestsOfProducedFiles cached_digests,resource_ids)
   where
     source_digest = (fromRight . resourceDigest) source_resource
 
-    attemptGetResourceDigestsAndThenRun ::
-        [ResourceId] ->
-        ([MD5Digest] -> IO (Either ErrorMessage [MD5Digest])) ->
-        IO (Either ErrorMessage [MD5Digest])
     attemptGetResourceDigestsAndThenRun resource_ids nextStep =
         case attemptGetResourceDigests resources resource_ids of
             Left (Left unknown_resource_ids) ->
@@ -112,17 +109,15 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
             Left (Right error_message) -> return . Left $ error_message
             Right current_resource_digests -> nextStep current_resource_digests
 
-    rescanAndRebuild :: IO (Either ErrorMessage [MD5Digest])
     rescanAndRebuild = do
         scan_result <- scanner
         case scan_result of
             Left error_message -> return . Left $ error_message
             Right resource_ids ->
                 attemptGetResourceDigestsAndThenRun resource_ids $
-                    \current_resource_digests -> rebuild (zip resource_ids current_resource_digests)
+                    \current_resource_digests -> rebuild resource_ids current_resource_digests
 
-    rebuild :: [(ResourceId,MD5Digest)] -> IO (Either ErrorMessage [MD5Digest])
-    rebuild dependent_module_digests = do
+    rebuild dependent_module_resource_ids dependent_module_digests = do
         build_result <- builder
         case build_result of
             Just error_message -> return . Left $ error_message
@@ -131,12 +126,12 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                     cached_dependencies = CachedImplicitDependencies
                         {   digestOfSourceFile = source_digest
                         ,   digestsOfProducedFiles = product_digests
-                        ,   digestOfDependentModules = dependent_module_digests
+                        ,   digestOfDependentModules = zip dependent_module_resource_ids dependent_module_digests
                         ,   cachedMiscellaneousInformation = miscellaneous_cache_information
                         }
                 createDirectoryIfMissing True . takeDirectory $ cache_filepath
                 encodeFile cache_filepath cached_dependencies
-                return . Right $ product_digests
+                return . Right $ (product_digests,dependent_module_resource_ids)
 -- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others
