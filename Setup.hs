@@ -18,6 +18,7 @@ import Text.PrettyPrint.ANSI.Leijen
 
 import Blueprint.Configuration
 import Blueprint.Error
+import Blueprint.Main
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
@@ -25,8 +26,11 @@ import Blueprint.Tools.GHC
 -- @-node:gcross.20091128000856.1439:<< Import needed modules >>
 -- @nl
 
-import Debug.Trace
-
+-- @+others
+-- @+node:gcross.20091128000856.1452:Options
+options = ["-O"]
+-- @-node:gcross.20091128000856.1452:Options
+-- @+node:gcross.20091128000856.1451:Packages
 package_names =
     ["base"
     ,"bytestring"
@@ -46,15 +50,20 @@ package_names =
     ,"ansi-wl-pprint"
     ,"stringtable-atom"
     ]
-
-options = ["-O2"]
-
-configuration = runConfigurer "Blueprint.cfg" $
+-- @-node:gcross.20091128000856.1451:Packages
+-- @+node:gcross.20091128000856.1448:Targets
+targets =
+    [target "configure" configure
+    ,target "build" build
+    ]
+-- @+node:gcross.20091128000856.1449:configure
+configure = runConfigurer "Blueprint.cfg" $
     liftA2 (,)
         (configureUsingSection "GHC")
         (configureUsingSection "Binutils")
-
-build = configuration >>= \(ghc_tools,ar_tools) ->
+-- @-node:gcross.20091128000856.1449:configure
+-- @+node:gcross.20091128000856.1450:build
+build = configure >>= \(ghc_tools,ar_tools) ->
     let src_resources = resourcesIn "src"
         Right package_modules = getPackages ghc_tools package_names
         compiled_resources = 
@@ -90,10 +99,10 @@ build = configuration >>= \(ghc_tools,ar_tools) ->
             "Setup"
             "Setup"
     in resourceDigest library <^(,)^> resourceDigest setup_program
+-- @-node:gcross.20091128000856.1450:build
+-- @-node:gcross.20091128000856.1448:Targets
+-- @-others
 
-main =
-    case build of
-        Left error_message -> putDoc . formatErrorMessage $ error_message
-        Right digests -> putStrLn "Build complete!"
+main = defaultMain targets
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs
 -- @-leo

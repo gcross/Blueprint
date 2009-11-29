@@ -20,6 +20,7 @@
 </v>
 <v t="gcross.20091123215917.1369"><vh>@thin Configuration.hs</vh></v>
 <v t="gcross.20091127142612.1383"><vh>@thin Error.hs</vh></v>
+<v t="gcross.20091128000856.1441"><vh>@thin Main.hs</vh></v>
 <v t="gcross.20091127142612.1413"><vh>@thin Miscellaneous.hs</vh></v>
 <v t="gcross.20091121210308.1276"><vh>@thin Resources.hs</vh></v>
 <v t="gcross.20091121204836.1241"><vh>@path Tools</vh>
