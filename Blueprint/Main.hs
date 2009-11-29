@@ -18,6 +18,7 @@ import Control.Parallel
 
 import System.Directory
 import System.Environment
+import System.Exit
 import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen
@@ -69,7 +70,9 @@ defaultMain targets = do
                 Just target ->
                     case target of
                         Nothing -> putStrLn $ "Completed " ++ target_name ++ "."
-                        Just error_message -> putDoc . formatErrorMessage $ error_message
+                        Just error_message -> do
+                            putDoc . formatErrorMessage $ error_message
+                            exitFailure
   where
     showTargets :: IO ()
     showTargets = do
