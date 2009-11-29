@@ -79,9 +79,13 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
                    || (Map.size cached_digests_as_map /= Map.size compared_digests)
                    || not (Map.fold (&&) True compared_digests)
                     then rebuildIt
-                    else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
-                        then rebuildIt
-                        else return . Right . digestsOfProducts $ cached_digests
+                    else do
+                        product_files_exist <- mapM doesFileExist product_filepaths
+                        if not (and product_files_exist)
+                            then rebuildIt
+                            else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
+                                then rebuildIt
+                                else return . Right . digestsOfProducts $ cached_digests
   where
     rebuild source_digests_as_map = do
         build_result <- builder
@@ -98,6 +102,30 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
                 encodeFile cache_filepath cached_dependencies
                 return . Right $ product_digests
 -- @-node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary
+-- @+node:gcross.20091128000856.1483:analyzeDependencyAndRebuildIfNecessary
+analyzeDependencyAndRebuildIfNecessary ::
+    (Binary a, Eq a) =>
+    Builder ->
+    FilePath ->
+    [FilePath] ->
+    a ->
+    Resource ->
+    Either ErrorMessage [MD5Digest]
+analyzeDependencyAndRebuildIfNecessary
+    builder
+    cache_filepath
+    product_filepaths
+    miscellaneous_cache_information
+    source_resource
+    =
+    analyzeExplicitDependenciesAndRebuildIfNecessary
+        builder
+        cache_filepath
+        product_filepaths
+        miscellaneous_cache_information
+        [source_resource]
+-- @nonl
+-- @-node:gcross.20091128000856.1483:analyzeDependencyAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1386:Function
 -- @-others
 -- @-node:gcross.20091122100142.1369:@thin ExplicitDependencies.hs

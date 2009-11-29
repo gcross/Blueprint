@@ -1,7 +1,10 @@
 *.hi
 *.o
 out
-obj
-haskint
 Blueprint.cfg
 Setup
+haddock
+digest-cache
+haskell-interfaces
+objects
+libraries

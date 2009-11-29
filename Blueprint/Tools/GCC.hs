@@ -25,7 +25,7 @@ import System.Process
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
 
-import Blueprint.Cache.SingleDependency
+import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Configuration
 import Blueprint.Error
 import Blueprint.Resources

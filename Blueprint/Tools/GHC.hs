@@ -146,17 +146,17 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091121210308.2023:Package Queries
--- @+node:gcross.20091121210308.2018:modulesExposedBy
-modulesExposedBy :: GHCTools -> String -> Maybe [String]
-modulesExposedBy tools package_name =
+-- @+node:gcross.20091121210308.2018:queryPackage
+queryPackage :: GHCTools -> String -> String -> Maybe [String]
+queryPackage tools field_name package_name =
     case unsafePerformIO $
-            readProcessWithExitCode (ghcPackageQueryPath tools) ["field",package_name,"exposed-modules"] ""
-    of (ExitSuccess,response,_) -> Just . filter (/= "exposed-modules:") . words $ response 
+            readProcessWithExitCode (ghcPackageQueryPath tools) ["field",package_name,field_name] ""
+    of (ExitSuccess,response,_) -> Just . filter (/= (field_name ++ ":")) . words $ response 
        _ -> Nothing
--- @-node:gcross.20091121210308.2018:modulesExposedBy
+-- @-node:gcross.20091121210308.2018:queryPackage
 -- @+node:gcross.20091121210308.2019:getPackage
 getPackage :: GHCTools -> String -> Maybe (Map String String)
-getPackage tools name = fmap (Map.fromList . map (flip (,) name)) $ modulesExposedBy tools name
+getPackage tools name = fmap (Map.fromList . map (flip (,) name)) $ queryPackage tools "exposed-modules" name
 -- @-node:gcross.20091121210308.2019:getPackage
 -- @+node:gcross.20091121210308.2021:getPackages
 getPackages :: GHCTools -> [String] -> Either [String] PackageModules

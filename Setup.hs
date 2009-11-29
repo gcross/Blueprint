@@ -107,17 +107,17 @@ build = configure >>= \(ghc_tools,ar_tools) ->
     in attemptGetDigests [library,setup_program]
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091128000856.1474:haddock
-haddock =
-    (runConfigurer "Blueprint.cfg" $ configureUsingSection "GHC")
-    >>=
-    (\haddock_tools -> resourceDigest $
+haddock = do
+    ((ghc_tools,_),haddock_tools) <- configure <^(,)^> (runConfigurer "Blueprint.cfg" $ configureUsingSection "GHC")
+    resourceDigest $
         createDocumentation
             haddock_tools
+            ghc_tools
+            []
             []
             "digest-cache"
             (Map.elems source_resources)
-            "documentation"
-    )
+            "haddock"
 -- @-node:gcross.20091128000856.1474:haddock
 -- @+node:gcross.20091128000856.1477:clean
 clean = removeDirectoriesTarget
@@ -125,7 +125,7 @@ clean = removeDirectoriesTarget
     ,"digest-cache"
     ,"haskell-interfaces"
     ,"libraries"
-    ,"documentation"
+    ,"haddock"
     ]
 -- @-node:gcross.20091128000856.1477:clean
 -- @-node:gcross.20091128000856.1448:Targets

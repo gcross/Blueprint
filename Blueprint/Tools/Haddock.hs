@@ -13,6 +13,8 @@ module Blueprint.Tools.Haddock where
 -- @+node:gcross.20091128000856.1466:<< Import needed modules >>
 import Control.Monad
 
+import Data.Maybe
+
 import System.Directory
 import System.Exit
 import System.FilePath
@@ -23,6 +25,7 @@ import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Error
 import Blueprint.Resources
+import Blueprint.Tools.GHC
 -- @-node:gcross.20091128000856.1466:<< Import needed modules >>
 -- @nl
 
@@ -54,15 +57,19 @@ instance AutomaticallyConfigurable HaddockTools where
 -- @+node:gcross.20091128000856.1473:createDocumentation
 createDocumentation ::
     HaddockTools ->
+    GHCTools ->
+    [String] ->
     [String] ->
     FilePath ->
     [Resource] ->
     FilePath ->
     Resource
-createDocumentation _ _ _ [] _ = error "No source resources specified for the documentation!"
+createDocumentation _ _ _ _ _ [] _ = error "No source resources specified for the documentation!"
 createDocumentation
     tools
+    ghc_tools
     options
+    package_names
     cache_directory
     source_resources
     documentation_destination
@@ -87,10 +94,22 @@ createDocumentation
     builder = do
         createDirectoryIfMissing True . takeDirectory $ interface_filepath
         let arguments =
-                ["-o",documentation_destination
-                ,"-D",interface_filepath
-                ,"-h"
+                ["--odir="++documentation_destination
+                ,"--dump-interface="++interface_filepath
+                ,"--html"
                 ]
+                ++ (map ("--read-interface="++)
+                    .
+                    filter (unsafePerformIO . doesFileExist)
+                    .
+                    concat
+                    .
+                    catMaybes
+                    .
+                    map (queryPackage ghc_tools "haddock-interfaces")
+                    $
+                    package_names
+                   )
                 ++ options
                 ++ map resourceFilePath source_resources
             command = (haddockPath tools)
