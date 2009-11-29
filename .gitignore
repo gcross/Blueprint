@@ -8,3 +8,4 @@ digest-cache
 haskell-interfaces
 objects
 libraries
+dist
