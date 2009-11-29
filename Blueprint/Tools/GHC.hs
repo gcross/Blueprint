@@ -11,7 +11,7 @@ module Blueprint.Tools.GHC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
-import Control.Arrow
+import Control.Arrow hiding ((<+>))
 import Control.Applicative.Infix
 import Control.Monad
 
@@ -27,6 +27,12 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Version
+
+import Distribution.Package
+import Distribution.PackageDescription
+import qualified Distribution.PackageDescription.Parse
+import Distribution.Verbosity
+import Distribution.Version
 
 import System.Directory
 import System.Exit
@@ -46,6 +52,7 @@ import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Resources
 
+import Debug.Trace
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
 -- @nl
 
@@ -61,6 +68,9 @@ data GHCTools = GHCTools
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
 -- @-node:gcross.20091121210308.2025:PackageModules
+-- @+node:gcross.20091128201230.1462:ResolvedPackages
+newtype ResolvedPackages = ResolvedPackages [String]
+-- @-node:gcross.20091128201230.1462:ResolvedPackages
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091127142612.1406:ConfigurationData GHCTools
@@ -178,6 +188,67 @@ findPackagesExposingModule tools package_name =
     $
     ""
 -- @-node:gcross.20091121210308.2024:findPackagesExposingModule
+-- @+node:gcross.20091128201230.1459:readPackageDescription
+readPackageDescription :: FilePath -> PackageDescription
+readPackageDescription =
+    packageDescription
+    .
+    unsafePerformIO
+    .   
+    Distribution.PackageDescription.Parse.readPackageDescription silent
+-- @-node:gcross.20091128201230.1459:readPackageDescription
+-- @+node:gcross.20091128201230.1461:configurePackageResolutions
+configurePackageResolutions :: GHCTools -> PackageDescription -> String -> Configurer [String]
+configurePackageResolutions tools package_description =
+    configureUsingSectionWith config_reader config_writer automatic_configurer
+  where
+    config_reader = fmap words (getConfig "packages")
+    config_writer = setConfig "packages" . unwords
+    automatic_configurer =
+        (\(unresolved_packages,resolved_packages) ->
+            if null unresolved_packages
+                then Right resolved_packages
+                else Left
+                     .
+                     errorMessage "resolving package dependencies for"
+                     .
+                     vcat
+                     .
+                     map (
+                        (\(package_name,versions_found) ->
+                            text package_name
+                            <+>
+                            (list . map (text . showVersion) $ versions_found)
+                        )
+                     )
+                     $
+                     unresolved_packages                     
+        )
+        .
+        partitionEithers
+        .
+        myParListWHNF
+        .
+        map resolvePackage
+        .
+        buildDepends
+        $
+        package_description
+
+
+    resolvePackage dependency@(Dependency (PackageName package_name) version_range) =
+        let versions_found = 
+                map readVersion
+                .
+                fromMaybe []
+                .
+                queryPackage tools "version"
+                $
+                package_name
+        in case find (flip withinRange version_range) versions_found of
+                Nothing -> Left (package_name,versions_found)
+                Just version -> Right $ package_name ++ "-" ++ showVersion version
+-- @-node:gcross.20091128201230.1461:configurePackageResolutions
 -- @-node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules

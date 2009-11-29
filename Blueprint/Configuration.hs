@@ -136,9 +136,19 @@ cpErrorMessage section_name = errorMessageText ("parsing section " ++ section_na
 -- @-node:gcross.20091128000856.1414:cpErrorMessage
 -- @+node:gcross.20091128000856.1415:configureUsingSection
 configureUsingSection :: (ConfigurationData a, AutomaticallyConfigurable a) => String -> Configurer a
-configureUsingSection section_name = do
+configureUsingSection = configureUsingSectionWith readConfig writeConfig automaticallyConfigure
+
+-- @-node:gcross.20091128000856.1415:configureUsingSection
+-- @+node:gcross.20091128201230.1464:configureUsingSectionWith
+configureUsingSectionWith ::
+    ConfigurationDataReader a ->
+    (a -> ConfigurationDataWriter ()) ->
+    (Either ErrorMessage a) ->
+    String ->
+    Configurer a
+configureUsingSectionWith config_reader config_writer automatic_configurer section_name = do
     config_parser <- lift ask
-    case applyReaderToConfig config_parser section_name readConfig of
+    case applyReaderToConfig config_parser section_name config_reader of
         Left cp_error ->
             case fst cp_error of
                 NoSection _ -> reconfigure
@@ -146,14 +156,13 @@ configureUsingSection section_name = do
                 _ -> ErrorT (return . Left . cpErrorMessage section_name $ cp_error)
         Right result -> return result
   where
-    reconfigure :: (ConfigurationData a, AutomaticallyConfigurable a) =>  Configurer a
     reconfigure =
-        case automaticallyConfigure of
+        case automatic_configurer of
             Left error_message -> ErrorT (return . Left $ error_message)
             Right configuration -> do
-                tell . A . applyWriterToConfig section_name . writeConfig $ configuration
+                tell . A . applyWriterToConfig section_name . config_writer $ configuration
                 return configuration
--- @-node:gcross.20091128000856.1415:configureUsingSection
+-- @-node:gcross.20091128201230.1464:configureUsingSectionWith
 -- @-node:gcross.20091126122246.1379:Functions
 -- @-others
 -- @-node:gcross.20091123215917.1369:@thin Configuration.hs

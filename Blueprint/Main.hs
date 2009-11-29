@@ -19,6 +19,7 @@ import Control.Parallel
 import System.Directory
 import System.Environment
 import System.Exit
+import System.IO
 import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen
@@ -71,7 +72,8 @@ defaultMain targets = do
                     case target of
                         Nothing -> putStrLn $ "Completed " ++ target_name ++ "."
                         Just error_message -> do
-                            putDoc . formatErrorMessage $ error_message
+                            hPutDoc stderr . formatErrorMessage $ error_message
+                            hPutStrLn stderr ""
                             exitFailure
   where
     showTargets :: IO ()
@@ -84,17 +86,24 @@ targetFromEither :: Either ErrorMessage a -> Target
 targetFromEither (Left error_message) = Just error_message
 targetFromEither (Right _) = Nothing
 -- @-node:gcross.20091128000856.1446:targetFromEither
--- @+node:gcross.20091128000856.1478:removeDirectoriesTarget
-removeDirectoriesTarget :: [FilePath] -> ()
-removeDirectoriesTarget directories = unsafePerformIO $
-    forM_ directories  (
-            (putStrLn . ("Removing directory " ++) . show)
-            <^(>>)^>
-            doesDirectoryExist
-            <^(>>=)^>
-            (flip when . removeDirectoryRecursive)
+-- @+node:gcross.20091128000856.1478:removeFilesAndDirectoriesTarget
+removeFilesAndDirectoriesTarget :: [FilePath] -> ()
+removeFilesAndDirectoriesTarget items = unsafePerformIO $
+    forM_ items (\item ->
+        (liftM2 (,) (doesDirectoryExist item) (doesFileExist item))
+        >>=
+        (\(directory_exists,file_exists) ->
+            case (directory_exists,file_exists) of
+                (True,_) -> do
+                    putStrLn . ("Removing directory " ++) . show $ item
+                    removeDirectoryRecursive item
+                (_,True) -> do
+                    putStrLn . ("Removing file " ++) . show $ item
+                    removeFile item
+                _ -> return ()
+        )
     )
--- @-node:gcross.20091128000856.1478:removeDirectoriesTarget
+-- @-node:gcross.20091128000856.1478:removeFilesAndDirectoriesTarget
 -- @-node:gcross.20091128000856.1445:Functions
 -- @-others
 -- @-node:gcross.20091128000856.1441:@thin Main.hs

@@ -43,7 +43,7 @@ myParListWHNF list = go list
 -- @-node:gcross.20091128000856.1440:myParListWHNF
 -- @+node:gcross.20091128000856.1484:readVersion
 readVersion :: String -> Version
-readVersion = fst . head . readP_to_S parseVersion
+readVersion = fst . last . readP_to_S parseVersion
 -- @-node:gcross.20091128000856.1484:readVersion
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
