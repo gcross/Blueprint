@@ -15,6 +15,9 @@ import Control.Parallel
 import Control.Parallel.Strategies
 
 import Data.List
+import Data.Version
+
+import Text.ParserCombinators.ReadP
 -- @-node:gcross.20091127142612.1415:<< Import needed modules >>
 -- @nl
 
@@ -31,13 +34,6 @@ splitDot s =
 unsplitDot = intercalate "."
 -- @nonl
 -- @-node:gcross.20091127142612.1420:unsplitDot
--- @+node:gcross.20091127142612.1422:readVersion/showVersion
-readVersion :: String -> [Int]
-readVersion = map read . splitDot
-
-showVersion :: [Int] -> String
-showVersion = unsplitDot . map show
--- @-node:gcross.20091127142612.1422:readVersion/showVersion
 -- @+node:gcross.20091128000856.1440:myParListWHNF
 myParListWHNF :: Strategy [a]
 myParListWHNF list = go list
@@ -45,6 +41,10 @@ myParListWHNF list = go list
     go [] = list
     go (x:xs) = x `par` go xs
 -- @-node:gcross.20091128000856.1440:myParListWHNF
+-- @+node:gcross.20091128000856.1484:readVersion
+readVersion :: String -> Version
+readVersion = fst . head . readP_to_S parseVersion
+-- @-node:gcross.20091128000856.1484:readVersion
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs

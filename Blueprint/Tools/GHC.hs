@@ -26,6 +26,7 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Version
 
 import System.Directory
 import System.Exit
@@ -52,11 +53,10 @@ import Blueprint.Resources
 -- @+node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091121210308.1271:GHCTools
 data GHCTools = GHCTools
-    {   ghcVersion :: [Int]
+    {   ghcVersion :: Version
     ,   ghcCompilerPath :: String
     ,   ghcPackageQueryPath :: String
     } deriving (Show)
-
 -- @-node:gcross.20091121210308.1271:GHCTools
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
