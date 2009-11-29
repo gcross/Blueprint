@@ -53,7 +53,7 @@ package_names =
     ]
 -- @-node:gcross.20091128000856.1451:Package Names
 -- @+node:gcross.20091128000856.1476:Source Resources
-source_resources = resourcesIn "sources"
+source_resources = resourcesWithPrefixIn "Blueprint" "Blueprint"
 -- @-node:gcross.20091128000856.1476:Source Resources
 -- @-node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1448:Targets
