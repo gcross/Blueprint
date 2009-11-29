@@ -22,15 +22,16 @@ import Blueprint.Main
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
--- @nonl
+import Blueprint.Tools.Haddock
 -- @-node:gcross.20091128000856.1439:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20091128000856.1452:Options
-options = ["-O"]
+options = ["-O2","-threaded"]
 -- @-node:gcross.20091128000856.1452:Options
--- @+node:gcross.20091128000856.1451:Packages
+-- @+node:gcross.20091128000856.1475:Values
+-- @+node:gcross.20091128000856.1451:Package Names
 package_names =
     ["base"
     ,"bytestring"
@@ -50,11 +51,17 @@ package_names =
     ,"ansi-wl-pprint"
     ,"stringtable-atom"
     ]
--- @-node:gcross.20091128000856.1451:Packages
+-- @-node:gcross.20091128000856.1451:Package Names
+-- @+node:gcross.20091128000856.1476:Source Resources
+source_resources = resourcesIn "sources"
+-- @-node:gcross.20091128000856.1476:Source Resources
+-- @-node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1448:Targets
 targets =
     [target "configure" configure
     ,target "build" build
+    ,target "haddock" haddock
+    ,target "clean" clean
     ]
 -- @+node:gcross.20091128000856.1449:configure
 configure = runConfigurer "Blueprint.cfg" $
@@ -64,8 +71,7 @@ configure = runConfigurer "Blueprint.cfg" $
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128000856.1450:build
 build = configure >>= \(ghc_tools,ar_tools) ->
-    let src_resources = resourcesIn "src"
-        Right package_modules = getPackages ghc_tools package_names
+    let Right package_modules = getPackages ghc_tools package_names
         compiled_resources = 
             ghcCompileAll
                 ghc_tools
@@ -74,13 +80,13 @@ build = configure >>= \(ghc_tools,ar_tools) ->
                 "objects"
                 "haskell-interfaces"
                 "digest-cache"
-                src_resources
+                source_resources
         library = formStaticLibrary
             ar_tools
             "digest-cache"
             (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
             "libblueprint"
-            "lib/libblueprint.a"
+            "libraries/libblueprint.a"
         (setup_object,_) =
             ghcCompile
                 ghc_tools
@@ -98,8 +104,30 @@ build = configure >>= \(ghc_tools,ar_tools) ->
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
-    in resourceDigest library <^(,)^> resourceDigest setup_program
+    in attemptGetDigests [library,setup_program]
 -- @-node:gcross.20091128000856.1450:build
+-- @+node:gcross.20091128000856.1474:haddock
+haddock =
+    (runConfigurer "Blueprint.cfg" $ configureUsingSection "GHC")
+    >>=
+    (\haddock_tools -> resourceDigest $
+        createDocumentation
+            haddock_tools
+            []
+            "digest-cache"
+            (Map.elems source_resources)
+            "documentation"
+    )
+-- @-node:gcross.20091128000856.1474:haddock
+-- @+node:gcross.20091128000856.1477:clean
+clean = removeDirectoriesTarget
+    ["objects"
+    ,"digest-cache"
+    ,"haskell-interfaces"
+    ,"libraries"
+    ,"documentation"
+    ]
+-- @-node:gcross.20091128000856.1477:clean
 -- @-node:gcross.20091128000856.1448:Targets
 -- @-others
 

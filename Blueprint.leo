@@ -11,7 +11,7 @@
 <vnodes>
 <v t="gcross.20090727161338.1229" str_leo_pos="2"><vh>@chapters</vh></v>
 <v t="gcross.20091121210308.1291"><vh>@thin Setup.hs</vh></v>
-<v t="gcross.20090727161338.1228"><vh>@path src</vh>
+<v t="gcross.20090727161338.1228"><vh>@path sources</vh>
 <v t="gcross.20091121204836.1240"><vh>@path Blueprint</vh>
 <v t="gcross.20091122100142.1349"><vh>@path Cache</vh>
 <v t="gcross.20091122100142.1310"><vh>@thin ImplicitDependencies.hs</vh></v>
@@ -27,6 +27,7 @@
 <v t="gcross.20091122100142.1360"><vh>@thin Ar.hs</vh></v>
 <v t="gcross.20091121204836.1242"><vh>@thin GHC.hs</vh></v>
 <v t="gcross.20091123114318.1335"><vh>@thin GCC.hs</vh></v>
+<v t="gcross.20091128000856.1464"><vh>@thin Haddock.hs</vh></v>
 </v>
 </v>
 </v>

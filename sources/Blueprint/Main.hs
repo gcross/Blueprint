@@ -4,6 +4,7 @@
 
 -- @<< Language extensions >>
 -- @+node:gcross.20091128000856.1442:<< Language extensions >>
+{-# LANGUAGE FlexibleInstances #-}
 -- @-node:gcross.20091128000856.1442:<< Language extensions >>
 -- @nl
 
@@ -11,9 +12,13 @@ module Blueprint.Main where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091128000856.1443:<< Import needed modules >>
+import Control.Applicative.Infix
 import Control.Monad
+import Control.Parallel
 
+import System.Directory
 import System.Environment
+import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen
 
@@ -22,9 +27,34 @@ import Blueprint.Error
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091128000856.1481:Classes
+-- @+node:gcross.20091128000856.1482:Targetable
+class Targetable a where
+    target :: String -> a -> (String,Target)
+
+instance Targetable () where
+    target name value = (name,value `pseq` Nothing)
+
+instance Targetable (Maybe ErrorMessage) where
+    target name value = (name,value)
+
+instance Targetable (Either ErrorMessage a) where
+    target name value =
+        (name
+        ,case value of
+            Left error_message -> Just error_message
+            Right _ -> Nothing
+        )
+-- @-node:gcross.20091128000856.1482:Targetable
+-- @-node:gcross.20091128000856.1481:Classes
+-- @+node:gcross.20091128000856.1479:Types
+-- @+node:gcross.20091128000856.1480:Target
+type Target = Maybe ErrorMessage
+-- @-node:gcross.20091128000856.1480:Target
+-- @-node:gcross.20091128000856.1479:Types
 -- @+node:gcross.20091128000856.1445:Functions
 -- @+node:gcross.20091128000856.1444:defaultMain
-defaultMain :: [(String,Maybe ErrorMessage)] -> IO ()
+defaultMain :: [(String,Target)] -> IO ()
 defaultMain [] = error "There are no targets to build!"
 defaultMain targets = do
     args <- getArgs
@@ -47,14 +77,21 @@ defaultMain targets = do
         forM_ targets $ \(target_name,_) -> putStrLn ('\t':target_name) --'
 -- @-node:gcross.20091128000856.1444:defaultMain
 -- @+node:gcross.20091128000856.1446:targetFromEither
-targetFromEither :: Either ErrorMessage a -> Maybe ErrorMessage
+targetFromEither :: Either ErrorMessage a -> Target
 targetFromEither (Left error_message) = Just error_message
 targetFromEither (Right _) = Nothing
 -- @-node:gcross.20091128000856.1446:targetFromEither
--- @+node:gcross.20091128000856.1447:target
-target :: String -> Either ErrorMessage a -> (String,Maybe ErrorMessage)
-target target_name target_value = (target_name,targetFromEither target_value)
--- @-node:gcross.20091128000856.1447:target
+-- @+node:gcross.20091128000856.1478:removeDirectoriesTarget
+removeDirectoriesTarget :: [FilePath] -> ()
+removeDirectoriesTarget directories = unsafePerformIO $
+    forM_ directories  (
+            (putStrLn . ("Removing directory " ++) . show)
+            <^(>>)^>
+            doesDirectoryExist
+            <^(>>=)^>
+            (flip when . removeDirectoryRecursive)
+    )
+-- @-node:gcross.20091128000856.1478:removeDirectoriesTarget
 -- @-node:gcross.20091128000856.1445:Functions
 -- @-others
 -- @-node:gcross.20091128000856.1441:@thin Main.hs

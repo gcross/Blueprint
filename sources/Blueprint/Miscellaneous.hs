@@ -40,8 +40,10 @@ showVersion = unsplitDot . map show
 -- @-node:gcross.20091127142612.1422:readVersion/showVersion
 -- @+node:gcross.20091128000856.1440:myParListWHNF
 myParListWHNF :: Strategy [a]
-myParListWHNF []     = []
-myParListWHNF (x:xs) = x `par` (x:myParListWHNF xs)
+myParListWHNF list = go list
+  where
+    go [] = list
+    go (x:xs) = x `par` go xs
 -- @-node:gcross.20091128000856.1440:myParListWHNF
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
