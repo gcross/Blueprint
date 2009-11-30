@@ -376,17 +376,36 @@ parseOptions args sections_with_possible_duplicates = do
 -- @+node:gcross.20091129000542.1483:isHelpFlag
 isHelpFlag = (== "-h") <^(||)^> (== "--help") <^(||)^> (== "-?")
 -- @-node:gcross.20091129000542.1483:isHelpFlag
--- @+node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
-lookupOptionAndVerifyFileExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
-lookupOptionAndVerifyFileExists option_name option_map =
+-- @+node:gcross.20091129000542.1504:lookupOptionAndVerify
+lookupOptionAndVerify ::
+    (String -> Bool) ->
+    String ->
+    String ->
+    Map String [Maybe String] ->
+    Either Doc (Maybe String)
+lookupOptionAndVerify verifier verification_failure_message option_name option_map =
     case Map.lookup option_name option_map of
         Nothing -> Right Nothing
-        Just ((Just location):_) ->
-            if isFileAt location
-                then Right . Just $ location
-                else Left $ text ("There is no file located at " ++ show location)
+        Just ((Just value):_) ->
+            if verifier value
+                then Right . Just $ value
+                else Left $ text (verification_failure_message ++ show value)
         _ -> error "Options were incorrectly parsed."
--- @-node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
+-- @-node:gcross.20091129000542.1504:lookupOptionAndVerify
+-- @+node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
+lookupOptionAndVerifyFileExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
+lookupOptionAndVerifyFileExists =
+    lookupOptionAndVerify
+        isFileAt
+        "There is no file located at "
+-- @-node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
+-- @+node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
+lookupOptionAndVerifyDirectoryExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
+lookupOptionAndVerifyDirectoryExists =
+    lookupOptionAndVerify
+        isDirectoryAt
+        "There is no directory located at "
+-- @-node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
 -- @+node:gcross.20091129000542.1508:makeSimpleOptionSection
 makeSimpleOptionSectionForProgram program_name option_section_key =
     OptionSection

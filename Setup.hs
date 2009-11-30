@@ -20,7 +20,7 @@ import qualified Data.Map as Map
 import System.Directory
 import System.IO.Unsafe
 
-import Text.PrettyPrint.ANSI.Leijen
+import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Blueprint.Configuration
 import Blueprint.Error
@@ -30,13 +30,15 @@ import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
 import Blueprint.Tools.Haddock
+import Blueprint.Tools.Installer
 -- @-node:gcross.20091128000856.1439:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20091129000542.1484:Options
 options =
-    [   arOptions
+    [   installerOptions
+    ,   arOptions
     ,   ghcOptions
     ,   haddockOptions
     ]
@@ -80,20 +82,27 @@ targets =
 
 -- @+node:gcross.20091128000856.1449:configure
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
-    (ghc_tools,ar_tools,haddock_tools) <- 
-        liftA3 (,,)
-            (configureUsingSection "GHC")
-            (configureUsingSection "ar")
-            (configureUsingSection "Haddock")
-    package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC"
-    return (ghc_tools,ar_tools,haddock_tools,package_resolutions)
+    configurations@(ghc_configuration,_,_,_) <- 
+        (,,,)
+            <$> (configureUsingSection "GHC")
+            <*> (configureUsingSection "ar")
+            <*> (configureUsingSection "Haddock")
+            <*> ((configureUsingSection "Installation Directories") :: Configurer InstallerConfiguration)
+    package_resolutions <- configurePackageResolutions ghc_configuration package_description "GHC"
+    return (configurations,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128000856.1450:build
-build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
-    let Right package_modules = getPackages ghc_tools package_resolutions
+build = configure >>= \((ghc_configuration
+                        ,ar_configuration
+                        ,haddock_configuration
+                        ,installation_configuration
+                        )
+                       ,package_resolutions
+                       ) ->
+    let Right package_modules = getPackages ghc_configuration package_resolutions
         compiled_resources = 
             ghcCompileAll
-                ghc_tools
+                ghc_configuration
                 ghc_flags
                 package_modules
                 "objects"
@@ -101,14 +110,14 @@ build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
                 "digest-cache"
                 source_resources
         library = formStaticLibrary
-            ar_tools
+            ar_configuration
             "digest-cache"
             (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
             "libblueprint"
             "libraries/libblueprint.a"
         (setup_object,_) =
             ghcCompile
-                ghc_tools
+                ghc_configuration
                 ghc_flags
                 package_modules
                 compiled_resources
@@ -117,7 +126,7 @@ build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
                 "digest-cache"
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
-            ghc_tools
+            ghc_configuration
             (ghc_flags ++ ["-package " ++ package_resolution | package_resolution <- package_resolutions])
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
@@ -126,11 +135,17 @@ build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
     in attemptGetDigests [library,setup_program]
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091128000856.1474:haddock
-haddock = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
+haddock = configure >>= \((ghc_configuration
+                        ,ar_configuration
+                        ,haddock_configuration
+                        ,installation_configuration
+                        )
+                       ,package_resolutions
+                       ) ->
     resourceDigest $
         createDocumentation
-            haddock_tools
-            ghc_tools
+            haddock_configuration
+            ghc_configuration
             []
             []
             "digest-cache"

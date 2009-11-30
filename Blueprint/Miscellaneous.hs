@@ -62,6 +62,9 @@ findProgramInPath = unsafePerformIO . findExecutable
 -- @+node:gcross.20091129000542.1503:isFileAt
 isFileAt = unsafePerformIO . doesFileExist
 -- @-node:gcross.20091129000542.1503:isFileAt
+-- @+node:gcross.20091129000542.1699:isDirectoryAt
+isDirectoryAt = unsafePerformIO . doesDirectoryExist
+-- @-node:gcross.20091129000542.1699:isDirectoryAt
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs
