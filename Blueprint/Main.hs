@@ -25,6 +25,7 @@ import System.IO.Unsafe
 import Text.PrettyPrint.ANSI.Leijen
 
 import Blueprint.Error
+import Blueprint.Options
 -- @-node:gcross.20091128000856.1443:<< Import needed modules >>
 -- @nl
 
@@ -56,10 +57,14 @@ type Target = Maybe ErrorMessage
 -- @-node:gcross.20091128000856.1479:Types
 -- @+node:gcross.20091128000856.1445:Functions
 -- @+node:gcross.20091128000856.1444:defaultMain
-defaultMain :: [(String,Target)] -> IO ()
-defaultMain [] = error "There are no targets to build!"
-defaultMain targets = do
+defaultMain :: Doc -> [(String,Target)] -> IO ()
+defaultMain _ [] = error "There are no targets to build!"
+defaultMain help_message targets = do
     args <- getArgs
+    when (any isHelpFlag args) $ do
+        putDoc help_message
+        putStrLn ""
+        exitSuccess
     case args of
         [] -> showTargets
         target_name:_ ->

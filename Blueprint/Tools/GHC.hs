@@ -4,6 +4,7 @@
 
 -- @<< Language extensions >>
 -- @+node:gcross.20091122100142.1309:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 -- @-node:gcross.20091122100142.1309:<< Language extensions >>
 -- @nl
 
@@ -13,6 +14,7 @@ module Blueprint.Tools.GHC where
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
 import Control.Arrow hiding ((<+>))
 import Control.Applicative.Infix
+import Control.Applicative
 import Control.Monad
 
 import Data.Array
@@ -20,6 +22,7 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Data.Data
 import Data.Digest.Pure.MD5
+import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
 import Data.List
@@ -37,6 +40,7 @@ import Distribution.Version
 import System.Directory
 import System.Exit
 import System.FilePath
+import System.IO
 import System.IO.Unsafe
 import System.Process
 
@@ -50,6 +54,7 @@ import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Configuration
 import Blueprint.Error
 import Blueprint.Miscellaneous
+import Blueprint.Options
 import Blueprint.Resources
 
 import Debug.Trace
@@ -65,6 +70,13 @@ data GHCTools = GHCTools
     ,   ghcPackageQueryPath :: String
     } deriving (Show)
 -- @-node:gcross.20091121210308.1271:GHCTools
+-- @+node:gcross.20091129000542.1481:GHCToolsOptions
+data GHCToolsOptions = GHCToolsOptions
+    {   ghcOptionCompilerPath :: Maybe FilePath
+    ,   ghcOptionPackageQueryPath :: Maybe FilePath
+    } deriving (Typeable)
+
+-- @-node:gcross.20091129000542.1481:GHCToolsOptions
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
 -- @-node:gcross.20091121210308.2025:PackageModules
@@ -155,6 +167,39 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
     object_resource
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @-node:gcross.20091121210308.2016:Functions
+-- @+node:gcross.20091129000542.1479:Options processing
+ghcToolsOptions =
+    OptionSection
+    {   optionSectionHeading = "GHC Options"
+    ,   optionSectionOptions =
+        [   Option "ghc"
+                [] ["with-ghc"]
+                (ArgumentRequired "PROGRAM")
+                "location of the Glasglow Haskell Compiler"
+        ,   Option "ghc-pkg"
+                [] ["with-ghc-pkg"]
+                (ArgumentRequired "PROGRAM")
+                "location of the GHC package database management tool"
+        ]
+    ,   optionSectionPostprocessor = postprocessOptions
+    }
+  where
+    postprocessOptions :: Map String [Maybe String] -> Either Doc Dynamic
+    postprocessOptions option_map = fmap toDyn $
+        liftA2 GHCToolsOptions
+            (lookupAndCheck "ghc")
+            (lookupAndCheck "ghc-pkg")
+      where
+        lookupAndCheck :: String -> Either Doc (Maybe String)
+        lookupAndCheck option_name =
+            case Map.lookup option_name option_map of
+                Nothing -> Right Nothing
+                Just ((Just location):_) ->
+                    if (unsafePerformIO . doesFileExist $ location)
+                        then Right . Just $ location
+                        else Left $ text ("There is no file located at " ++ show location)
+                _ -> error "Options were incorrectly parsed.  This should never happen."
+-- @-node:gcross.20091129000542.1479:Options processing
 -- @+node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2018:queryPackage
 queryPackage :: GHCTools -> String -> String -> Maybe [String]

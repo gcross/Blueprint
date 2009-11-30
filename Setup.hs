@@ -25,6 +25,7 @@ import Text.PrettyPrint.ANSI.Leijen
 import Blueprint.Configuration
 import Blueprint.Error
 import Blueprint.Main
+import Blueprint.Options
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
@@ -33,9 +34,14 @@ import Blueprint.Tools.Haddock
 -- @nl
 
 -- @+others
--- @+node:gcross.20091128000856.1452:Options
-options = ["-O2","-threaded"]
--- @-node:gcross.20091128000856.1452:Options
+-- @+node:gcross.20091129000542.1484:Options
+options =
+    [   ghcToolsOptions
+    ]
+-- @-node:gcross.20091129000542.1484:Options
+-- @+node:gcross.20091128000856.1452:Flags
+ghc_flags = ["-O2","-threaded"]
+-- @-node:gcross.20091128000856.1452:Flags
 -- @+node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1476:source resources
 source_resources = resourcesWithPrefixIn "Blueprint" "Blueprint"
@@ -74,7 +80,7 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
         compiled_resources = 
             ghcCompileAll
                 ghc_tools
-                options
+                ghc_flags
                 package_modules
                 "objects"
                 "haskell-interfaces"
@@ -89,7 +95,7 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
         (setup_object,_) =
             ghcCompile
                 ghc_tools
-                options
+                ghc_flags
                 package_modules
                 compiled_resources
                 "objects"
@@ -98,7 +104,7 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
             ghc_tools
-            (options ++ ["-package " ++ package_resolution | package_resolution <- package_resolutions])
+            (ghc_flags ++ ["-package " ++ package_resolution | package_resolution <- package_resolutions])
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
@@ -137,8 +143,11 @@ distclean =
         ]
 -- @-node:gcross.20091128201230.1468:distclean
 -- @-node:gcross.20091128000856.1448:Targets
+-- @+node:gcross.20091129000542.1485:main
+main = defaultMain
+        (createDefaultHelpMessage options . map fst $ targets)
+        targets
+-- @-node:gcross.20091129000542.1485:main
 -- @-others
-
-main = defaultMain targets
 -- @-node:gcross.20091121210308.1291:@thin Setup.hs
 -- @-leo
