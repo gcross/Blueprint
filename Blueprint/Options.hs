@@ -33,6 +33,7 @@ import System.IO.Unsafe
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Blueprint.Error
+import Blueprint.Miscellaneous
 -- @-node:gcross.20091129000542.1452:<< Import needed modules >>
 -- @nl
 
@@ -354,6 +355,17 @@ parseOptions args sections_with_possible_duplicates = do
 -- @+node:gcross.20091129000542.1483:isHelpFlag
 isHelpFlag = (== "-h") <^(||)^> (== "--help") <^(||)^> (== "-?")
 -- @-node:gcross.20091129000542.1483:isHelpFlag
+-- @+node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
+lookupOptionAndVerifyFileExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
+lookupOptionAndVerifyFileExists option_name option_map =
+    case Map.lookup option_name option_map of
+        Nothing -> Right Nothing
+        Just ((Just location):_) ->
+            if isFileAt location
+                then Right . Just $ location
+                else Left $ text ("There is no file located at " ++ show location)
+        _ -> error "Options were incorrectly parsed."
+-- @-node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
 -- @-node:gcross.20091129000542.1455:Functions
 -- @-others
 -- @-node:gcross.20091129000542.1450:@thin Options.hs

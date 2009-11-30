@@ -36,7 +36,8 @@ import Blueprint.Tools.Haddock
 -- @+others
 -- @+node:gcross.20091129000542.1484:Options
 options =
-    [   ghcToolsOptions
+    [   arToolsOptions "ar Tools"
+    ,   ghcToolsOptions "GHC Tools"
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
@@ -55,6 +56,7 @@ targets =
     [target "configure" configure
     ,target "reconfigure" reconfigure
     ,target "build" build
+    ,target "rebuild" rebuild
     ,target "haddock" haddock
     ,target "clean" clean
     ,target "distclean" distclean
@@ -63,8 +65,8 @@ targets =
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
     (ghc_tools,ar_tools) <- 
         liftA2 (,)
-            (configureUsingSection "GHC" "")
-            (configureUsingSection "Binutils" "")
+            (configureUsingSection "GHC" "GHC Tools")
+            (configureUsingSection "ar" "ar Tools")
     package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC" ""
     return (ghc_tools,ar_tools,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
@@ -111,6 +113,9 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
             "Setup"
     in attemptGetDigests [library,setup_program]
 -- @-node:gcross.20091128000856.1450:build
+-- @+node:gcross.20091129000542.1506:rebuild
+rebuild = clean `pseq` build
+-- @-node:gcross.20091129000542.1506:rebuild
 -- @+node:gcross.20091128000856.1474:haddock
 haddock = do
     ((ghc_tools,_,_),haddock_tools) <- configure <^(,)^> (runConfigurer "Blueprint.cfg" noOptions $ configureUsingSection "GHC" "")

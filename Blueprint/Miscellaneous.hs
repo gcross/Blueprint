@@ -19,6 +19,10 @@ import Data.List
 import Data.Typeable
 import Data.Version
 
+import System.Directory
+import System.FilePath
+import System.IO.Unsafe
+
 import Text.ParserCombinators.ReadP
 -- @-node:gcross.20091127142612.1415:<< Import needed modules >>
 -- @nl
@@ -49,8 +53,15 @@ readVersion = fst . last . readP_to_S parseVersion
 -- @-node:gcross.20091128000856.1484:readVersion
 -- @+node:gcross.20091129000542.1499:unwrapDynamic
 unwrapDynamic :: Typeable a => Dynamic -> a
-unwrapDynamic = flip fromDyn (error "Programmer error:  Unable to cast to the expected type!")
+unwrapDynamic dyn = fromDyn dyn (error $ "Unable to cast Dynamic to the expected type!  (Type of Dynamic is " ++ show (dynTypeRep dyn) ++ ".)")
+
 -- @-node:gcross.20091129000542.1499:unwrapDynamic
+-- @+node:gcross.20091129000542.1500:findProgramInPath
+findProgramInPath = unsafePerformIO . findExecutable
+-- @-node:gcross.20091129000542.1500:findProgramInPath
+-- @+node:gcross.20091129000542.1503:isFileAt
+isFileAt = unsafePerformIO . doesFileExist
+-- @-node:gcross.20091129000542.1503:isFileAt
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs

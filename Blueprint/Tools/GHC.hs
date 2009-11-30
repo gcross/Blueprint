@@ -5,6 +5,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20091122100142.1309:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE PatternGuards #-}
 -- @-node:gcross.20091122100142.1309:<< Language extensions >>
 -- @nl
 
@@ -230,9 +231,9 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
-ghcToolsOptions =
+ghcToolsOptions section_heading =
     OptionSection
-    {   optionSectionHeading = "GHC Options"
+    {   optionSectionHeading = section_heading
     ,   optionSectionOptions =
         [   Option "ghc"
                 [] ["with-ghc"]
@@ -249,18 +250,8 @@ ghcToolsOptions =
     postprocessOptions :: Map String [Maybe String] -> Either Doc Dynamic
     postprocessOptions option_map = fmap toDyn $
         liftA2 GHCToolsOptions
-            (lookupAndCheck "ghc")
-            (lookupAndCheck "ghc-pkg")
-      where
-        lookupAndCheck :: String -> Either Doc (Maybe String)
-        lookupAndCheck option_name =
-            case Map.lookup option_name option_map of
-                Nothing -> Right Nothing
-                Just ((Just location):_) ->
-                    if (unsafePerformIO . doesFileExist $ location)
-                        then Right . Just $ location
-                        else Left $ text ("There is no file located at " ++ show location)
-                _ -> error "Options were incorrectly parsed.  This should never happen."
+            (lookupOptionAndVerifyFileExists "ghc" option_map)
+            (lookupOptionAndVerifyFileExists "ghc-pkg" option_map)
 -- @-node:gcross.20091129000542.1479:Options processing
 -- @+node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2018:queryPackage
