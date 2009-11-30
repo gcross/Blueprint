@@ -6,6 +6,7 @@
 -- @+node:gcross.20091122100142.1309:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- @-node:gcross.20091122100142.1309:<< Language extensions >>
 -- @nl
 
@@ -13,9 +14,12 @@ module Blueprint.Tools.GHC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091121210308.1269:<< Import needed modules >>
+import Prelude hiding (catch)
+
 import Control.Arrow hiding ((<+>))
 import Control.Applicative.Infix
 import Control.Applicative
+import Control.Exception
 import Control.Monad
 
 import Data.Array
@@ -83,7 +87,7 @@ data GHCConfiguration = GHCConfiguration
 data GHCOptions = GHCOptions
     {   ghcOptionCompilerPath :: Maybe FilePath
     ,   ghcOptionPackageManagerPath :: Maybe FilePath
-    } deriving (Typeable)
+    } deriving (Typeable, Show)
 
 -- @-node:gcross.20091129000542.1481:GHCOptions
 -- @+node:gcross.20091121210308.2025:PackageModules
@@ -113,10 +117,20 @@ instance AutomaticallyConfigurable GHCConfiguration where
     automaticallyConfigure parsed_options =
         case lookupAndUnwrapOptionSection ghcOptionSectionKey parsed_options of
             Nothing -> configureFromScratch
-            Just (GHCOptions Nothing Nothing) -> configureFromScratch
-            Just (GHCOptions (Just path_to_ghc) (Just path_to_ghc_pkg)) -> verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
-            Just (GHCOptions (Just path_to_ghc) Nothing) -> configureUsingPath path_to_ghc
-            Just (GHCOptions Nothing (Just path_to_ghc_pkg)) -> configureUsingPath path_to_ghc_pkg
+            Just opt@(GHCOptions maybe_path_to_ghc maybe_path_to_ghc_pkg) ->
+                case (maybe_path_to_ghc,maybe_path_to_ghc_pkg) of
+                    (Nothing,Nothing) ->
+                        configureFromScratch
+                    (Just path_to_ghc,Just path_to_ghc_pkg) ->
+                        verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
+                    (Just path_to_ghc,Nothing) ->
+                        findProgramUsingPath "ghc-pkg" path_to_ghc
+                        >>=
+                        verifyConsistentVersionsAndReturn path_to_ghc 
+                    (Nothing, Just path_to_ghc_pkg) ->
+                        findProgramUsingPath "ghc" path_to_ghc_pkg
+                        >>=
+                        flip verifyConsistentVersionsAndReturn path_to_ghc_pkg
       where
         -- @        @+others
         -- @+node:gcross.20091129000542.1491:configurationError
@@ -128,62 +142,68 @@ instance AutomaticallyConfigurable GHCConfiguration where
         configureFromScratch =
             case unsafePerformIO . findExecutable $ "ghc" of
                 Nothing -> configurationError "Unable to find ghc in the path"
-                Just path_to_ghc -> configureUsingPath path_to_ghc
+                Just path_to_ghc -> do
+                    path_to_ghc_pkg <- findProgramUsingPath "ghc-pkg" path_to_ghc
+                    verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
         -- @-node:gcross.20091129000542.1492:configureFromScratch
-        -- @+node:gcross.20091129000542.1493:configureUsingPath
-        configureUsingPath = configureUsingDirectory . takeDirectory
+        -- @+node:gcross.20091129000542.1493:findProgramUsingPath
+        findProgramUsingPath program_name = findProgramUsingDirectory program_name . takeDirectory
         -- @nonl
-        -- @-node:gcross.20091129000542.1493:configureUsingPath
-        -- @+node:gcross.20091129000542.1494:configureUsingDirectory
-        configureUsingDirectory :: FilePath -> Either ErrorMessage GHCConfiguration
-        configureUsingDirectory directory_to_search = do
-            path_to_ghc <- findProgram "ghc"
-            path_to_ghc_pkg <- findProgram "ghc-pkg"
-            verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
+        -- @-node:gcross.20091129000542.1493:findProgramUsingPath
+        -- @+node:gcross.20091129000542.1494:findProgramUsingDirectory
+        findProgramUsingDirectory :: String -> FilePath -> Either ErrorMessage FilePath
+        findProgramUsingDirectory program_name directory_to_search
+            | unsafePerformIO . doesFileExist $ first_location_to_check
+                = Right first_location_to_check
+            | Just location <- unsafePerformIO . findExecutable $ program_name
+                = Right location
+            | otherwise
+                = configurationError $ "Unable to find " ++ show program_name
           where
-            findProgram program_name
-                | unsafePerformIO . doesFileExist $ first_location_to_check
-                    = Right first_location_to_check
-                | Just location <- unsafePerformIO . findExecutable $ program_name
-                    = Right location
-                | otherwise
-                    = configurationError $ "Unable to find " ++ show program_name
-              where
-                first_location_to_check = directory_to_search </> program_name
-        -- @nonl
-        -- @-node:gcross.20091129000542.1494:configureUsingDirectory
+            first_location_to_check = directory_to_search </> program_name
+        -- @-node:gcross.20091129000542.1494:findProgramUsingDirectory
         -- @+node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
         verifyConsistentVersionsAndReturn :: FilePath -> FilePath -> Either ErrorMessage GHCConfiguration
         verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg =
-            let ghc_version = getVersionOf path_to_ghc
-                ghc_pkg_version = getVersionOf path_to_ghc_pkg
-            in if ghc_version == ghc_pkg_version 
-                    then Right $
-                        GHCConfiguration
-                            {   ghcVersion = ghc_version
-                            ,   ghcCompilerPath = path_to_ghc
-                            ,   ghcPackageManagerPath = path_to_ghc_pkg
-                            }
-                    else configurationError $
-                            "'ghc' and 'ghc-pkg' have different version! ("
-                            ++ showVersion ghc_version ++
-                            " /= "
-                            ++ showVersion ghc_pkg_version ++
-                            ")"
+            mapLeft (errorMessage "configuring GHC") $ do
+                (ghc_version,ghc_pkg_version) <- liftA2 (,) (getVersionOf path_to_ghc) (getVersionOf path_to_ghc_pkg)
+                if ghc_version == ghc_pkg_version 
+                        then return $
+                            GHCConfiguration
+                                {   ghcVersion = ghc_version
+                                ,   ghcCompilerPath = path_to_ghc
+                                ,   ghcPackageManagerPath = path_to_ghc_pkg
+                                }
+                        else Left . text $
+                                "'ghc' and 'ghc-pkg' have different version! ("
+                                ++ showVersion ghc_version ++
+                                " /= "
+                                ++ showVersion ghc_pkg_version ++
+                                ")"
           where
+            getVersionOf :: String -> Either Doc Version
             getVersionOf path_to_program =
-                readVersion
-                .
-                last
-                .
-                words
+                mapLeft (\(_ :: SomeException) ->
+                    text $ "Unable to determine the version of " ++ path_to_program
+                )
                 .
                 unsafePerformIO
+                .
+                try
                 $
-                readProcess path_to_program ["--version"] ""
+                (
+                    readProcess path_to_program ["--version"] ""
+                    >>=
+                    evaluate
+                    .
+                    readVersion
+                    .
+                    last
+                    .
+                    words
+                )
         -- @-node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
         -- @-others
-
 -- @-node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCConfiguration
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values

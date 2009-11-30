@@ -55,12 +55,17 @@ instance Error ErrorMessage where
     noMsg = strMsg "(and he did not even bother to include an error message!  :-/)"
     strMsg = errorMessage "caused by the programmer" . text
 -- @-node:gcross.20091128000856.1416:Error (ErrorMessage)
--- @+node:gcross.20091129000542.1482:Doc
+-- @+node:gcross.20091129000542.1482:Monoid Doc
 instance Monoid Doc where
     mempty = empty
     mappend = (<$$>)
     mconcat = vcat
--- @-node:gcross.20091129000542.1482:Doc
+-- @-node:gcross.20091129000542.1482:Monoid Doc
+-- @+node:gcross.20091129000542.1602:Error Doc
+instance Error Doc where
+    noMsg = empty
+    strMsg = text
+-- @-node:gcross.20091129000542.1602:Error Doc
 -- @-node:gcross.20091127142612.1385:Instances
 -- @+node:gcross.20091127142612.1396:Functions
 -- @+node:gcross.20091127142612.1397:extractResultsOrError
