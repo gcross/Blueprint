@@ -42,7 +42,7 @@ options =
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
-ghc_flags = ["-O2","-threaded"]
+ghc_flags = ["-O","-threaded"]
 -- @-node:gcross.20091128000856.1452:Flags
 -- @+node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1476:source resources
@@ -51,17 +51,33 @@ source_resources = resourcesWithPrefixIn "Blueprint" "Blueprint"
 -- @+node:gcross.20091128201230.1460:package description
 package_description = readPackageDescription "Blueprint.cabal"
 -- @-node:gcross.20091128201230.1460:package description
+-- @+node:gcross.20091129000542.1593:configuration file path
+configurationFilePath = "Blueprint.cfg"
+-- @-node:gcross.20091129000542.1593:configuration file path
 -- @-node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1448:Targets
 targets =
     [target "configure" configure
-    ,target "reconfigure" reconfigure
+    ,target "reconfigure" $ makeReconfigureTarget configurationFilePath targets
     ,target "build" build
-    ,target "rebuild" rebuild
+    ,target "rebuild" $ makeRebuildTarget targets
     ,target "haddock" haddock
-    ,target "clean" clean
-    ,target "distclean" distclean
+    ,target "clean" $
+        makeCleanTarget
+            ["objects"
+            ,"digest-cache"
+            ,"haskell-interfaces"
+            ,"libraries"
+            ,"haddock"
+            ]
+            targets
+    ,target "distclean" $
+        makeDistCleanTarget
+            [configurationFilePath
+            ]
+            targets
     ]
+
 -- @+node:gcross.20091128000856.1449:configure
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
     (ghc_tools,ar_tools,haddock_tools) <- 
@@ -72,12 +88,6 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
     package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC"
     return (ghc_tools,ar_tools,haddock_tools,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
--- @+node:gcross.20091128201230.1465:reconfigure
-reconfigure = unsafePerformIO $ do
-    file_exists <- doesFileExist "Blueprint.cfg"
-    when file_exists $ removeFile "Blueprint.cfg"
-    return configure
--- @-node:gcross.20091128201230.1465:reconfigure
 -- @+node:gcross.20091128000856.1450:build
 build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
     let Right package_modules = getPackages ghc_tools package_resolutions
@@ -115,9 +125,6 @@ build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
             "Setup"
     in attemptGetDigests [library,setup_program]
 -- @-node:gcross.20091128000856.1450:build
--- @+node:gcross.20091129000542.1506:rebuild
-rebuild = clean `pseq` build
--- @-node:gcross.20091129000542.1506:rebuild
 -- @+node:gcross.20091128000856.1474:haddock
 haddock = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
     resourceDigest $
@@ -130,24 +137,6 @@ haddock = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) 
             (Map.elems source_resources)
             "haddock"
 -- @-node:gcross.20091128000856.1474:haddock
--- @+node:gcross.20091128000856.1477:clean
-clean =
-    removeFilesAndDirectoriesTarget
-        ["objects"
-        ,"digest-cache"
-        ,"haskell-interfaces"
-        ,"libraries"
-        ,"haddock"
-        ]
--- @-node:gcross.20091128000856.1477:clean
--- @+node:gcross.20091128201230.1468:distclean
-distclean =
-    clean
-    `pseq`
-    removeFilesAndDirectoriesTarget
-        ["Blueprint.cfg"
-        ]
--- @-node:gcross.20091128201230.1468:distclean
 -- @-node:gcross.20091128000856.1448:Targets
 -- @+node:gcross.20091129000542.1485:main
 main = defaultMain
