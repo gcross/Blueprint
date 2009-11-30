@@ -17,8 +17,8 @@ module Blueprint.Tools.GHC where
 import Prelude hiding (catch)
 
 import Control.Arrow hiding ((<+>))
-import Control.Applicative.Infix
 import Control.Applicative
+import Control.Applicative.Infix
 import Control.Exception
 import Control.Monad
 
@@ -36,8 +36,10 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Version
 
+import Distribution.ModuleName
+import qualified Distribution.InstalledPackageInfo as InstalledPackageInfo
 import Distribution.Package
-import Distribution.PackageDescription
+import Distribution.PackageDescription as Package
 import qualified Distribution.PackageDescription.Parse
 import Distribution.Verbosity
 import Distribution.Version
@@ -49,7 +51,7 @@ import System.IO
 import System.IO.Unsafe
 import System.Process
 
-import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>),(<$>))
 
 import Text.Regex.TDFA
 import Text.Regex.TDFA.ByteString.Lazy
@@ -281,7 +283,7 @@ ghcOptions =
             (lookupOptionAndVerifyFileExists "ghc" option_map)
             (lookupOptionAndVerifyFileExists "ghc-pkg" option_map)
 -- @-node:gcross.20091129000542.1479:Options processing
--- @+node:gcross.20091121210308.2023:Package Queries
+-- @+node:gcross.20091121210308.2023:Package queries
 -- @+node:gcross.20091121210308.2018:queryPackage
 queryPackage :: GHCConfiguration -> String -> String -> Maybe [String]
 queryPackage tools field_name package_name =
@@ -379,7 +381,53 @@ configurePackageResolutions tools package_description =
                 Nothing -> Left (package_name,versions_found)
                 Just version -> Right $ package_name ++ "-" ++ showVersion version
 -- @-node:gcross.20091128201230.1461:configurePackageResolutions
--- @-node:gcross.20091121210308.2023:Package Queries
+-- @-node:gcross.20091121210308.2023:Package queries
+-- @+node:gcross.20091129000542.1701:Package installation
+-- @+node:gcross.20091129000542.1702:createInstalledPackageInfo
+createInstalledPackageInfoFromPackageDescription ::
+    Package.PackageDescription ->
+    [ModuleName] -> -- hidden modules
+    [FilePath] -> -- import directories
+    [FilePath] -> -- library directories
+    [String] -> -- haskell libraries
+    [String] -> -- extra libraries
+    [String] -> -- extra GHCI libraries
+    [FilePath] -> -- include directories
+    [String] -> -- includes
+    [PackageIdentifier] -> -- package dependencies
+    [String] -> -- hugs options
+    [String] -> -- cc options
+    [String] -> -- ld options
+    [FilePath] -> -- framework directories
+    [String] -> -- frameworks
+    [FilePath] -> -- haddock interfaces
+    [FilePath] -> -- haddock HTMLs
+    InstalledPackageInfo.InstalledPackageInfo
+createInstalledPackageInfoFromPackageDescription
+    = InstalledPackageInfo.InstalledPackageInfo
+        <$> Package.package
+        <*> Package.license
+        <*> Package.copyright
+        <*> Package.maintainer
+        <*> Package.author
+        <*> Package.stability
+        <*> Package.homepage
+        <*> Package.pkgUrl
+        <*> Package.description
+        <*> Package.category
+        <*> getLibExposed
+        <*> getLibExposedModules
+  where
+    getLibExposed =
+        maybe True Package.libExposed
+        .
+        Package.library
+    getLibExposedModules =
+        maybe [] Package.exposedModules
+        .
+        Package.library
+-- @-node:gcross.20091129000542.1702:createInstalledPackageInfo
+-- @-node:gcross.20091129000542.1701:Package installation
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules
 reportUnknownModules :: GHCConfiguration -> String -> [String] -> ErrorMessage
