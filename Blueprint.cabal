@@ -32,19 +32,5 @@ Build-Depends:  base == 4.1.*,
                 ansi-wl-pprint == 0.5.*,
                 regex-tdfa == 1.1.*,
                 InfixApplicative == 1.0.*
-
-Library
-    Exposed-Modules:
-        Blueprint.Cache.ImplicitDependencies,
-        Blueprint.Cache.ExplicitDependencies,
-        Blueprint.Configuration,
-        Blueprint.Error,
-        Blueprint.Main,
-        Blueprint.Miscellaneous,
-        Blueprint.Resources,
-        Blueprint.Tools.Ar,
-        Blueprint.Tools.GHC,
-        Blueprint.Tools.GCC,
-        Blueprint.Tools.Haskell
 -- @-node:gcross.20091128000856.1485:@thin Blueprint.cabal
 -- @-leo

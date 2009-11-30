@@ -37,10 +37,15 @@ import Data.Maybe
 import Data.Version
 
 import Distribution.ModuleName
-import Distribution.InstalledPackageInfo (InstalledPackageInfo_(..),InstalledPackageInfo)
+import Distribution.InstalledPackageInfo
+            (InstalledPackageInfo_(..)
+            ,InstalledPackageInfo
+            ,showInstalledPackageInfo
+            )
 import Distribution.Package
 import Distribution.PackageDescription as Package
 import qualified Distribution.PackageDescription.Parse
+import Distribution.Text
 import Distribution.Verbosity
 import Distribution.Version
 
@@ -262,13 +267,43 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @+node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
 qualifiedNameToPackageIdentifier :: String -> PackageIdentifier
-qualifiedNameToPackageIdentifier =
+qualifiedNameToPackageIdentifier name =
     uncurry PackageIdentifier
     .
     (PackageName *** (readVersion . tail))
     .
-    break (== '-')
+    flip splitAt name
+    .
+    last
+    .
+    elemIndices '-'
+    $
+    name
 -- @-node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
+-- @+node:gcross.20091129000542.1709:makeEverythingReadableIn
+makeEverythingReadableIn :: FilePath -> IO ()
+makeEverythingReadableIn path = do
+    putStrLn $ "Setting read permissions on " ++ path
+    is_file <- doesFileExist path
+    if is_file
+        then setPermissions path (Permissions True False False False)
+        else
+            setPermissions path (Permissions True False False True)
+            >>
+            fmap (filter ((/= '.') . head)) (getDirectoryContents path)
+            >>=
+            mapM_ (makeEverythingReadableIn . (path </>))
+-- @-node:gcross.20091129000542.1709:makeEverythingReadableIn
+-- @+node:gcross.20091129000542.1710:createDirectoryNoisilyIfMissing
+createDirectoryNoisilyIfMissing directory =
+    doesDirectoryExist directory
+    >>=
+    flip unless (
+      do
+        putStrLn $ "Creating directory " ++ directory
+        createDirectoryIfMissing True directory
+    )
+-- @-node:gcross.20091129000542.1710:createDirectoryNoisilyIfMissing
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -390,11 +425,27 @@ configurePackageResolutions tools package_description =
                 Nothing -> Left (package_name,versions_found)
                 Just version -> Right $ package_name ++ "-" ++ showVersion version
 -- @-node:gcross.20091128201230.1461:configurePackageResolutions
+-- @+node:gcross.20091129000542.1711:registerPackage
+registerPackage :: GHCConfiguration -> InstalledPackageInfo -> IO (Maybe Doc)
+registerPackage configuration = do
+    readProcessWithExitCode
+        (ghcPackageManagerPath configuration)
+        ["update","-"]
+    .
+    showInstalledPackageInfo
+    >=>
+    \(exit_code,_,error_message) ->
+        return $ case exit_code of
+            ExitSuccess -> Nothing 
+            ExitFailure _ -> Just . vcat . map text . lines $ error_message
+-- @-node:gcross.20091129000542.1711:registerPackage
 -- @-node:gcross.20091121210308.2023:Package queries
 -- @+node:gcross.20091129000542.1701:Package installation
 -- @+node:gcross.20091129000542.1702:createInstalledPackageInfo
 createInstalledPackageInfoFromPackageDescription ::
     Package.PackageDescription ->
+    Bool -> -- is library exposed?
+    [ModuleName] -> -- exposed modules
     [ModuleName] -> -- hidden modules
     [FilePath] -> -- import directories
     [FilePath] -> -- library directories
@@ -424,17 +475,6 @@ createInstalledPackageInfoFromPackageDescription
         <*> Package.pkgUrl
         <*> Package.description
         <*> Package.category
-        <*> getLibExposed
-        <*> getLibExposedModules
-  where
-    getLibExposed =
-        maybe True Package.libExposed
-        .
-        Package.library
-    getLibExposedModules =
-        maybe [] Package.exposedModules
-        .
-        Package.library
 -- @-node:gcross.20091129000542.1702:createInstalledPackageInfo
 -- @+node:gcross.20091129000542.1703:installSimplePackage
 installSimplePackage ::
@@ -450,15 +490,27 @@ installSimplePackage
     package_description
     dependency_package_names
     resources_to_install
-  = let library_destination_path =
+  = let PackageIdentifier (PackageName name) version = Package.package package_description
+        qualified_package_name = name ++ "-" ++ showVersion version
+        library_destination_path =
             installerLibraryPath installer_configuration
+            </>
+            qualified_package_name
             </>
             (("ghc-" ++) . showVersion . ghcVersion $ ghc_configuration)
         haskell_libraries :: [FilePath]
         haskell_libraries =
-            map (flip (<.>) "a" . dotsToSubdirectories . resourceName)
+            map (drop 3 . dotsToSubdirectories . resourceName)
             .
             filter ((=="a") . resourceType)
+            $
+            resources_to_install
+
+        exposed_modules :: [ModuleName]
+        exposed_modules =
+            map (fromJust . simpleParse . resourceName)
+            .
+            filter ((== "hi") . resourceType)
             $
             resources_to_install
 
@@ -466,6 +518,8 @@ installSimplePackage
         installed_package_info =
             createInstalledPackageInfoFromPackageDescription
                 package_description
+                True
+                exposed_modules
                 []
                 [library_destination_path]
                 [library_destination_path]
@@ -482,8 +536,31 @@ installSimplePackage
                 []
                 []
                 []
-    in Nothing
--- @nonl
+
+        installation_result = unsafePerformIO . try $  do
+            createDirectoryNoisilyIfMissing library_destination_path
+            forM_ resources_to_install $ \resource ->
+                let source_filepath = resourceFilePath resource
+                    destination_filepath =
+                        library_destination_path
+                        </>
+                        (dotsToSubdirectories . resourceName $ resource)
+                        <.>
+                        (resourceType resource)
+                    destination_directory = takeDirectory destination_filepath
+                in do
+                    createDirectoryNoisilyIfMissing destination_directory
+                    putStrLn $ "Copying " ++ source_filepath ++ " --> " ++ destination_filepath
+                    copyFile source_filepath destination_filepath
+            makeEverythingReadableIn library_destination_path
+            putStrLn $ "Registering " ++ qualified_package_name
+            fmap (fmap (errorMessage "installing package")) $
+                registerPackage ghc_configuration installed_package_info
+
+    in case installation_result of
+        Right Nothing -> Nothing
+        Right (Just error_message) -> Just $ error_message
+        Left (e :: SomeException) -> Just $ errorMessageText "installing package" (show e)
 -- @-node:gcross.20091129000542.1703:installSimplePackage
 -- @-node:gcross.20091129000542.1701:Package installation
 -- @+node:gcross.20091121210308.2031:Error reporting

@@ -2,6 +2,12 @@
 -- @+node:gcross.20091121210308.1291:@thin Setup.hs
 -- @@language Haskell
 
+-- @<< Language extensions >>
+-- @+node:gcross.20091129000542.1713:<< Language extensions >>
+{-# LANGUAGE PackageImports #-}
+-- @-node:gcross.20091129000542.1713:<< Language extensions >>
+-- @nl
+
 module Main where
 
 -- @<< Import needed modules >>
@@ -16,6 +22,10 @@ import Data.ConfigFile hiding (options)
 import Data.Either.Unwrap
 import Data.Maybe
 import qualified Data.Map as Map
+import Data.Version
+
+import Distribution.Package
+import qualified Distribution.PackageDescription as Package
 
 import System.Directory
 import System.IO.Unsafe
@@ -25,6 +35,7 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import Blueprint.Configuration
 import Blueprint.Error
 import Blueprint.Main
+import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
 import Blueprint.Tools.Ar
@@ -44,7 +55,10 @@ options =
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
-ghc_flags = ["-O","-threaded"]
+bootstrap_ghc_flags = ["-O","-threaded"]
+
+ghc_flags = ("-package-name="++qualified_package_name):bootstrap_ghc_flags
+-- @nonl
 -- @-node:gcross.20091128000856.1452:Flags
 -- @+node:gcross.20091129000542.1707:Types
 -- @+node:gcross.20091129000542.1708:Configuration
@@ -67,11 +81,17 @@ package_description = readPackageDescription "Blueprint.cabal"
 -- @+node:gcross.20091129000542.1593:configuration file path
 configurationFilePath = "Blueprint.cfg"
 -- @-node:gcross.20091129000542.1593:configuration file path
+-- @+node:gcross.20091129000542.1712:qualified package name
+qualified_package_name =
+    let PackageIdentifier (PackageName name) version = Package.package package_description
+    in name ++ "-" ++ showVersion version
+-- @-node:gcross.20091129000542.1712:qualified package name
 -- @-node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1448:Targets
 targets =
     [target "configure" configure
     ,target "reconfigure" $ makeReconfigureTarget configurationFilePath targets
+    ,target "bootstrap" bootstrap
     ,target "build" build
     ,target "rebuild" $ makeRebuildTarget targets
     ,target "haddock" haddock
@@ -83,6 +103,7 @@ targets =
             ,"haskell-interfaces"
             ,"libraries"
             ,"haddock"
+            ,"bootstrap"
             ]
             targets
     ,target "distclean" $
@@ -91,7 +112,6 @@ targets =
             ]
             targets
     ]
-
 -- @+node:gcross.20091128000856.1449:configure
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
     configurations@
@@ -131,26 +151,41 @@ build = configure >>= \configuration ->
             (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
             "libblueprint"
             "libraries/libblueprint.a"
+    in do
+        attemptGetDigests [library] >> return (library,compiled_resources)
+-- @-node:gcross.20091128000856.1450:build
+-- @+node:gcross.20091129000542.1715:bootstrap
+bootstrap = configure >>= \configuration ->
+    let Right package_modules = getPackages <$> ghcConfiguration <*> packageDependencies $ configuration
+        compiled_resources = 
+            ghcCompileAll
+                (ghcConfiguration configuration)
+                bootstrap_ghc_flags
+                package_modules
+                "bootstrap/objects"
+                "bootstrap/haskell-interfaces"
+                "bootstrap/digest-cache"
+                source_resources
         (setup_object,_) =
             ghcCompile
                 (ghcConfiguration configuration)
-                ghc_flags
+                bootstrap_ghc_flags
                 package_modules
                 compiled_resources
-                "objects"
-                "haskell-interfaces"
-                "digest-cache"
+                "bootstrap/objects"
+                "bootstrap/haskell-interfaces"
+                "bootstrap/digest-cache"
                 (createResourceFor "" "Setup.hs")
+
         setup_program = ghcLinkProgram
             (ghcConfiguration configuration)
-            ((ghc_flags ++) . map ("-package" ++) . packageDependencies $ configuration)
-            "digest-cache"
+            (((bootstrap_ghc_flags ++) . map ("-package" ++) . packageDependencies $ configuration))
+            "bootstrap/digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
-    in do
-        attemptGetDigests [library,setup_program] >> return (library,compiled_resources)
--- @-node:gcross.20091128000856.1450:build
+    in attemptGetDigests [setup_program]
+-- @-node:gcross.20091129000542.1715:bootstrap
 -- @+node:gcross.20091129000542.1706:install
 install = do
     configuration <- configure
