@@ -29,6 +29,10 @@ import Text.ParserCombinators.ReadP
 
 -- @+others
 -- @+node:gcross.20091127142612.1416:Functions
+-- @+node:gcross.20091129000542.1704:dotsToSubdirectories
+dotsToSubdirectories :: String -> FilePath
+dotsToSubdirectories = joinPath . splitDot
+-- @-node:gcross.20091129000542.1704:dotsToSubdirectories
 -- @+node:gcross.20091129000542.1500:findProgramInPath
 findProgramInPath = unsafePerformIO . findExecutable
 -- @-node:gcross.20091129000542.1500:findProgramInPath

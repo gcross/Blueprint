@@ -37,7 +37,7 @@ import Data.Maybe
 import Data.Version
 
 import Distribution.ModuleName
-import qualified Distribution.InstalledPackageInfo as InstalledPackageInfo
+import Distribution.InstalledPackageInfo (InstalledPackageInfo_(..),InstalledPackageInfo)
 import Distribution.Package
 import Distribution.PackageDescription as Package
 import qualified Distribution.PackageDescription.Parse
@@ -63,6 +63,7 @@ import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
+import Blueprint.Tools.Installer
 
 import Debug.Trace
 -- @-node:gcross.20091121210308.1269:<< Import needed modules >>
@@ -259,6 +260,15 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
     $
     object_resource
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
+-- @+node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
+qualifiedNameToPackageIdentifier :: String -> PackageIdentifier
+qualifiedNameToPackageIdentifier =
+    uncurry PackageIdentifier
+    .
+    (PackageName *** (readVersion . tail))
+    .
+    break (== '-')
+-- @-node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -367,7 +377,6 @@ configurePackageResolutions tools package_description =
         $
         package_description
 
-
     resolvePackage dependency@(Dependency (PackageName package_name) version_range) =
         let versions_found = 
                 map readVersion
@@ -402,9 +411,9 @@ createInstalledPackageInfoFromPackageDescription ::
     [String] -> -- frameworks
     [FilePath] -> -- haddock interfaces
     [FilePath] -> -- haddock HTMLs
-    InstalledPackageInfo.InstalledPackageInfo
+    InstalledPackageInfo
 createInstalledPackageInfoFromPackageDescription
-    = InstalledPackageInfo.InstalledPackageInfo
+    = InstalledPackageInfo
         <$> Package.package
         <*> Package.license
         <*> Package.copyright
@@ -427,6 +436,55 @@ createInstalledPackageInfoFromPackageDescription
         .
         Package.library
 -- @-node:gcross.20091129000542.1702:createInstalledPackageInfo
+-- @+node:gcross.20091129000542.1703:installSimplePackage
+installSimplePackage ::
+    GHCConfiguration ->
+    InstallerConfiguration ->
+    Package.PackageDescription ->
+    [String] ->
+    [Resource] ->
+    Maybe ErrorMessage
+installSimplePackage
+    ghc_configuration
+    installer_configuration
+    package_description
+    dependency_package_names
+    resources_to_install
+  = let library_destination_path =
+            installerLibraryPath installer_configuration
+            </>
+            (("ghc-" ++) . showVersion . ghcVersion $ ghc_configuration)
+        haskell_libraries :: [FilePath]
+        haskell_libraries =
+            map (flip (<.>) "a" . dotsToSubdirectories . resourceName)
+            .
+            filter ((=="a") . resourceType)
+            $
+            resources_to_install
+
+        installed_package_info :: InstalledPackageInfo
+        installed_package_info =
+            createInstalledPackageInfoFromPackageDescription
+                package_description
+                []
+                [library_destination_path]
+                [library_destination_path]
+                haskell_libraries
+                []
+                []
+                []
+                []
+                (map qualifiedNameToPackageIdentifier dependency_package_names)
+                []
+                []
+                []
+                []
+                []
+                []
+                []
+    in Nothing
+-- @nonl
+-- @-node:gcross.20091129000542.1703:installSimplePackage
 -- @-node:gcross.20091129000542.1701:Package installation
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules

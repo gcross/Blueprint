@@ -46,6 +46,17 @@ options =
 -- @+node:gcross.20091128000856.1452:Flags
 ghc_flags = ["-O","-threaded"]
 -- @-node:gcross.20091128000856.1452:Flags
+-- @+node:gcross.20091129000542.1707:Types
+-- @+node:gcross.20091129000542.1708:Configuration
+data Configuration = Configuration
+    {   ghcConfiguration :: GHCConfiguration
+    ,   arConfiguration :: ArConfiguration
+    ,   haddockConfiguration :: HaddockConfiguration
+    ,   installerConfiguration :: InstallerConfiguration
+    ,   packageDependencies :: [String]
+    }
+-- @-node:gcross.20091129000542.1708:Configuration
+-- @-node:gcross.20091129000542.1707:Types
 -- @+node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1476:source resources
 source_resources = resourcesWithPrefixIn "Blueprint" "Blueprint"
@@ -64,6 +75,7 @@ targets =
     ,target "build" build
     ,target "rebuild" $ makeRebuildTarget targets
     ,target "haddock" haddock
+    ,target "install" install
     ,target "clean" $
         makeCleanTarget
             ["objects"
@@ -82,27 +94,31 @@ targets =
 
 -- @+node:gcross.20091128000856.1449:configure
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
-    configurations@(ghc_configuration,_,_,_) <- 
-        (,,,)
+    configurations@
+        (ghc_configuration
+        ,ar_configuration
+        ,haddock_configuration
+        ,install_configuration
+        ) <- (,,,)
             <$> (configureUsingSection "GHC")
             <*> (configureUsingSection "ar")
             <*> (configureUsingSection "Haddock")
-            <*> ((configureUsingSection "Installation Directories") :: Configurer InstallerConfiguration)
-    package_resolutions <- configurePackageResolutions ghc_configuration package_description "GHC"
-    return (configurations,package_resolutions)
+            <*> (configureUsingSection "Installation Directories")
+    package_dependencies <- configurePackageResolutions ghc_configuration package_description "GHC"
+    return $
+        Configuration
+            ghc_configuration
+            ar_configuration
+            haddock_configuration
+            install_configuration
+            package_dependencies
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128000856.1450:build
-build = configure >>= \((ghc_configuration
-                        ,ar_configuration
-                        ,haddock_configuration
-                        ,installation_configuration
-                        )
-                       ,package_resolutions
-                       ) ->
-    let Right package_modules = getPackages ghc_configuration package_resolutions
+build = configure >>= \configuration ->
+    let Right package_modules = getPackages <$> ghcConfiguration <*> packageDependencies $ configuration
         compiled_resources = 
             ghcCompileAll
-                ghc_configuration
+                (ghcConfiguration configuration)
                 ghc_flags
                 package_modules
                 "objects"
@@ -110,14 +126,14 @@ build = configure >>= \((ghc_configuration
                 "digest-cache"
                 source_resources
         library = formStaticLibrary
-            ar_configuration
+            (arConfiguration configuration)
             "digest-cache"
             (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
             "libblueprint"
             "libraries/libblueprint.a"
         (setup_object,_) =
             ghcCompile
-                ghc_configuration
+                (ghcConfiguration configuration)
                 ghc_flags
                 package_modules
                 compiled_resources
@@ -126,26 +142,37 @@ build = configure >>= \((ghc_configuration
                 "digest-cache"
                 (createResourceFor "" "Setup.hs")
         setup_program = ghcLinkProgram
-            ghc_configuration
-            (ghc_flags ++ ["-package " ++ package_resolution | package_resolution <- package_resolutions])
+            (ghcConfiguration configuration)
+            ((ghc_flags ++) . map ("-package" ++) . packageDependencies $ configuration)
             "digest-cache"
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
-    in attemptGetDigests [library,setup_program]
+    in do
+        attemptGetDigests [library,setup_program] >> return (library,compiled_resources)
 -- @-node:gcross.20091128000856.1450:build
+-- @+node:gcross.20091129000542.1706:install
+install = do
+    configuration <- configure
+    (library_resource,compiled_resources) <- build
+    let interface_resources = filter ((=="hi") . resourceType) . Map.elems $ compiled_resources
+        installation_result =
+            installSimplePackage
+                (ghcConfiguration configuration)
+                (installerConfiguration configuration)
+                package_description
+                (packageDependencies configuration)
+                (library_resource:interface_resources)
+    case installation_result of
+        Nothing -> Right ()
+        Just error_message -> Left error_message
+-- @-node:gcross.20091129000542.1706:install
 -- @+node:gcross.20091128000856.1474:haddock
-haddock = configure >>= \((ghc_configuration
-                        ,ar_configuration
-                        ,haddock_configuration
-                        ,installation_configuration
-                        )
-                       ,package_resolutions
-                       ) ->
+haddock = configure >>= \configuration ->
     resourceDigest $
         createDocumentation
-            haddock_configuration
-            ghc_configuration
+            (haddockConfiguration configuration)
+            (ghcConfiguration configuration)
             []
             []
             "digest-cache"
