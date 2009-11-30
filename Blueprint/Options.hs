@@ -91,59 +91,28 @@ type ArgumentDescriptor = GetOpt.ArgDescr ParsedOptionValue
 -- @-node:gcross.20091129000542.1474:ArgumentDescriptor
 -- @-node:gcross.20091129000542.1453:Types
 -- @+node:gcross.20091129000542.1455:Functions
--- @+node:gcross.20091129000542.1588:makeOptionSectionKey
-makeOptionSectionKey :: String -> OptionSectionKey
-makeOptionSectionKey = OptionSectionKey . toAtom
--- @-node:gcross.20091129000542.1588:makeOptionSectionKey
--- @+node:gcross.20091129000542.1589:lookupOptionSection
-lookupOptionSection :: OptionSectionKey -> ParsedOptions -> Maybe Dynamic
-lookupOptionSection (OptionSectionKey key) = AtomMap.lookup key
--- @-node:gcross.20091129000542.1589:lookupOptionSection
--- @+node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
-lookupAndUnwrapOptionSection :: Typeable a => OptionSectionKey -> ParsedOptions -> Maybe a
-lookupAndUnwrapOptionSection section_key =
-    fmap unwrapDynamic
+-- @+node:gcross.20091129000542.1486:createDefaultHelpMessage
+createDefaultHelpMessage :: [OptionSection] -> [String] -> Doc
+createDefaultHelpMessage option_sections target_names = vcat
+    [   text "Usage: Setup <target> [options...]"
+    ,   empty
+    ,   text "Tool Options:"
+    ,   indent 4 . createHelpMessageForOptionSections $ option_sections
+    ,   empty
+    ,   text "Available targets:"
+    ,   indent 4 . vcat . map text $ target_names
+    ]
+-- @-node:gcross.20091129000542.1486:createDefaultHelpMessage
+-- @+node:gcross.20091129000542.1477:createHelpMessageForOptionSections
+createHelpMessageForOptionSections :: [OptionSection] -> Doc
+createHelpMessageForOptionSections =
+    vcat    
     .
-    lookupOptionSection section_key
--- @-node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
--- @+node:gcross.20091129000542.1456:toOptionDescriptor
-toOptionDescriptor :: OptionSectionKey -> Option -> OptionDescriptor
-toOptionDescriptor section_key =
-    GetOpt.Option
-        <$> optionShortForms
-        <*> optionLongForms
-        <*> (liftA2 (toArgumentDescriptor section_key)
-                optionName
-                optionArgumentExpectation
-            )
-        <*> optionDescription
--- @-node:gcross.20091129000542.1456:toOptionDescriptor
--- @+node:gcross.20091129000542.1457:toArgumentDescriptor
-toArgumentDescriptor :: OptionSectionKey -> String -> ArgumentExpectation -> ArgumentDescriptor
-toArgumentDescriptor (OptionSectionKey section_key) option_name argument_expectation =
-    case argument_expectation of
-        NoArgumentExpected -> GetOpt.NoArg (addToSection Nothing)
-        ArgumentRequired datatype -> GetOpt.ReqArg (addToSection . Just) datatype
-        ArgumentOptional datatype -> GetOpt.OptArg (addToSection) datatype
-  where
-    addToSection :: Maybe String -> ParsedOptionValue
-    addToSection value old_map =
-        case AtomMap.lookup section_key old_map of
-            Nothing ->
-                AtomMap.insert section_key (Map.singleton option_name [value]) old_map
-            Just section_options_map ->
-                flip (AtomMap.insert section_key) old_map
-                .
-                flip (Map.insert option_name) section_options_map
-                $
-                case Map.lookup option_name section_options_map of
-                    Nothing -> [value]
-                    Just old_values -> (value:old_values)
--- @-node:gcross.20091129000542.1457:toArgumentDescriptor
--- @+node:gcross.20091129000542.1465:removeDuplicateSections
-removeDuplicateSections :: [OptionSection] -> [OptionSection]
-removeDuplicateSections = nubBy ((==) `on` optionSectionKey)
--- @-node:gcross.20091129000542.1465:removeDuplicateSections
+    map createHelpMessageForSection
+    .
+    removeDuplicateSections
+
+-- @-node:gcross.20091129000542.1477:createHelpMessageForOptionSections
 -- @+node:gcross.20091129000542.1478:createHelpMessageForSection
 createHelpMessageForSection :: OptionSection -> Doc
 createHelpMessageForSection section =
@@ -159,28 +128,6 @@ createHelpMessageForSection section =
     $
     section
 -- @-node:gcross.20091129000542.1478:createHelpMessageForSection
--- @+node:gcross.20091129000542.1477:createHelpMessageForOptionSections
-createHelpMessageForOptionSections :: [OptionSection] -> Doc
-createHelpMessageForOptionSections =
-    vcat    
-    .
-    map createHelpMessageForSection
-    .
-    removeDuplicateSections
-
--- @-node:gcross.20091129000542.1477:createHelpMessageForOptionSections
--- @+node:gcross.20091129000542.1486:createDefaultHelpMessage
-createDefaultHelpMessage :: [OptionSection] -> [String] -> Doc
-createDefaultHelpMessage option_sections target_names = vcat
-    [   text "Usage: Setup <target> [options...]"
-    ,   empty
-    ,   text "Tool Options:"
-    ,   indent 4 . createHelpMessageForOptionSections $ option_sections
-    ,   empty
-    ,   text "Available targets:"
-    ,   indent 4 . vcat . map text $ target_names
-    ]
--- @-node:gcross.20091129000542.1486:createDefaultHelpMessage
 -- @+node:gcross.20091129000542.1471:createOptionDescriptorsForSection
 createOptionDescriptorsForSection :: OptionSection -> [OptionDescriptor]
 createOptionDescriptorsForSection =
@@ -188,13 +135,6 @@ createOptionDescriptorsForSection =
         (toOptionDescriptor . optionSectionKey)
         optionSectionOptions
 -- @-node:gcross.20091129000542.1471:createOptionDescriptorsForSection
--- @+node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
-formatSectionPostprocessingErrorMessage :: String -> Doc -> Doc
-formatSectionPostprocessingErrorMessage = curry $
-    uncurry (</>)
-    .
-    (text *** indent 4)
--- @-node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
 -- @+node:gcross.20091129000542.1461:findConflictingOptions
 findConflictingOptions :: [OptionSection] -> [(Either Char String, [(String,Int)])]
 findConflictingOptions =
@@ -252,6 +192,76 @@ findConflictingOptions =
     -- @-node:gcross.20091129000542.1464:findConflicts
     -- @-others
 -- @-node:gcross.20091129000542.1461:findConflictingOptions
+-- @+node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
+formatSectionPostprocessingErrorMessage :: String -> Doc -> Doc
+formatSectionPostprocessingErrorMessage = curry $
+    uncurry (</>)
+    .
+    (text *** indent 4)
+-- @-node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
+-- @+node:gcross.20091129000542.1483:isHelpFlag
+isHelpFlag = (== "-h") <^(||)^> (== "--help") <^(||)^> (== "-?")
+-- @-node:gcross.20091129000542.1483:isHelpFlag
+-- @+node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
+lookupAndUnwrapOptionSection :: Typeable a => OptionSectionKey -> ParsedOptions -> Maybe a
+lookupAndUnwrapOptionSection section_key =
+    fmap unwrapDynamic
+    .
+    lookupOptionSection section_key
+-- @-node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
+-- @+node:gcross.20091129000542.1504:lookupOptionAndVerify
+lookupOptionAndVerify ::
+    (String -> Bool) ->
+    String ->
+    String ->
+    Map String [Maybe String] ->
+    Either Doc (Maybe String)
+lookupOptionAndVerify verifier verification_failure_message option_name option_map =
+    case Map.lookup option_name option_map of
+        Nothing -> Right Nothing
+        Just ((Just value):_) ->
+            if verifier value
+                then Right . Just $ value
+                else Left $ text (verification_failure_message ++ show value)
+        _ -> error "Options were incorrectly parsed."
+-- @-node:gcross.20091129000542.1504:lookupOptionAndVerify
+-- @+node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
+lookupOptionAndVerifyDirectoryExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
+lookupOptionAndVerifyDirectoryExists =
+    lookupOptionAndVerify
+        isDirectoryAt
+        "There is no directory located at "
+-- @-node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
+-- @+node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
+lookupOptionAndVerifyFileExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
+lookupOptionAndVerifyFileExists =
+    lookupOptionAndVerify
+        isFileAt
+        "There is no file located at "
+-- @-node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
+-- @+node:gcross.20091129000542.1589:lookupOptionSection
+lookupOptionSection :: OptionSectionKey -> ParsedOptions -> Maybe Dynamic
+lookupOptionSection (OptionSectionKey key) = AtomMap.lookup key
+-- @-node:gcross.20091129000542.1589:lookupOptionSection
+-- @+node:gcross.20091129000542.1588:makeOptionSectionKey
+makeOptionSectionKey :: String -> OptionSectionKey
+makeOptionSectionKey = OptionSectionKey . toAtom
+-- @-node:gcross.20091129000542.1588:makeOptionSectionKey
+-- @+node:gcross.20091129000542.1508:makeSimpleOptionSection
+makeSimpleOptionSectionForProgram program_name option_section_key =
+    OptionSection
+    {   optionSectionKey = option_section_key
+    ,   optionSectionOptions =
+        [   Option program_name
+                [] ["with-" ++ program_name]
+                (ArgumentRequired "PROGRAM")
+                ("location of " ++ program_name)
+        ]
+    ,   optionSectionPostprocessor = postprocessOptions
+    }
+  where
+    postprocessOptions = fmap toDyn . lookupOptionAndVerifyFileExists program_name
+-- @-node:gcross.20091129000542.1508:makeSimpleOptionSection
 -- @+node:gcross.20091129000542.1476:parseCommandLineOptions
 parseCommandLineOptions :: [OptionSection] -> Either ErrorMessage (([String],AtomMap Dynamic))
 parseCommandLineOptions = parseOptions (tail . unsafePerformIO $ getArgs)
@@ -373,54 +383,10 @@ parseOptions args sections_with_possible_duplicates = do
     -- @-node:gcross.20091129000542.1468:formatConflict
     -- @-others
 -- @-node:gcross.20091129000542.1466:parseOptions
--- @+node:gcross.20091129000542.1483:isHelpFlag
-isHelpFlag = (== "-h") <^(||)^> (== "--help") <^(||)^> (== "-?")
--- @-node:gcross.20091129000542.1483:isHelpFlag
--- @+node:gcross.20091129000542.1504:lookupOptionAndVerify
-lookupOptionAndVerify ::
-    (String -> Bool) ->
-    String ->
-    String ->
-    Map String [Maybe String] ->
-    Either Doc (Maybe String)
-lookupOptionAndVerify verifier verification_failure_message option_name option_map =
-    case Map.lookup option_name option_map of
-        Nothing -> Right Nothing
-        Just ((Just value):_) ->
-            if verifier value
-                then Right . Just $ value
-                else Left $ text (verification_failure_message ++ show value)
-        _ -> error "Options were incorrectly parsed."
--- @-node:gcross.20091129000542.1504:lookupOptionAndVerify
--- @+node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
-lookupOptionAndVerifyFileExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
-lookupOptionAndVerifyFileExists =
-    lookupOptionAndVerify
-        isFileAt
-        "There is no file located at "
--- @-node:gcross.20091129000542.1695:lookupOptionAndVerifyFileExists
--- @+node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
-lookupOptionAndVerifyDirectoryExists :: String -> Map String [Maybe String] -> Either Doc (Maybe String)
-lookupOptionAndVerifyDirectoryExists =
-    lookupOptionAndVerify
-        isDirectoryAt
-        "There is no directory located at "
--- @-node:gcross.20091129000542.1697:lookupOptionAndVerifyDirectoryExists
--- @+node:gcross.20091129000542.1508:makeSimpleOptionSection
-makeSimpleOptionSectionForProgram program_name option_section_key =
-    OptionSection
-    {   optionSectionKey = option_section_key
-    ,   optionSectionOptions =
-        [   Option program_name
-                [] ["with-" ++ program_name]
-                (ArgumentRequired "PROGRAM")
-                ("location of " ++ program_name)
-        ]
-    ,   optionSectionPostprocessor = postprocessOptions
-    }
-  where
-    postprocessOptions = fmap toDyn . lookupOptionAndVerifyFileExists program_name
--- @-node:gcross.20091129000542.1508:makeSimpleOptionSection
+-- @+node:gcross.20091129000542.1465:removeDuplicateSections
+removeDuplicateSections :: [OptionSection] -> [OptionSection]
+removeDuplicateSections = nubBy ((==) `on` optionSectionKey)
+-- @-node:gcross.20091129000542.1465:removeDuplicateSections
 -- @+node:gcross.20091129000542.1583:simpleSearchForProgram
 simpleSearchForProgram ::
     OptionSectionKey ->
@@ -442,6 +408,40 @@ simpleSearchForProgram option_section_key constructor program_name parsed_option
                     ("configuring " ++ program_name)
                     (show program_name ++ " was not found in the path")
 -- @-node:gcross.20091129000542.1583:simpleSearchForProgram
+-- @+node:gcross.20091129000542.1457:toArgumentDescriptor
+toArgumentDescriptor :: OptionSectionKey -> String -> ArgumentExpectation -> ArgumentDescriptor
+toArgumentDescriptor (OptionSectionKey section_key) option_name argument_expectation =
+    case argument_expectation of
+        NoArgumentExpected -> GetOpt.NoArg (addToSection Nothing)
+        ArgumentRequired datatype -> GetOpt.ReqArg (addToSection . Just) datatype
+        ArgumentOptional datatype -> GetOpt.OptArg (addToSection) datatype
+  where
+    addToSection :: Maybe String -> ParsedOptionValue
+    addToSection value old_map =
+        case AtomMap.lookup section_key old_map of
+            Nothing ->
+                AtomMap.insert section_key (Map.singleton option_name [value]) old_map
+            Just section_options_map ->
+                flip (AtomMap.insert section_key) old_map
+                .
+                flip (Map.insert option_name) section_options_map
+                $
+                case Map.lookup option_name section_options_map of
+                    Nothing -> [value]
+                    Just old_values -> (value:old_values)
+-- @-node:gcross.20091129000542.1457:toArgumentDescriptor
+-- @+node:gcross.20091129000542.1456:toOptionDescriptor
+toOptionDescriptor :: OptionSectionKey -> Option -> OptionDescriptor
+toOptionDescriptor section_key =
+    GetOpt.Option
+        <$> optionShortForms
+        <*> optionLongForms
+        <*> (liftA2 (toArgumentDescriptor section_key)
+                optionName
+                optionArgumentExpectation
+            )
+        <*> optionDescription
+-- @-node:gcross.20091129000542.1456:toOptionDescriptor
 -- @-node:gcross.20091129000542.1455:Functions
 -- @-others
 -- @-node:gcross.20091129000542.1450:@thin Options.hs

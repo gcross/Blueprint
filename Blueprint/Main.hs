@@ -91,11 +91,45 @@ defaultMain help_message targets = do
         putStrLn "Please choose from the following targets:"
         forM_ targets $ \(target_name,_) -> putStrLn ('\t':target_name) --'
 -- @-node:gcross.20091128000856.1444:defaultMain
--- @+node:gcross.20091128000856.1446:targetFromEither
-targetFromEither :: Either ErrorMessage a -> Target
-targetFromEither (Left error_message) = Just error_message
-targetFromEither (Right _) = Nothing
--- @-node:gcross.20091128000856.1446:targetFromEither
+-- @+node:gcross.20091129000542.1596:lookupOldTarget
+lookupOldTarget :: String -> String -> TargetList -> Target
+lookupOldTarget new_target_name old_target_name =
+    fromMaybe (error $ "Programmer error:  The "
+                        ++ show new_target_name ++
+                        " target cannot find the "
+                        ++ show old_target_name ++
+                        "  target."
+              )
+    .
+    lookup old_target_name
+-- @-node:gcross.20091129000542.1596:lookupOldTarget
+-- @+node:gcross.20091129000542.1594:makeCleanTarget
+makeCleanTarget :: [FilePath] -> TargetList -> Target
+makeCleanTarget files_and_directories_to_remove old_targets =
+    removeFilesAndDirectoriesTarget files_and_directories_to_remove
+-- @-node:gcross.20091129000542.1594:makeCleanTarget
+-- @+node:gcross.20091129000542.1600:makeDistCleanTarget
+makeDistCleanTarget :: [FilePath] -> TargetList -> Target
+makeDistCleanTarget files_and_directories_to_remove old_targets =
+    let clean = lookupOldTarget "distclean" "clean" old_targets
+    in clean `pseq` removeFilesAndDirectoriesTarget files_and_directories_to_remove
+-- @-node:gcross.20091129000542.1600:makeDistCleanTarget
+-- @+node:gcross.20091129000542.1598:makeRebuildTarget
+makeRebuildTarget :: TargetList -> Target
+makeRebuildTarget old_targets =
+    let clean = lookupOldTarget "rebuild" "clean" old_targets
+        build = lookupOldTarget "rebuild" "build" old_targets
+    in clean `pseq` build
+-- @-node:gcross.20091129000542.1598:makeRebuildTarget
+-- @+node:gcross.20091129000542.1592:makeReconfigureTarget
+makeReconfigureTarget :: FilePath -> TargetList -> Target
+makeReconfigureTarget configuration_filepath old_targets =
+    let configure = lookupOldTarget "reconfigure" "configure" old_targets
+    in unsafePerformIO $ do
+        file_exists <- doesFileExist configuration_filepath
+        when file_exists $ removeFile configuration_filepath
+        return configure
+-- @-node:gcross.20091129000542.1592:makeReconfigureTarget
 -- @+node:gcross.20091128000856.1478:removeFilesAndDirectoriesTarget
 removeFilesAndDirectoriesTarget :: [FilePath] -> Target
 removeFilesAndDirectoriesTarget items = unsafePerformIO $
@@ -116,45 +150,11 @@ removeFilesAndDirectoriesTarget items = unsafePerformIO $
     >>
     return Nothing
 -- @-node:gcross.20091128000856.1478:removeFilesAndDirectoriesTarget
--- @+node:gcross.20091129000542.1596:lookupOldTarget
-lookupOldTarget :: String -> String -> TargetList -> Target
-lookupOldTarget new_target_name old_target_name =
-    fromMaybe (error $ "Programmer error:  The "
-                        ++ show new_target_name ++
-                        " target cannot find the "
-                        ++ show old_target_name ++
-                        "  target."
-              )
-    .
-    lookup old_target_name
--- @-node:gcross.20091129000542.1596:lookupOldTarget
--- @+node:gcross.20091129000542.1592:makeReconfigureTarget
-makeReconfigureTarget :: FilePath -> TargetList -> Target
-makeReconfigureTarget configuration_filepath old_targets =
-    let configure = lookupOldTarget "reconfigure" "configure" old_targets
-    in unsafePerformIO $ do
-        file_exists <- doesFileExist configuration_filepath
-        when file_exists $ removeFile configuration_filepath
-        return configure
--- @-node:gcross.20091129000542.1592:makeReconfigureTarget
--- @+node:gcross.20091129000542.1598:makeRebuildTarget
-makeRebuildTarget :: TargetList -> Target
-makeRebuildTarget old_targets =
-    let clean = lookupOldTarget "rebuild" "clean" old_targets
-        build = lookupOldTarget "rebuild" "build" old_targets
-    in clean `pseq` build
--- @-node:gcross.20091129000542.1598:makeRebuildTarget
--- @+node:gcross.20091129000542.1594:makeCleanTarget
-makeCleanTarget :: [FilePath] -> TargetList -> Target
-makeCleanTarget files_and_directories_to_remove old_targets =
-    removeFilesAndDirectoriesTarget files_and_directories_to_remove
--- @-node:gcross.20091129000542.1594:makeCleanTarget
--- @+node:gcross.20091129000542.1600:makeDistCleanTarget
-makeDistCleanTarget :: [FilePath] -> TargetList -> Target
-makeDistCleanTarget files_and_directories_to_remove old_targets =
-    let clean = lookupOldTarget "distclean" "clean" old_targets
-    in clean `pseq` removeFilesAndDirectoriesTarget files_and_directories_to_remove
--- @-node:gcross.20091129000542.1600:makeDistCleanTarget
+-- @+node:gcross.20091128000856.1446:targetFromEither
+targetFromEither :: Either ErrorMessage a -> Target
+targetFromEither (Left error_message) = Just error_message
+targetFromEither (Right _) = Nothing
+-- @-node:gcross.20091128000856.1446:targetFromEither
 -- @-node:gcross.20091128000856.1445:Functions
 -- @-others
 -- @-node:gcross.20091128000856.1441:@thin Main.hs

@@ -45,19 +45,70 @@ type ResourceId = (String,String)
 -- @-node:gcross.20091122100142.1326:ResourceId
 -- @-node:gcross.20091121210308.1277:Types
 -- @+node:gcross.20091121210308.1280:Functions
--- @+node:gcross.20091122100142.1388:resourceId
-resourceId :: Resource -> ResourceId
-resourceId = (resourceName &&& resourceType)
--- @-node:gcross.20091122100142.1388:resourceId
+-- @+node:gcross.20091121210308.2039:addResource
+addResource :: Resource -> Resources -> Resources
+addResource resource = Map.insert ((resourceName &&& resourceType) resource) resource
+-- @-node:gcross.20091121210308.2039:addResource
 -- @+node:gcross.20091121210308.1293:applyPrefix
 applyPrefix :: String -> String -> String
 applyPrefix "" = id
 applyPrefix prefix = (prefix ++) . ('.':)
 -- @-node:gcross.20091121210308.1293:applyPrefix
+-- @+node:gcross.20091122100142.1331:attemptGetDigests
+attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
+attemptGetDigests =
+    extractResultsOrError
+    .
+    myParListWHNF
+    .
+    map resourceDigest
+-- @-node:gcross.20091122100142.1331:attemptGetDigests
+-- @+node:gcross.20091122100142.1332:attemptGetResourceDigests
+attemptGetResourceDigests :: Resources -> [ResourceId] -> Either (Either [ResourceId] ErrorMessage) [MD5Digest]
+attemptGetResourceDigests resources resource_ids =
+    either
+        (Left . Left)
+        (mapLeft Right . attemptGetDigests)
+    $
+    attemptGetResources resources resource_ids
+-- @-node:gcross.20091122100142.1332:attemptGetResourceDigests
+-- @+node:gcross.20091122100142.1329:attemptGetResources
+attemptGetResources :: Resources -> [ResourceId] -> Either [ResourceId] [Resource]
+attemptGetResources resources =
+    extractResultsOrErrors
+    .
+    map (\resource_id ->
+        case Map.lookup resource_id resources of
+            Nothing -> Left resource_id
+            Just resource -> Right resource
+    )
+-- @-node:gcross.20091122100142.1329:attemptGetResources
+-- @+node:gcross.20091121210308.1286:createResourceFor
+createResourceFor :: String -> FilePath -> Resource
+createResourceFor prefix filepath =
+    let (name, extension) = splitExtension . takeFileName $ filepath
+    in Resource
+        {   resourceName = applyPrefix prefix name
+        ,   resourceType = if extension == "" then "" else tail extension
+        ,   resourceFilePath = filepath
+        ,   resourceDigest = Right . digestOf $ filepath
+        ,   resourceDependencies = []
+        }
+-- @-node:gcross.20091121210308.1286:createResourceFor
 -- @+node:gcross.20091121210308.1285:digestOf
 digestOf :: FilePath -> MD5Digest
 digestOf = md5 . unsafePerformIO . L.readFile
 -- @-node:gcross.20091121210308.1285:digestOf
+-- @+node:gcross.20091121210308.2033:getFilePathForNameAndType
+getFilePathForNameAndType :: FilePath -> String -> String -> FilePath
+getFilePathForNameAndType directory name typ =
+    let partial_path = (joinPath (directory:splitDot name))
+    in if null typ then partial_path else partial_path <.> typ
+-- @-node:gcross.20091121210308.2033:getFilePathForNameAndType
+-- @+node:gcross.20091122100142.1388:resourceId
+resourceId :: Resource -> ResourceId
+resourceId = (resourceName &&& resourceType)
+-- @-node:gcross.20091122100142.1388:resourceId
 -- @+node:gcross.20091121210308.1292:resourcesIn
 resourcesIn = resourcesWithPrefixIn ""
 -- @-node:gcross.20091121210308.1292:resourcesIn
@@ -85,18 +136,6 @@ resourcesWithPrefixIn prefix directory =
             directory
     in Map.unions . (toResources resource_list:) $ subdirectory_resources
 -- @-node:gcross.20091121210308.1281:resourcesWithPrefixIn
--- @+node:gcross.20091121210308.1286:createResourceFor
-createResourceFor :: String -> FilePath -> Resource
-createResourceFor prefix filepath =
-    let (name, extension) = splitExtension . takeFileName $ filepath
-    in Resource
-        {   resourceName = applyPrefix prefix name
-        ,   resourceType = if extension == "" then "" else tail extension
-        ,   resourceFilePath = filepath
-        ,   resourceDigest = Right . digestOf $ filepath
-        ,   resourceDependencies = []
-        }
--- @-node:gcross.20091121210308.1286:createResourceFor
 -- @+node:gcross.20091121210308.1288:toResources
 toResources :: [Resource] -> Resources
 toResources =
@@ -104,45 +143,6 @@ toResources =
     .
     map ((resourceName &&& resourceType) &&& id)
 -- @-node:gcross.20091121210308.1288:toResources
--- @+node:gcross.20091121210308.2033:getFilePathForNameAndType
-getFilePathForNameAndType :: FilePath -> String -> String -> FilePath
-getFilePathForNameAndType directory name typ =
-    let partial_path = (joinPath (directory:splitDot name))
-    in if null typ then partial_path else partial_path <.> typ
--- @-node:gcross.20091121210308.2033:getFilePathForNameAndType
--- @+node:gcross.20091121210308.2039:addResource
-addResource :: Resource -> Resources -> Resources
-addResource resource = Map.insert ((resourceName &&& resourceType) resource) resource
--- @-node:gcross.20091121210308.2039:addResource
--- @+node:gcross.20091122100142.1329:attemptGetResources
-attemptGetResources :: Resources -> [ResourceId] -> Either [ResourceId] [Resource]
-attemptGetResources resources =
-    extractResultsOrErrors
-    .
-    map (\resource_id ->
-        case Map.lookup resource_id resources of
-            Nothing -> Left resource_id
-            Just resource -> Right resource
-    )
--- @-node:gcross.20091122100142.1329:attemptGetResources
--- @+node:gcross.20091122100142.1331:attemptGetDigests
-attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
-attemptGetDigests =
-    extractResultsOrError
-    .
-    myParListWHNF
-    .
-    map resourceDigest
--- @-node:gcross.20091122100142.1331:attemptGetDigests
--- @+node:gcross.20091122100142.1332:attemptGetResourceDigests
-attemptGetResourceDigests :: Resources -> [ResourceId] -> Either (Either [ResourceId] ErrorMessage) [MD5Digest]
-attemptGetResourceDigests resources resource_ids =
-    either
-        (Left . Left)
-        (mapLeft Right . attemptGetDigests)
-    $
-    attemptGetResources resources resource_ids
--- @-node:gcross.20091122100142.1332:attemptGetResourceDigests
 -- @-node:gcross.20091121210308.1280:Functions
 -- @-others
 -- @-node:gcross.20091121210308.1276:@thin Resources.hs

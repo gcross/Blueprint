@@ -29,17 +29,15 @@ import Text.ParserCombinators.ReadP
 
 -- @+others
 -- @+node:gcross.20091127142612.1416:Functions
--- @+node:gcross.20091127142612.1418:splitDot
-splitDot :: String -> [String]
-splitDot "" = []
-splitDot s =
-    let (first_part, rest_string) = break (== '.') s
-    in first_part : if null rest_string then [] else splitDot . tail $ rest_string
--- @-node:gcross.20091127142612.1418:splitDot
--- @+node:gcross.20091127142612.1420:unsplitDot
-unsplitDot = intercalate "."
--- @nonl
--- @-node:gcross.20091127142612.1420:unsplitDot
+-- @+node:gcross.20091129000542.1500:findProgramInPath
+findProgramInPath = unsafePerformIO . findExecutable
+-- @-node:gcross.20091129000542.1500:findProgramInPath
+-- @+node:gcross.20091129000542.1699:isDirectoryAt
+isDirectoryAt = unsafePerformIO . doesDirectoryExist
+-- @-node:gcross.20091129000542.1699:isDirectoryAt
+-- @+node:gcross.20091129000542.1503:isFileAt
+isFileAt = unsafePerformIO . doesFileExist
+-- @-node:gcross.20091129000542.1503:isFileAt
 -- @+node:gcross.20091128000856.1440:myParListWHNF
 myParListWHNF :: Strategy [a]
 myParListWHNF list = go list
@@ -51,20 +49,22 @@ myParListWHNF list = go list
 readVersion :: String -> Version
 readVersion = fst . last . readP_to_S parseVersion
 -- @-node:gcross.20091128000856.1484:readVersion
+-- @+node:gcross.20091127142612.1418:splitDot
+splitDot :: String -> [String]
+splitDot "" = []
+splitDot s =
+    let (first_part, rest_string) = break (== '.') s
+    in first_part : if null rest_string then [] else splitDot . tail $ rest_string
+-- @-node:gcross.20091127142612.1418:splitDot
+-- @+node:gcross.20091127142612.1420:unsplitDot
+unsplitDot = intercalate "."
+-- @nonl
+-- @-node:gcross.20091127142612.1420:unsplitDot
 -- @+node:gcross.20091129000542.1499:unwrapDynamic
 unwrapDynamic :: Typeable a => Dynamic -> a
 unwrapDynamic dyn = fromDyn dyn (error $ "Unable to cast Dynamic to the expected type!  (Type of Dynamic is " ++ show (dynTypeRep dyn) ++ ".)")
 
 -- @-node:gcross.20091129000542.1499:unwrapDynamic
--- @+node:gcross.20091129000542.1500:findProgramInPath
-findProgramInPath = unsafePerformIO . findExecutable
--- @-node:gcross.20091129000542.1500:findProgramInPath
--- @+node:gcross.20091129000542.1503:isFileAt
-isFileAt = unsafePerformIO . doesFileExist
--- @-node:gcross.20091129000542.1503:isFileAt
--- @+node:gcross.20091129000542.1699:isDirectoryAt
-isDirectoryAt = unsafePerformIO . doesDirectoryExist
--- @-node:gcross.20091129000542.1699:isDirectoryAt
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs
