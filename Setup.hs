@@ -60,7 +60,7 @@ targets =
     ,target "distclean" distclean
     ]
 -- @+node:gcross.20091128000856.1449:configure
-configure = runConfigurer "Blueprint.cfg" noOptions $ do
+configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
     (ghc_tools,ar_tools) <- 
         liftA2 (,)
             (configureUsingSection "GHC" "")
