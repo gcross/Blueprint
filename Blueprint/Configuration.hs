@@ -29,6 +29,10 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
 
+import StringTable.Atom
+import StringTable.AtomMap (AtomMap)
+import qualified StringTable.AtomMap as AtomMap
+
 import System.IO
 import System.IO.Error
 import System.IO.Unsafe
@@ -48,7 +52,7 @@ class ConfigurationData a where
 -- @-node:gcross.20091123215917.1371:ConfigurationData
 -- @+node:gcross.20091128000856.1408:AutomaticallyConfigurable
 class AutomaticallyConfigurable a where
-    automaticallyConfigure :: Maybe Dynamic -> Either ErrorMessage a
+    automaticallyConfigure :: ParsedOptions -> Either ErrorMessage a
 -- @-node:gcross.20091128000856.1408:AutomaticallyConfigurable
 -- @-node:gcross.20091123215917.1370:Classes
 -- @+node:gcross.20091126122246.1387:Instances
@@ -75,7 +79,7 @@ type ConfigurationDataWriter = WriterT (Automorphism ConfigParser) (Reader Strin
 -- @+node:gcross.20091129000542.1488:Environment
 data Environment = Environment
     {   environmentConfigParser :: ConfigParser
-    ,   environmentOptions :: Map String Dynamic
+    ,   environmentOptions :: ParsedOptions
     }
 -- @-node:gcross.20091129000542.1488:Environment
 -- @+node:gcross.20091128000856.1411:Configurer
@@ -85,17 +89,23 @@ type Configurer = ErrorT ErrorMessage (RWS Environment (Automorphism ConfigParse
 -- @+node:gcross.20091126122246.1389:Automorphism
 newtype Automorphism a = A { unA :: a -> a }
 -- @-node:gcross.20091126122246.1389:Automorphism
+-- @+node:gcross.20091129000542.1573:ConfigurationKey
+newtype ConfigurationKey = ConfigurationKey { unwrapConfigurationKey :: String }
+-- @-node:gcross.20091129000542.1573:ConfigurationKey
 -- @-node:gcross.20091123215917.1372:Types
 -- @+node:gcross.20091126122246.1379:Functions
+-- @+node:gcross.20091129000542.1574:makeConfigurationKey
+makeConfigurationKey = ConfigurationKey
+-- @-node:gcross.20091129000542.1574:makeConfigurationKey
 -- @+node:gcross.20091126122246.1380:getConfig
-getConfig :: Get_C a => OptionSpec -> ConfigurationDataReader a
-getConfig key = do
+getConfig :: Get_C a => ConfigurationKey -> ConfigurationDataReader a
+getConfig (ConfigurationKey key) = do
     (cp,section) <- lift $ ask
     get cp section key
 -- @-node:gcross.20091126122246.1380:getConfig
 -- @+node:gcross.20091126122246.1385:setConfig
-setConfig :: OptionSpec -> String -> ConfigurationDataWriter ()
-setConfig key value = do
+setConfig :: ConfigurationKey -> String -> ConfigurationDataWriter ()
+setConfig (ConfigurationKey key) value = do
     section :: String <- lift ask
     tell . A $
          \cp ->
@@ -154,7 +164,6 @@ cpErrorMessage section_name = errorMessageText ("parsing section " ++ section_na
 configureUsingSection ::
     (ConfigurationData a, AutomaticallyConfigurable a) =>
     String ->
-    String ->
     Configurer a
 configureUsingSection = configureUsingSectionWith readConfig writeConfig automaticallyConfigure
 -- @-node:gcross.20091128000856.1415:configureUsingSection
@@ -162,8 +171,7 @@ configureUsingSection = configureUsingSectionWith readConfig writeConfig automat
 configureUsingSectionWith ::
     ConfigurationDataReader a ->
     (a -> ConfigurationDataWriter ()) ->
-    (Maybe Dynamic -> Either ErrorMessage a) ->
-    String ->
+    (ParsedOptions -> Either ErrorMessage a) ->
     String ->
     Configurer a
 configureUsingSectionWith
@@ -171,7 +179,6 @@ configureUsingSectionWith
     config_writer
     automatic_configurer
     section_name
-    options_section_name
     = do
     config_parser <- lift . asks $ environmentConfigParser
     case applyReaderToConfig config_parser section_name config_reader of
@@ -184,30 +191,20 @@ configureUsingSectionWith
   where
     reconfigure = do
         options_data <- lift . asks $ environmentOptions               
-        case automatic_configurer . Map.lookup options_section_name $ options_data of
+        case automatic_configurer options_data of
             Left error_message -> ErrorT (return . Left $ error_message)
             Right configuration -> do
                 tell . A . applyWriterToConfig section_name . config_writer $ configuration
                 return configuration
 -- @-node:gcross.20091128201230.1464:configureUsingSectionWith
--- @+node:gcross.20091129000542.1507:simpleSearchForProgram
-simpleSearchForProgram :: (FilePath -> a) -> String -> String -> Maybe Dynamic -> Either ErrorMessage a
-simpleSearchForProgram constructor tool_name program_name maybe_option =
-    case maybe_option of
-        Just wrapped_path ->
-            case unwrapDynamic wrapped_path of
-                Nothing -> searchForProgram
-                Just path -> Right $ constructor path
-        Nothing -> searchForProgram
-  where
-    searchForProgram =
-        case findProgramInPath program_name of
-            Just path -> Right $ constructor path
-            Nothing ->
-                leftErrorMessageText
-                    ("configuring " ++ tool_name)
-                    (show program_name ++ " was not found in the path")
--- @-node:gcross.20091129000542.1507:simpleSearchForProgram
+-- @+node:gcross.20091129000542.1569:simpleReadConfig
+simpleReadConfig :: ConfigurationKey -> (String -> a) -> ConfigurationDataReader a
+simpleReadConfig configuration_key constructor = liftM constructor (getConfig configuration_key)
+-- @-node:gcross.20091129000542.1569:simpleReadConfig
+-- @+node:gcross.20091129000542.1570:simpleWriteConfig
+simpleWriteConfig :: ConfigurationKey -> (a -> String) -> a -> ConfigurationDataWriter ()
+simpleWriteConfig configuration_key extractor = setConfig configuration_key . extractor
+-- @-node:gcross.20091129000542.1570:simpleWriteConfig
 -- @-node:gcross.20091126122246.1379:Functions
 -- @-others
 -- @-node:gcross.20091123215917.1369:@thin Configuration.hs

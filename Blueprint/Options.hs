@@ -20,11 +20,16 @@ import Control.Monad.Error
 import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
+import Data.Function
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
+
+import StringTable.Atom
+import StringTable.AtomMap (AtomMap)
+import qualified StringTable.AtomMap as AtomMap
 
 import qualified System.Console.GetOpt as GetOpt
 import System.Environment
@@ -41,7 +46,7 @@ import Blueprint.Miscellaneous
 -- @+node:gcross.20091129000542.1489:Values
 -- @+node:gcross.20091129000542.1490:noOptions
 noOptions :: ParsedOptions
-noOptions = Map.empty
+noOptions = AtomMap.empty
 -- @nonl
 -- @-node:gcross.20091129000542.1490:noOptions
 -- @-node:gcross.20091129000542.1489:Values
@@ -57,11 +62,14 @@ data Option = Option
 -- @-node:gcross.20091129000542.1454:Option
 -- @+node:gcross.20091129000542.1462:OptionSection
 data OptionSection = OptionSection
-    {   optionSectionHeading :: String
+    {   optionSectionKey :: OptionSectionKey
     ,   optionSectionOptions :: [Option]
     ,   optionSectionPostprocessor :: Map String [Maybe String] -> Either Doc Dynamic
     }
 -- @-node:gcross.20091129000542.1462:OptionSection
+-- @+node:gcross.20091129000542.1575:OptionSectionKey
+newtype OptionSectionKey = OptionSectionKey { unwrapOptionSectionKey :: Atom } deriving (Eq)
+-- @-node:gcross.20091129000542.1575:OptionSectionKey
 -- @+node:gcross.20091129000542.1458:ArgumentExpectation
 data ArgumentExpectation =
     NoArgumentExpected
@@ -69,10 +77,10 @@ data ArgumentExpectation =
   | ArgumentOptional String
 -- @-node:gcross.20091129000542.1458:ArgumentExpectation
 -- @+node:gcross.20091129000542.1473:ParsedOptionValue
-type ParsedOptionValue = Map String (Map String [Maybe String]) -> Map String (Map String [Maybe String])
+type ParsedOptionValue = AtomMap (Map String [Maybe String]) -> AtomMap (Map String [Maybe String])
 -- @-node:gcross.20091129000542.1473:ParsedOptionValue
 -- @+node:gcross.20091129000542.1496:ParsedOptions
-type ParsedOptions = Map String Dynamic
+type ParsedOptions = AtomMap Dynamic
 -- @-node:gcross.20091129000542.1496:ParsedOptions
 -- @+node:gcross.20091129000542.1472:OptionDescriptor
 type OptionDescriptor = GetOpt.OptDescr ParsedOptionValue
@@ -83,21 +91,36 @@ type ArgumentDescriptor = GetOpt.ArgDescr ParsedOptionValue
 -- @-node:gcross.20091129000542.1474:ArgumentDescriptor
 -- @-node:gcross.20091129000542.1453:Types
 -- @+node:gcross.20091129000542.1455:Functions
+-- @+node:gcross.20091129000542.1588:makeOptionSectionKey
+makeOptionSectionKey :: String -> OptionSectionKey
+makeOptionSectionKey = OptionSectionKey . toAtom
+-- @-node:gcross.20091129000542.1588:makeOptionSectionKey
+-- @+node:gcross.20091129000542.1589:lookupOptionSection
+lookupOptionSection :: OptionSectionKey -> ParsedOptions -> Maybe Dynamic
+lookupOptionSection (OptionSectionKey key) = AtomMap.lookup key
+-- @-node:gcross.20091129000542.1589:lookupOptionSection
+-- @+node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
+lookupAndUnwrapOptionSection :: Typeable a => OptionSectionKey -> ParsedOptions -> Maybe a
+lookupAndUnwrapOptionSection section_key =
+    fmap unwrapDynamic
+    .
+    lookupOptionSection section_key
+-- @-node:gcross.20091129000542.1591:lookupAndUnwrapOptionSection
 -- @+node:gcross.20091129000542.1456:toOptionDescriptor
-toOptionDescriptor :: String -> Option -> OptionDescriptor
-toOptionDescriptor section_heading =
+toOptionDescriptor :: OptionSectionKey -> Option -> OptionDescriptor
+toOptionDescriptor section_key =
     GetOpt.Option
         <$> optionShortForms
         <*> optionLongForms
-        <*> (liftA2 (toArgumentDescriptor section_heading)
+        <*> (liftA2 (toArgumentDescriptor section_key)
                 optionName
                 optionArgumentExpectation
             )
         <*> optionDescription
 -- @-node:gcross.20091129000542.1456:toOptionDescriptor
 -- @+node:gcross.20091129000542.1457:toArgumentDescriptor
-toArgumentDescriptor :: String -> String -> ArgumentExpectation -> ArgumentDescriptor
-toArgumentDescriptor section_name option_name argument_expectation =
+toArgumentDescriptor :: OptionSectionKey -> String -> ArgumentExpectation -> ArgumentDescriptor
+toArgumentDescriptor (OptionSectionKey section_key) option_name argument_expectation =
     case argument_expectation of
         NoArgumentExpected -> GetOpt.NoArg (addToSection Nothing)
         ArgumentRequired datatype -> GetOpt.ReqArg (addToSection . Just) datatype
@@ -105,11 +128,11 @@ toArgumentDescriptor section_name option_name argument_expectation =
   where
     addToSection :: Maybe String -> ParsedOptionValue
     addToSection value old_map =
-        case Map.lookup section_name old_map of
+        case AtomMap.lookup section_key old_map of
             Nothing ->
-                Map.insert section_name (Map.singleton option_name [value]) old_map
+                AtomMap.insert section_key (Map.singleton option_name [value]) old_map
             Just section_options_map ->
-                flip (Map.insert section_name) old_map
+                flip (AtomMap.insert section_key) old_map
                 .
                 flip (Map.insert option_name) section_options_map
                 $
@@ -119,7 +142,7 @@ toArgumentDescriptor section_name option_name argument_expectation =
 -- @-node:gcross.20091129000542.1457:toArgumentDescriptor
 -- @+node:gcross.20091129000542.1465:removeDuplicateSections
 removeDuplicateSections :: [OptionSection] -> [OptionSection]
-removeDuplicateSections = nubBy (\x y -> optionSectionHeading x == optionSectionHeading y)
+removeDuplicateSections = nubBy ((==) `on` optionSectionKey)
 -- @-node:gcross.20091129000542.1465:removeDuplicateSections
 -- @+node:gcross.20091129000542.1478:createHelpMessageForSection
 createHelpMessageForSection :: OptionSection -> Doc
@@ -130,7 +153,7 @@ createHelpMessageForSection section =
     .
     lines
     .
-    GetOpt.usageInfo (optionSectionHeading section)
+    GetOpt.usageInfo (fromAtom . unwrapOptionSectionKey . optionSectionKey $ section)
     .
     createOptionDescriptorsForSection
     $
@@ -148,24 +171,21 @@ createHelpMessageForOptionSections =
 -- @-node:gcross.20091129000542.1477:createHelpMessageForOptionSections
 -- @+node:gcross.20091129000542.1486:createDefaultHelpMessage
 createDefaultHelpMessage :: [OptionSection] -> [String] -> Doc
-createDefaultHelpMessage option_sections target_names =
-    text "Usage: Setup <target> [options...]"
-    <$$>
-    empty
-    <$$>
-    createHelpMessageForOptionSections option_sections
-    <$$>
-    empty
-    <$$>
-    text "Available targets:"
-    <$$>
-    (indent 4 . vcat . map text $ target_names)
+createDefaultHelpMessage option_sections target_names = vcat
+    [   text "Usage: Setup <target> [options...]"
+    ,   empty
+    ,   text "Tool Options:"
+    ,   indent 4 . createHelpMessageForOptionSections $ option_sections
+    ,   empty
+    ,   text "Available targets:"
+    ,   indent 4 . vcat . map text $ target_names
+    ]
 -- @-node:gcross.20091129000542.1486:createDefaultHelpMessage
 -- @+node:gcross.20091129000542.1471:createOptionDescriptorsForSection
 createOptionDescriptorsForSection :: OptionSection -> [OptionDescriptor]
 createOptionDescriptorsForSection =
     liftA2 map
-        (toOptionDescriptor . optionSectionHeading)
+        (toOptionDescriptor . optionSectionKey)
         optionSectionOptions
 -- @-node:gcross.20091129000542.1471:createOptionDescriptorsForSection
 -- @+node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
@@ -187,10 +207,10 @@ findConflictingOptions =
     -- @    @+others
     -- @+node:gcross.20091129000542.1463:processSections
     processSections ::
-        Map Char (Map String Int) ->
-        Map String (Map String Int) ->
+        Map Char (AtomMap Int) ->
+        Map String (AtomMap Int) ->
         [OptionSection] ->
-        (Map Char (Map String Int),Map String (Map String Int))
+        (Map Char (AtomMap Int),Map String (AtomMap Int))
     processSections processed_short_options processed_long_options [] =
         (processed_short_options,processed_long_options)
     processSections processed_short_options processed_long_options (section:rest_sections) =
@@ -199,9 +219,10 @@ findConflictingOptions =
             (processOptions processed_long_options optionLongForms)
             rest_sections
       where
-        tagWithSectionHeading x = (x,Map.singleton (optionSectionHeading section) 1)
+        option_section_key = unwrapOptionSectionKey . optionSectionKey $ section
+        tagWithSectionHeading x = (x,AtomMap.singleton option_section_key 1)
 
-        processOptions :: Ord a => Map a (Map String Int) -> (Option -> [a]) -> Map a (Map String Int)
+        processOptions :: Ord a => Map a (AtomMap Int) -> (Option -> [a]) -> Map a (AtomMap Int)
         processOptions processed_options extractForms =
             foldl' processOption processed_options -- '
             .
@@ -211,28 +232,28 @@ findConflictingOptions =
             $
             section
 
-        processOption :: Ord a => Map a (Map String Int) -> [a] -> Map a (Map String Int)
+        processOption :: Ord a => Map a (AtomMap Int) -> [a] -> Map a (AtomMap Int)
         processOption previously_seen_options =
-            Map.unionWith (Map.unionWith (+)) previously_seen_options
+            Map.unionWith (AtomMap.unionWith (+)) previously_seen_options
             .
             Map.fromList
             .
             map tagWithSectionHeading
     -- @-node:gcross.20091129000542.1463:processSections
     -- @+node:gcross.20091129000542.1464:findConflicts
-    findConflicts :: Ord a => Map a (Map String Int) -> [(a,[(String,Int)])]
+    findConflicts :: Ord a => Map a (AtomMap Int) -> [(a,[(String,Int)])]
     findConflicts = catMaybes . map (uncurry findConflictsForOption) . Map.assocs
       where
         findConflictsForOption option_form option_appearances
-         | (head . Map.elems) option_appearances > 1 || Map.size option_appearances > 1
-            = Just (option_form,Map.assocs option_appearances)
+         | (head . AtomMap.elems) option_appearances > 1 || AtomMap.size option_appearances > 1
+            = Just (option_form,map (first fromAtom) . AtomMap.assocs $ option_appearances)
          | otherwise
             = Nothing
     -- @-node:gcross.20091129000542.1464:findConflicts
     -- @-others
 -- @-node:gcross.20091129000542.1461:findConflictingOptions
 -- @+node:gcross.20091129000542.1476:parseCommandLineOptions
-parseCommandLineOptions :: [OptionSection] -> Either ErrorMessage (([String],Map String Dynamic))
+parseCommandLineOptions :: [OptionSection] -> Either ErrorMessage (([String],AtomMap Dynamic))
 parseCommandLineOptions = parseOptions (tail . unsafePerformIO $ getArgs)
 -- @-node:gcross.20091129000542.1476:parseCommandLineOptions
 -- @+node:gcross.20091129000542.1466:parseOptions
@@ -274,8 +295,8 @@ parseOptions args sections_with_possible_duplicates = do
         error_messages
         -- @-node:gcross.20091129000542.1470:<< Report that there were problems parsing the options. >>
         -- @nl
-    let option_map :: Map String (Map String [Maybe String])
-        option_map = go Map.empty results
+    let option_map :: AtomMap (Map String [Maybe String])
+        option_map = go AtomMap.empty results
           where
             go final_result [] = final_result
             go current_result (fn:rest_fns) = go (fn current_result) rest_fns
@@ -283,14 +304,14 @@ parseOptions args sections_with_possible_duplicates = do
             partitionEithers
             .
             map (\section ->
-                let heading = optionSectionHeading section
-                in mapBoth ((,) heading) ((,) heading)
+                let OptionSectionKey key = optionSectionKey section
+                in mapBoth ((,) (fromAtom key)) ((,) key)
                    .
                    optionSectionPostprocessor section
                    .
                    fromMaybe Map.empty
                    .
-                   Map.lookup heading
+                   AtomMap.lookup key
                    $
                    option_map
             )
@@ -302,7 +323,7 @@ parseOptions args sections_with_possible_duplicates = do
             .
             (,) non_options
             .
-            Map.fromList 
+            AtomMap.fromList 
             $
             processed_options
         else
@@ -367,9 +388,9 @@ lookupOptionAndVerifyFileExists option_name option_map =
         _ -> error "Options were incorrectly parsed."
 -- @-node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
 -- @+node:gcross.20091129000542.1508:makeSimpleOptionSection
-makeSimpleOptionSection program_name section_heading =
+makeSimpleOptionSectionForProgram program_name option_section_key =
     OptionSection
-    {   optionSectionHeading = section_heading
+    {   optionSectionKey = option_section_key
     ,   optionSectionOptions =
         [   Option program_name
                 [] ["with-" ++ program_name]
@@ -381,6 +402,27 @@ makeSimpleOptionSection program_name section_heading =
   where
     postprocessOptions = fmap toDyn . lookupOptionAndVerifyFileExists program_name
 -- @-node:gcross.20091129000542.1508:makeSimpleOptionSection
+-- @+node:gcross.20091129000542.1583:simpleSearchForProgram
+simpleSearchForProgram ::
+    OptionSectionKey ->
+    (FilePath -> a) ->
+    String ->
+    ParsedOptions ->
+    Either ErrorMessage a
+simpleSearchForProgram option_section_key constructor program_name parsed_options =
+    case lookupAndUnwrapOptionSection option_section_key parsed_options of
+        Just Nothing -> searchForProgram
+        Just (Just path) -> Right $ constructor path
+        Nothing -> searchForProgram
+  where
+    searchForProgram =
+        case findProgramInPath program_name of
+            Just path -> Right $ constructor path
+            Nothing ->
+                leftErrorMessageText
+                    ("configuring " ++ program_name)
+                    (show program_name ++ " was not found in the path")
+-- @-node:gcross.20091129000542.1583:simpleSearchForProgram
 -- @-node:gcross.20091129000542.1455:Functions
 -- @-others
 -- @-node:gcross.20091129000542.1450:@thin Options.hs

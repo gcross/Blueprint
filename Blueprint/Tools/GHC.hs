@@ -63,21 +63,29 @@ import Debug.Trace
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091129000542.1587:Keys
+ghcOptionSectionKey = makeOptionSectionKey "GHC"
+
+ghcVersionKey = makeConfigurationKey "ghc version"
+ghcCompilerPathKey = makeConfigurationKey "path to ghc"
+ghcPackageManagerKey = makeConfigurationKey "path to ghc-pkg"
+ghcPackagesKey = makeConfigurationKey "packages"
+-- @-node:gcross.20091129000542.1587:Keys
 -- @+node:gcross.20091121210308.1270:Types
--- @+node:gcross.20091121210308.1271:GHCTools
-data GHCTools = GHCTools
+-- @+node:gcross.20091121210308.1271:GHCConfiguration
+data GHCConfiguration = GHCConfiguration
     {   ghcVersion :: Version
     ,   ghcCompilerPath :: String
-    ,   ghcPackageQueryPath :: String
+    ,   ghcPackageManagerPath :: String
     } deriving (Show)
--- @-node:gcross.20091121210308.1271:GHCTools
--- @+node:gcross.20091129000542.1481:GHCToolsOptions
-data GHCToolsOptions = GHCToolsOptions
+-- @-node:gcross.20091121210308.1271:GHCConfiguration
+-- @+node:gcross.20091129000542.1481:GHCOptions
+data GHCOptions = GHCOptions
     {   ghcOptionCompilerPath :: Maybe FilePath
-    ,   ghcOptionPackageQueryPath :: Maybe FilePath
+    ,   ghcOptionPackageManagerPath :: Maybe FilePath
     } deriving (Typeable)
 
--- @-node:gcross.20091129000542.1481:GHCToolsOptions
+-- @-node:gcross.20091129000542.1481:GHCOptions
 -- @+node:gcross.20091121210308.2025:PackageModules
 type PackageModules = Map String String
 -- @-node:gcross.20091121210308.2025:PackageModules
@@ -86,37 +94,37 @@ newtype ResolvedPackages = ResolvedPackages [String]
 -- @-node:gcross.20091128201230.1462:ResolvedPackages
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091127142612.1405:Instances
--- @+node:gcross.20091127142612.1406:ConfigurationData GHCTools
-instance ConfigurationData GHCTools where
+-- @+node:gcross.20091127142612.1406:ConfigurationData GHCConfiguration
+instance ConfigurationData GHCConfiguration where
     readConfig =
-        liftM3 GHCTools
-            (fmap readVersion $ getConfig "version")
-            (getConfig "path to compiler")
-            (getConfig "path to package manager")
+        liftM3 GHCConfiguration
+            (fmap readVersion $ getConfig ghcVersionKey)
+            (getConfig ghcCompilerPathKey)
+            (getConfig ghcPackageManagerKey)
     writeConfig =
-        (setConfig "version" . showVersion . ghcVersion)
+        (setConfig ghcVersionKey . showVersion . ghcVersion)
         <^(>>)^>
-        (setConfig "path to compiler" . ghcCompilerPath)
+        (setConfig ghcCompilerPathKey . ghcCompilerPath)
         <^(>>)^>
-        (setConfig "path to package manager" . ghcPackageQueryPath)
--- @-node:gcross.20091127142612.1406:ConfigurationData GHCTools
--- @+node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
-instance AutomaticallyConfigurable GHCTools where
-    automaticallyConfigure wrapped_options =
-        case fmap unwrapDynamic wrapped_options of
+        (setConfig ghcPackageManagerKey . ghcPackageManagerPath)
+-- @-node:gcross.20091127142612.1406:ConfigurationData GHCConfiguration
+-- @+node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCConfiguration
+instance AutomaticallyConfigurable GHCConfiguration where
+    automaticallyConfigure parsed_options =
+        case lookupAndUnwrapOptionSection ghcOptionSectionKey parsed_options of
             Nothing -> configureFromScratch
-            Just (GHCToolsOptions Nothing Nothing) -> configureFromScratch
-            Just (GHCToolsOptions (Just path_to_ghc) (Just path_to_ghc_pkg)) -> verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
-            Just (GHCToolsOptions (Just path_to_ghc) Nothing) -> configureUsingPath path_to_ghc
-            Just (GHCToolsOptions Nothing (Just path_to_ghc_pkg)) -> configureUsingPath path_to_ghc_pkg
+            Just (GHCOptions Nothing Nothing) -> configureFromScratch
+            Just (GHCOptions (Just path_to_ghc) (Just path_to_ghc_pkg)) -> verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
+            Just (GHCOptions (Just path_to_ghc) Nothing) -> configureUsingPath path_to_ghc
+            Just (GHCOptions Nothing (Just path_to_ghc_pkg)) -> configureUsingPath path_to_ghc_pkg
       where
         -- @        @+others
         -- @+node:gcross.20091129000542.1491:configurationError
-        configurationError = leftErrorMessageText "configuring GHCTools"
+        configurationError = leftErrorMessageText "configuring GHC"
         -- @nonl
         -- @-node:gcross.20091129000542.1491:configurationError
         -- @+node:gcross.20091129000542.1492:configureFromScratch
-        configureFromScratch :: Either ErrorMessage GHCTools
+        configureFromScratch :: Either ErrorMessage GHCConfiguration
         configureFromScratch =
             case unsafePerformIO . findExecutable $ "ghc" of
                 Nothing -> configurationError "Unable to find ghc in the path"
@@ -127,7 +135,7 @@ instance AutomaticallyConfigurable GHCTools where
         -- @nonl
         -- @-node:gcross.20091129000542.1493:configureUsingPath
         -- @+node:gcross.20091129000542.1494:configureUsingDirectory
-        configureUsingDirectory :: FilePath -> Either ErrorMessage GHCTools
+        configureUsingDirectory :: FilePath -> Either ErrorMessage GHCConfiguration
         configureUsingDirectory directory_to_search = do
             path_to_ghc <- findProgram "ghc"
             path_to_ghc_pkg <- findProgram "ghc-pkg"
@@ -145,16 +153,16 @@ instance AutomaticallyConfigurable GHCTools where
         -- @nonl
         -- @-node:gcross.20091129000542.1494:configureUsingDirectory
         -- @+node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
-        verifyConsistentVersionsAndReturn :: FilePath -> FilePath -> Either ErrorMessage GHCTools
+        verifyConsistentVersionsAndReturn :: FilePath -> FilePath -> Either ErrorMessage GHCConfiguration
         verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg =
             let ghc_version = getVersionOf path_to_ghc
                 ghc_pkg_version = getVersionOf path_to_ghc_pkg
             in if ghc_version == ghc_pkg_version 
                     then Right $
-                        GHCTools
+                        GHCConfiguration
                             {   ghcVersion = ghc_version
                             ,   ghcCompilerPath = path_to_ghc
-                            ,   ghcPackageQueryPath = path_to_ghc_pkg
+                            ,   ghcPackageManagerPath = path_to_ghc_pkg
                             }
                     else configurationError $
                             "'ghc' and 'ghc-pkg' have different version! ("
@@ -176,7 +184,7 @@ instance AutomaticallyConfigurable GHCTools where
         -- @-node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
         -- @-others
 
--- @-node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
+-- @-node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCConfiguration
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
@@ -231,9 +239,9 @@ findAsMapAllObjectDependenciesOf known_resources object_resource =
 -- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
-ghcToolsOptions section_heading =
+ghcOptions =
     OptionSection
-    {   optionSectionHeading = section_heading
+    {   optionSectionKey = ghcOptionSectionKey
     ,   optionSectionOptions =
         [   Option "ghc"
                 [] ["with-ghc"]
@@ -249,25 +257,29 @@ ghcToolsOptions section_heading =
   where
     postprocessOptions :: Map String [Maybe String] -> Either Doc Dynamic
     postprocessOptions option_map = fmap toDyn $
-        liftA2 GHCToolsOptions
+        liftA2 GHCOptions
             (lookupOptionAndVerifyFileExists "ghc" option_map)
             (lookupOptionAndVerifyFileExists "ghc-pkg" option_map)
 -- @-node:gcross.20091129000542.1479:Options processing
 -- @+node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2018:queryPackage
-queryPackage :: GHCTools -> String -> String -> Maybe [String]
+queryPackage :: GHCConfiguration -> String -> String -> Maybe [String]
 queryPackage tools field_name package_name =
     case unsafePerformIO $
-            readProcessWithExitCode (ghcPackageQueryPath tools) ["field",package_name,field_name] ""
+            readProcessWithExitCode (ghcPackageManagerPath tools) ["field",package_name,field_name] ""
     of (ExitSuccess,response,_) -> Just . filter (/= (field_name ++ ":")) . words $ response 
        _ -> Nothing
 -- @-node:gcross.20091121210308.2018:queryPackage
 -- @+node:gcross.20091121210308.2019:getPackage
-getPackage :: GHCTools -> String -> Maybe (Map String String)
-getPackage tools name = fmap (Map.fromList . map (flip (,) name)) $ queryPackage tools "exposed-modules" name
+getPackage :: GHCConfiguration -> String -> Maybe (Map String String)
+getPackage configuration name =
+    fmap (Map.fromList . map (flip (,) name))
+    $
+    queryPackage configuration "exposed-modules" name
+
 -- @-node:gcross.20091121210308.2019:getPackage
 -- @+node:gcross.20091121210308.2021:getPackages
-getPackages :: GHCTools -> [String] -> Either [String] PackageModules
+getPackages :: GHCConfiguration -> [String] -> Either [String] PackageModules
 getPackages tools names =
     let either_packages =
             flip map names $ \name -> maybe (Left name) Right (getPackage tools name)
@@ -276,13 +288,13 @@ getPackages tools names =
         (not_found,_) -> Left not_found
 -- @-node:gcross.20091121210308.2021:getPackages
 -- @+node:gcross.20091121210308.2024:findPackagesExposingModule
-findPackagesExposingModule :: GHCTools -> String -> [String]
+findPackagesExposingModule :: GHCConfiguration -> String -> [String]
 findPackagesExposingModule tools package_name =
     words
     .
     unsafePerformIO
     .
-    readProcess (ghcPackageQueryPath tools) ["--simple-output","find-module",package_name]
+    readProcess (ghcPackageManagerPath tools) ["--simple-output","find-module",package_name]
     $
     ""
 -- @-node:gcross.20091121210308.2024:findPackagesExposingModule
@@ -296,13 +308,13 @@ readPackageDescription =
     Distribution.PackageDescription.Parse.readPackageDescription silent
 -- @-node:gcross.20091128201230.1459:readPackageDescription
 -- @+node:gcross.20091128201230.1461:configurePackageResolutions
-configurePackageResolutions :: GHCTools -> PackageDescription -> String -> String -> Configurer [String]
+configurePackageResolutions :: GHCConfiguration -> PackageDescription -> String -> Configurer [String]
 configurePackageResolutions tools package_description =
     configureUsingSectionWith config_reader config_writer automatic_configurer
   where
-    config_reader = fmap words (getConfig "packages")
-    config_writer = setConfig "packages" . unwords
-    automatic_configurer Nothing =
+    config_reader = fmap words (getConfig ghcPackagesKey)
+    config_writer = setConfig ghcPackagesKey . unwords
+    automatic_configurer _ =
         (\(unresolved_packages,resolved_packages) ->
             if null unresolved_packages
                 then Right resolved_packages
@@ -350,7 +362,7 @@ configurePackageResolutions tools package_description =
 -- @-node:gcross.20091121210308.2023:Package Queries
 -- @+node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.2032:reportUnknownModules
-reportUnknownModules :: GHCTools -> String -> [String] -> ErrorMessage
+reportUnknownModules :: GHCConfiguration -> String -> [String] -> ErrorMessage
 reportUnknownModules tools source_name =
     errorMessage ("tracing the following module dependencies for " ++ source_name)
     .
@@ -366,7 +378,7 @@ reportUnknownModules tools source_name =
 -- @+node:gcross.20091121210308.1275:Tools
 -- @+node:gcross.20091121210308.2022:ghcCompile
 ghcCompile ::
-    GHCTools ->
+    GHCConfiguration ->
     [String] ->
     PackageModules ->
     Resources ->
@@ -471,7 +483,7 @@ ghcCompile
 -- @-node:gcross.20091121210308.2022:ghcCompile
 -- @+node:gcross.20091121210308.2038:ghcCompileAll
 ghcCompileAll ::
-    GHCTools ->
+    GHCConfiguration ->
     [String] ->
     PackageModules ->
     FilePath ->
@@ -508,7 +520,7 @@ ghcCompileAll
 -- @-node:gcross.20091121210308.2038:ghcCompileAll
 -- @+node:gcross.20091127142612.1402:ghcLinkProgram
 ghcLinkProgram ::
-    GHCTools ->
+    GHCConfiguration ->
     [String] ->
     FilePath ->
     [Resource] ->

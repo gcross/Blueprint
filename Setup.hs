@@ -36,9 +36,9 @@ import Blueprint.Tools.Haddock
 -- @+others
 -- @+node:gcross.20091129000542.1484:Options
 options =
-    [   arToolsOptions "ar Tools"
-    ,   ghcToolsOptions "GHC Tools"
-    ,   haddockToolsOptions "Haddock Tools"
+    [   arOptions
+    ,   ghcOptions
+    ,   haddockOptions
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
@@ -66,10 +66,10 @@ targets =
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
     (ghc_tools,ar_tools,haddock_tools) <- 
         liftA3 (,,)
-            (configureUsingSection "GHC" "GHC Tools")
-            (configureUsingSection "ar" "ar Tools")
-            (configureUsingSection "Haddock" "Haddock Tools")
-    package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC" ""
+            (configureUsingSection "GHC")
+            (configureUsingSection "ar")
+            (configureUsingSection "Haddock")
+    package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC"
     return (ghc_tools,ar_tools,haddock_tools,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128201230.1465:reconfigure

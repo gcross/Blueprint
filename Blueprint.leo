@@ -27,6 +27,7 @@
 <v t="gcross.20091122100142.1360"><vh>@thin Ar.hs</vh></v>
 <v t="gcross.20091121204836.1242"><vh>@thin GHC.hs</vh></v>
 <v t="gcross.20091123114318.1335"><vh>@thin GCC.hs</vh></v>
+<v t="gcross.20091129000542.1552"><vh>@thin GFortran.hs</vh></v>
 <v t="gcross.20091128000856.1464"><vh>@thin Haddock.hs</vh></v>
 </v>
 </v>

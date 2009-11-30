@@ -31,32 +31,34 @@ import Blueprint.Tools.GHC
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091129000542.1581:Keys
+haddockOptionSectionKey = makeOptionSectionKey "Haddock"
+haddockConfigurationKey = makeConfigurationKey "path to hadhock"
+-- @-node:gcross.20091129000542.1581:Keys
 -- @+node:gcross.20091128000856.1467:Types
--- @+node:gcross.20091128000856.1468:HaddockTools
-data HaddockTools = HaddockTools
-    {   haddockPath :: FilePath
-    } deriving (Show)
--- @-node:gcross.20091128000856.1468:HaddockTools
+-- @+node:gcross.20091128000856.1468:HaddockConfiguration
+data HaddockConfiguration = HaddockConfiguration { haddockPath :: FilePath } deriving (Show)
+-- @-node:gcross.20091128000856.1468:HaddockConfiguration
 -- @-node:gcross.20091128000856.1467:Types
 -- @+node:gcross.20091128000856.1469:Instances
--- @+node:gcross.20091128000856.1470:ConfigurationData HaddockTools
-instance ConfigurationData HaddockTools where
-    readConfig = liftM HaddockTools (getConfig "path to haddock")
-    writeConfig = (setConfig "path to haddock" . haddockPath)
--- @-node:gcross.20091128000856.1470:ConfigurationData HaddockTools
--- @+node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockTools
-instance AutomaticallyConfigurable HaddockTools where
-    automaticallyConfigure = simpleSearchForProgram HaddockTools "HaddockTools" "haddock"
--- @-node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockTools
+-- @+node:gcross.20091128000856.1470:ConfigurationData HaddockConfiguration
+instance ConfigurationData HaddockConfiguration where
+    readConfig  = simpleReadConfig  haddockConfigurationKey HaddockConfiguration
+    writeConfig = simpleWriteConfig haddockConfigurationKey haddockPath
+-- @-node:gcross.20091128000856.1470:ConfigurationData HaddockConfiguration
+-- @+node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockConfiguration
+instance AutomaticallyConfigurable HaddockConfiguration where
+    automaticallyConfigure = simpleSearchForProgram haddockOptionSectionKey HaddockConfiguration "haddock"
+-- @-node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockConfiguration
 -- @-node:gcross.20091128000856.1469:Instances
 -- @+node:gcross.20091129000542.1510:Options processing
-haddockToolsOptions = makeSimpleOptionSection "haddock"
+haddockOptions = makeSimpleOptionSectionForProgram "haddock" haddockOptionSectionKey
 -- @-node:gcross.20091129000542.1510:Options processing
 -- @+node:gcross.20091128000856.1472:Tools
 -- @+node:gcross.20091128000856.1473:createDocumentation
 createDocumentation ::
-    HaddockTools ->
-    GHCTools ->
+    HaddockConfiguration ->
+    GHCConfiguration ->
     [String] ->
     [String] ->
     FilePath ->

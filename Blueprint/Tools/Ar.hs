@@ -34,29 +34,33 @@ import Blueprint.Resources
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091129000542.1572:Keys
+arOptionSectionKey = makeOptionSectionKey "ar"
+arConfigurationKey = makeConfigurationKey "path to ar"
+-- @-node:gcross.20091129000542.1572:Keys
 -- @+node:gcross.20091122100142.1363:Types
--- @+node:gcross.20091122100142.1364:ArTools
-data ArTools = ArTools { arPath :: FilePath } deriving (Show)
--- @-node:gcross.20091122100142.1364:ArTools
+-- @+node:gcross.20091122100142.1364:ArConfiguration
+data ArConfiguration = ArConfiguration { arPath :: FilePath } deriving (Show)
+-- @-node:gcross.20091122100142.1364:ArConfiguration
 -- @-node:gcross.20091122100142.1363:Types
 -- @+node:gcross.20091128000856.1422:Instances
--- @+node:gcross.20091128000856.1423:ConfigurationData ArTools
-instance ConfigurationData ArTools where
-    readConfig = liftM ArTools (getConfig "path to ar")
-    writeConfig = (setConfig "path to ar" . arPath)
--- @-node:gcross.20091128000856.1423:ConfigurationData ArTools
--- @+node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
-instance AutomaticallyConfigurable ArTools where
-    automaticallyConfigure = simpleSearchForProgram ArTools "ArTools" "ar"
--- @-node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
+-- @+node:gcross.20091128000856.1423:ConfigurationData ArConfiguration
+instance ConfigurationData ArConfiguration where
+    readConfig  = simpleReadConfig  arConfigurationKey ArConfiguration 
+    writeConfig = simpleWriteConfig arConfigurationKey arPath
+-- @-node:gcross.20091128000856.1423:ConfigurationData ArConfiguration
+-- @+node:gcross.20091128000856.1424:AutomaticallyConfigurable ArConfiguration
+instance AutomaticallyConfigurable ArConfiguration where
+    automaticallyConfigure = simpleSearchForProgram arOptionSectionKey ArConfiguration "ar"
+-- @-node:gcross.20091128000856.1424:AutomaticallyConfigurable ArConfiguration
 -- @-node:gcross.20091128000856.1422:Instances
 -- @+node:gcross.20091129000542.1502:Options processing
-arToolsOptions = makeSimpleOptionSection "ar"
+arOptions = makeSimpleOptionSectionForProgram "ar" arOptionSectionKey
 -- @-node:gcross.20091129000542.1502:Options processing
 -- @+node:gcross.20091122100142.1367:Tools
 -- @+node:gcross.20091122100142.1368:formStaticLibrary
 formStaticLibrary ::
-    ArTools ->
+    ArConfiguration ->
     FilePath ->
     [Resource] ->
     String ->
