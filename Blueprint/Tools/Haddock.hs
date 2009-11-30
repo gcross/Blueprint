@@ -25,6 +25,7 @@ import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Error
 import Blueprint.Resources
+import Blueprint.Options
 import Blueprint.Tools.GHC
 -- @-node:gcross.20091128000856.1466:<< Import needed modules >>
 -- @nl
@@ -45,14 +46,12 @@ instance ConfigurationData HaddockTools where
 -- @-node:gcross.20091128000856.1470:ConfigurationData HaddockTools
 -- @+node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockTools
 instance AutomaticallyConfigurable HaddockTools where
-    automaticallyConfigure Nothing = unsafePerformIO $ do
-        maybe_path_to_haddock <- findExecutable "haddock"
-        return $ 
-            case maybe_path_to_haddock of
-                Nothing -> Left $ errorMessageText "configuring HaddockTools" "haddock was not found in the path!"
-                Just path_to_haddock -> Right $ HaddockTools path_to_haddock
+    automaticallyConfigure = simpleSearchForProgram HaddockTools "HaddockTools" "haddock"
 -- @-node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockTools
 -- @-node:gcross.20091128000856.1469:Instances
+-- @+node:gcross.20091129000542.1510:Options processing
+haddockToolsOptions = makeSimpleOptionSection "haddock"
+-- @-node:gcross.20091129000542.1510:Options processing
 -- @+node:gcross.20091128000856.1472:Tools
 -- @+node:gcross.20091128000856.1473:createDocumentation
 createDocumentation ::

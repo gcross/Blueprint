@@ -38,6 +38,7 @@ import Blueprint.Tools.Haddock
 options =
     [   arToolsOptions "ar Tools"
     ,   ghcToolsOptions "GHC Tools"
+    ,   haddockToolsOptions "Haddock Tools"
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
@@ -63,12 +64,13 @@ targets =
     ]
 -- @+node:gcross.20091128000856.1449:configure
 configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "Blueprint.cfg" options $ do
-    (ghc_tools,ar_tools) <- 
-        liftA2 (,)
+    (ghc_tools,ar_tools,haddock_tools) <- 
+        liftA3 (,,)
             (configureUsingSection "GHC" "GHC Tools")
             (configureUsingSection "ar" "ar Tools")
+            (configureUsingSection "Haddock" "Haddock Tools")
     package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC" ""
-    return (ghc_tools,ar_tools,package_resolutions)
+    return (ghc_tools,ar_tools,haddock_tools,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128201230.1465:reconfigure
 reconfigure = unsafePerformIO $ do
@@ -77,7 +79,7 @@ reconfigure = unsafePerformIO $ do
     return configure
 -- @-node:gcross.20091128201230.1465:reconfigure
 -- @+node:gcross.20091128000856.1450:build
-build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
+build = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
     let Right package_modules = getPackages ghc_tools package_resolutions
         compiled_resources = 
             ghcCompileAll
@@ -117,8 +119,7 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
 rebuild = clean `pseq` build
 -- @-node:gcross.20091129000542.1506:rebuild
 -- @+node:gcross.20091128000856.1474:haddock
-haddock = do
-    ((ghc_tools,_,_),haddock_tools) <- configure <^(,)^> (runConfigurer "Blueprint.cfg" noOptions $ configureUsingSection "GHC" "")
+haddock = configure >>= \(ghc_tools,ar_tools,haddock_tools,package_resolutions) ->
     resourceDigest $
         createDocumentation
             haddock_tools

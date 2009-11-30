@@ -190,6 +190,24 @@ configureUsingSectionWith
                 tell . A . applyWriterToConfig section_name . config_writer $ configuration
                 return configuration
 -- @-node:gcross.20091128201230.1464:configureUsingSectionWith
+-- @+node:gcross.20091129000542.1507:simpleSearchForProgram
+simpleSearchForProgram :: (FilePath -> a) -> String -> String -> Maybe Dynamic -> Either ErrorMessage a
+simpleSearchForProgram constructor tool_name program_name maybe_option =
+    case maybe_option of
+        Just wrapped_path ->
+            case unwrapDynamic wrapped_path of
+                Nothing -> searchForProgram
+                Just path -> Right $ constructor path
+        Nothing -> searchForProgram
+  where
+    searchForProgram =
+        case findProgramInPath program_name of
+            Just path -> Right $ constructor path
+            Nothing ->
+                leftErrorMessageText
+                    ("configuring " ++ tool_name)
+                    (show program_name ++ " was not found in the path")
+-- @-node:gcross.20091129000542.1507:simpleSearchForProgram
 -- @-node:gcross.20091126122246.1379:Functions
 -- @-others
 -- @-node:gcross.20091123215917.1369:@thin Configuration.hs

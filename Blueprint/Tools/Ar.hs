@@ -47,31 +47,11 @@ instance ConfigurationData ArTools where
 -- @-node:gcross.20091128000856.1423:ConfigurationData ArTools
 -- @+node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
 instance AutomaticallyConfigurable ArTools where
-    automaticallyConfigure (Just wrapped_path_to_ar) =
-        case unwrapDynamic wrapped_path_to_ar of
-            Nothing -> automaticallyConfigure Nothing
-            Just path_to_ar -> Right $ ArTools path_to_ar
-    automaticallyConfigure Nothing
-      | (Just path_to_ar) <- findProgramInPath "ar"
-        = Right $ ArTools path_to_ar
-      | otherwise
-        = leftErrorMessageText "configuring ArTools" "ar was not found in the path!"
+    automaticallyConfigure = simpleSearchForProgram ArTools "ArTools" "ar"
 -- @-node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
 -- @-node:gcross.20091128000856.1422:Instances
 -- @+node:gcross.20091129000542.1502:Options processing
-arToolsOptions section_heading =
-    OptionSection
-    {   optionSectionHeading = section_heading
-    ,   optionSectionOptions =
-        [   Option "ar"
-                [] ["with-ar"]
-                (ArgumentRequired "PROGRAM")
-                "location of ar"
-        ]
-    ,   optionSectionPostprocessor = postprocessOptions
-    }
-  where
-    postprocessOptions = fmap toDyn . lookupOptionAndVerifyFileExists "ar"
+arToolsOptions = makeSimpleOptionSection "ar"
 -- @-node:gcross.20091129000542.1502:Options processing
 -- @+node:gcross.20091122100142.1367:Tools
 -- @+node:gcross.20091122100142.1368:formStaticLibrary

@@ -366,6 +366,21 @@ lookupOptionAndVerifyFileExists option_name option_map =
                 else Left $ text ("There is no file located at " ++ show location)
         _ -> error "Options were incorrectly parsed."
 -- @-node:gcross.20091129000542.1504:lookupOptionAndVerifyFileExists
+-- @+node:gcross.20091129000542.1508:makeSimpleOptionSection
+makeSimpleOptionSection program_name section_heading =
+    OptionSection
+    {   optionSectionHeading = section_heading
+    ,   optionSectionOptions =
+        [   Option program_name
+                [] ["with-" ++ program_name]
+                (ArgumentRequired "PROGRAM")
+                ("location of " ++ program_name)
+        ]
+    ,   optionSectionPostprocessor = postprocessOptions
+    }
+  where
+    postprocessOptions = fmap toDyn . lookupOptionAndVerifyFileExists program_name
+-- @-node:gcross.20091129000542.1508:makeSimpleOptionSection
 -- @-node:gcross.20091129000542.1455:Functions
 -- @-others
 -- @-node:gcross.20091129000542.1450:@thin Options.hs
