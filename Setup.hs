@@ -60,12 +60,12 @@ targets =
     ,target "distclean" distclean
     ]
 -- @+node:gcross.20091128000856.1449:configure
-configure = runConfigurer "Blueprint.cfg" $ do
+configure = runConfigurer "Blueprint.cfg" noOptions $ do
     (ghc_tools,ar_tools) <- 
         liftA2 (,)
-            (configureUsingSection "GHC")
-            (configureUsingSection "Binutils")
-    package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC"
+            (configureUsingSection "GHC" "")
+            (configureUsingSection "Binutils" "")
+    package_resolutions <- configurePackageResolutions ghc_tools package_description "GHC" ""
     return (ghc_tools,ar_tools,package_resolutions)
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128201230.1465:reconfigure
@@ -113,7 +113,7 @@ build = configure >>= \(ghc_tools,ar_tools,package_resolutions) ->
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091128000856.1474:haddock
 haddock = do
-    ((ghc_tools,_,_),haddock_tools) <- configure <^(,)^> (runConfigurer "Blueprint.cfg" $ configureUsingSection "GHC")
+    ((ghc_tools,_,_),haddock_tools) <- configure <^(,)^> (runConfigurer "Blueprint.cfg" noOptions $ configureUsingSection "GHC" "")
     resourceDigest $
         createDocumentation
             haddock_tools

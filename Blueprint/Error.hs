@@ -85,18 +85,27 @@ formatMessageWithHeading (heading,message) =
     <$$>
     indent 4 message
 -- @-node:gcross.20091128000856.1427:formatMessageWithHeading
--- @+node:gcross.20091128000856.1428:errorMessage
+-- @+node:gcross.20091128000856.1428:errorMessage / leftErrorMessage
 errorMessage :: String -> Doc -> ErrorMessage
 errorMessage heading message = Map.singleton (toAtom heading) message
--- @-node:gcross.20091128000856.1428:errorMessage
--- @+node:gcross.20091128000856.1429:errorMessageText
+
+leftErrorMessage :: String -> Doc -> Either ErrorMessage a
+leftErrorMessage heading = Left . errorMessage heading
+-- @-node:gcross.20091128000856.1428:errorMessage / leftErrorMessage
+-- @+node:gcross.20091128000856.1429:errorMessageText / leftErrorMessageText
 errorMessageText :: String -> String -> ErrorMessage
 errorMessageText heading = errorMessage heading . text
--- @-node:gcross.20091128000856.1429:errorMessageText
--- @+node:gcross.20091128000856.1431:errorMessageTextWithLines
+
+leftErrorMessageText :: String -> String -> Either ErrorMessage a
+leftErrorMessageText heading = Left . errorMessageText heading
+-- @-node:gcross.20091128000856.1429:errorMessageText / leftErrorMessageText
+-- @+node:gcross.20091128000856.1431:errorMessageTextWithLines / leftErrorMessageTextWithLines
 errorMessageTextWithLines :: String -> String -> ErrorMessage
 errorMessageTextWithLines heading = errorMessage heading . vcat . map text . lines
--- @-node:gcross.20091128000856.1431:errorMessageTextWithLines
+
+leftErrorMessageTextWithLines :: String -> String -> Either ErrorMessage a
+leftErrorMessageTextWithLines heading = Left . errorMessageTextWithLines heading
+-- @-node:gcross.20091128000856.1431:errorMessageTextWithLines / leftErrorMessageTextWithLines
 -- @-node:gcross.20091127142612.1396:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1383:@thin Error.hs

@@ -54,7 +54,7 @@ instance ConfigurationData GCCTools where
 -- @-node:gcross.20091128000856.1437:ConfigurationData GCCTools
 -- @+node:gcross.20091128000856.1438:AutomaticallyConfigurable GCCTools
 instance AutomaticallyConfigurable GCCTools where
-    automaticallyConfigure = unsafePerformIO $ do
+    automaticallyConfigure Nothing = unsafePerformIO $ do
         maybe_path_to_gcc <- findExecutable "gcc"
         maybe_path_to_gfortran <- findExecutable "gfortran"
         return $ 

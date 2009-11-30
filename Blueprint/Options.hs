@@ -37,6 +37,13 @@ import Blueprint.Error
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091129000542.1489:Values
+-- @+node:gcross.20091129000542.1490:noOptions
+noOptions :: ParsedOptions
+noOptions = Map.empty
+-- @nonl
+-- @-node:gcross.20091129000542.1490:noOptions
+-- @-node:gcross.20091129000542.1489:Values
 -- @+node:gcross.20091129000542.1453:Types
 -- @+node:gcross.20091129000542.1454:Option
 data Option = Option
@@ -63,6 +70,9 @@ data ArgumentExpectation =
 -- @+node:gcross.20091129000542.1473:ParsedOptionValue
 type ParsedOptionValue = Map String (Map String [Maybe String]) -> Map String (Map String [Maybe String])
 -- @-node:gcross.20091129000542.1473:ParsedOptionValue
+-- @+node:gcross.20091129000542.1496:ParsedOptions
+type ParsedOptions = Map String Dynamic
+-- @-node:gcross.20091129000542.1496:ParsedOptions
 -- @+node:gcross.20091129000542.1472:OptionDescriptor
 type OptionDescriptor = GetOpt.OptDescr ParsedOptionValue
 -- @nonl
@@ -225,7 +235,7 @@ parseCommandLineOptions :: [OptionSection] -> Either ErrorMessage (([String],Map
 parseCommandLineOptions = parseOptions (tail . unsafePerformIO $ getArgs)
 -- @-node:gcross.20091129000542.1476:parseCommandLineOptions
 -- @+node:gcross.20091129000542.1466:parseOptions
-parseOptions :: [String] -> [OptionSection] -> Either ErrorMessage (([String],Map String Dynamic))
+parseOptions :: [String] -> [OptionSection] -> Either ErrorMessage ([String],ParsedOptions)
 parseOptions args sections_with_possible_duplicates = do
     when (not . null $ conflicts) $
         -- @        << Report that there were conflicting options. >>

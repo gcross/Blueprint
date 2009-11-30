@@ -14,7 +14,9 @@ module Blueprint.Miscellaneous where
 import Control.Parallel
 import Control.Parallel.Strategies
 
+import Data.Dynamic
 import Data.List
+import Data.Typeable
 import Data.Version
 
 import Text.ParserCombinators.ReadP
@@ -45,6 +47,10 @@ myParListWHNF list = go list
 readVersion :: String -> Version
 readVersion = fst . last . readP_to_S parseVersion
 -- @-node:gcross.20091128000856.1484:readVersion
+-- @+node:gcross.20091129000542.1499:unwrapDynamic
+unwrapDynamic :: Typeable a => Dynamic -> a
+unwrapDynamic = flip fromDyn (error "Programmer error:  Unable to cast to the expected type!")
+-- @-node:gcross.20091129000542.1499:unwrapDynamic
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs

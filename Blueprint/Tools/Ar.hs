@@ -4,6 +4,7 @@
 
 -- @<< Language extensions >>
 -- @+node:gcross.20091122100142.1361:<< Language extensions >>
+{-# LANGUAGE MultiParamTypeClasses #-}
 -- @-node:gcross.20091122100142.1361:<< Language extensions >>
 -- @nl
 
@@ -40,7 +41,7 @@ instance ConfigurationData ArTools where
 -- @-node:gcross.20091128000856.1423:ConfigurationData ArTools
 -- @+node:gcross.20091128000856.1424:AutomaticallyConfigurable ArTools
 instance AutomaticallyConfigurable ArTools where
-    automaticallyConfigure = unsafePerformIO $ do
+    automaticallyConfigure Nothing = unsafePerformIO $ do
         maybe_path_to_ar <- findExecutable "ar"
         return $ 
             case maybe_path_to_ar of

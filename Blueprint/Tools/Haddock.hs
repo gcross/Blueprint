@@ -45,7 +45,7 @@ instance ConfigurationData HaddockTools where
 -- @-node:gcross.20091128000856.1470:ConfigurationData HaddockTools
 -- @+node:gcross.20091128000856.1471:AutomaticallyConfigurable HaddockTools
 instance AutomaticallyConfigurable HaddockTools where
-    automaticallyConfigure = unsafePerformIO $ do
+    automaticallyConfigure Nothing = unsafePerformIO $ do
         maybe_path_to_haddock <- findExecutable "haddock"
         return $ 
             case maybe_path_to_haddock of

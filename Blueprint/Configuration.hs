@@ -23,13 +23,19 @@ import Control.Monad.Trans
 import Control.Monad.Writer
 
 import Data.ConfigFile
+import Data.Dynamic
 import Data.Either.Unwrap
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Typeable
 
 import System.IO
 import System.IO.Error
 import System.IO.Unsafe
 
 import Blueprint.Error
+import Blueprint.Miscellaneous
+import Blueprint.Options
 -- @-node:gcross.20091126122246.1381:<< Import needed modules >>
 -- @nl
 
@@ -42,7 +48,7 @@ class ConfigurationData a where
 -- @-node:gcross.20091123215917.1371:ConfigurationData
 -- @+node:gcross.20091128000856.1408:AutomaticallyConfigurable
 class AutomaticallyConfigurable a where
-    automaticallyConfigure :: Either ErrorMessage a
+    automaticallyConfigure :: Maybe Dynamic -> Either ErrorMessage a
 -- @-node:gcross.20091128000856.1408:AutomaticallyConfigurable
 -- @-node:gcross.20091123215917.1370:Classes
 -- @+node:gcross.20091126122246.1387:Instances
@@ -66,8 +72,14 @@ instance Applicative ConfigurationDataWriter where
 type ConfigurationDataReader = ErrorT CPError (Reader (ConfigParser,String))
 type ConfigurationDataWriter = WriterT (Automorphism ConfigParser) (Reader String)
 -- @-node:gcross.20091123215917.1373:ConfigurationDataReader/Writer
+-- @+node:gcross.20091129000542.1488:Environment
+data Environment = Environment
+    {   environmentConfigParser :: ConfigParser
+    ,   environmentOptions :: Map String Dynamic
+    }
+-- @-node:gcross.20091129000542.1488:Environment
 -- @+node:gcross.20091128000856.1411:Configurer
-type Configurer = ErrorT ErrorMessage (RWS ConfigParser (Automorphism ConfigParser) ())
+type Configurer = ErrorT ErrorMessage (RWS Environment (Automorphism ConfigParser) ())
 
 -- @-node:gcross.20091128000856.1411:Configurer
 -- @+node:gcross.20091126122246.1389:Automorphism
@@ -111,8 +123,8 @@ applyReaderToConfig :: ConfigParser -> String -> ConfigurationDataReader a -> Ei
 applyReaderToConfig config_parser section_name = ($ (config_parser,section_name)) . runReader . runErrorT
 -- @-node:gcross.20091127142612.1424:applyReaderToConfig
 -- @+node:gcross.20091128000856.1412:runConfigurer
-runConfigurer :: FilePath -> Configurer a -> Either ErrorMessage a
-runConfigurer configuration_filepath configurer = unsafePerformIO $ do
+runConfigurer :: FilePath -> ParsedOptions -> Configurer a -> Either ErrorMessage a
+runConfigurer configuration_filepath parsed_options configurer = unsafePerformIO $ do
     either_old_configuration <- 
         fmap (mapLeft (errorMessageText ("parsing configuration file " ++ configuration_filepath) . show)) 
              (readfile emptyCP configuration_filepath)
@@ -125,7 +137,11 @@ runConfigurer configuration_filepath configurer = unsafePerformIO $ do
     case either_old_configuration of
         Left error_message -> return (Left error_message)
         Right old_configuration ->  
-            let (result,(),A modifyConfiguration) = runRWS (runErrorT configurer) old_configuration ()
+            let (result,(),A modifyConfiguration) =
+                    runRWS
+                        (runErrorT configurer)
+                        (Environment old_configuration parsed_options)
+                        ()
             in do
                 writeFile configuration_filepath . to_string . modifyConfiguration $ old_configuration
                 return result
@@ -135,19 +151,29 @@ cpErrorMessage :: String -> CPError -> ErrorMessage
 cpErrorMessage section_name = errorMessageText ("parsing section " ++ section_name) . show
 -- @-node:gcross.20091128000856.1414:cpErrorMessage
 -- @+node:gcross.20091128000856.1415:configureUsingSection
-configureUsingSection :: (ConfigurationData a, AutomaticallyConfigurable a) => String -> Configurer a
+configureUsingSection ::
+    (ConfigurationData a, AutomaticallyConfigurable a) =>
+    String ->
+    String ->
+    Configurer a
 configureUsingSection = configureUsingSectionWith readConfig writeConfig automaticallyConfigure
-
 -- @-node:gcross.20091128000856.1415:configureUsingSection
 -- @+node:gcross.20091128201230.1464:configureUsingSectionWith
 configureUsingSectionWith ::
     ConfigurationDataReader a ->
     (a -> ConfigurationDataWriter ()) ->
-    (Either ErrorMessage a) ->
+    (Maybe Dynamic -> Either ErrorMessage a) ->
+    String ->
     String ->
     Configurer a
-configureUsingSectionWith config_reader config_writer automatic_configurer section_name = do
-    config_parser <- lift ask
+configureUsingSectionWith
+    config_reader
+    config_writer
+    automatic_configurer
+    section_name
+    options_section_name
+    = do
+    config_parser <- lift . asks $ environmentConfigParser
     case applyReaderToConfig config_parser section_name config_reader of
         Left cp_error ->
             case fst cp_error of
@@ -156,8 +182,9 @@ configureUsingSectionWith config_reader config_writer automatic_configurer secti
                 _ -> ErrorT (return . Left . cpErrorMessage section_name $ cp_error)
         Right result -> return result
   where
-    reconfigure =
-        case automatic_configurer of
+    reconfigure = do
+        options_data <- lift . asks $ environmentOptions               
+        case automatic_configurer . Map.lookup options_section_name $ options_data of
             Left error_message -> ErrorT (return . Left $ error_message)
             Right configuration -> do
                 tell . A . applyWriterToConfig section_name . config_writer $ configuration

@@ -101,18 +101,80 @@ instance ConfigurationData GHCTools where
 -- @-node:gcross.20091127142612.1406:ConfigurationData GHCTools
 -- @+node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
 instance AutomaticallyConfigurable GHCTools where
-    automaticallyConfigure = unsafePerformIO $ do
-        maybe_path_to_ghc <- findExecutable "ghc"
-        case maybe_path_to_ghc of
-            Nothing -> return . Left . errorMessageText "configuring GHCTools" $ "ghc was not found in the path!"
-            Just path_to_ghc -> do
-                version_as_string <- readProcess path_to_ghc ["--numeric-version"] ""
-                return . Right $
-                    GHCTools
-                        {   ghcVersion = readVersion version_as_string
-                        ,   ghcCompilerPath = path_to_ghc
-                        ,   ghcPackageQueryPath = path_to_ghc ++ "-pkg"
-                        }
+    automaticallyConfigure wrapped_options =
+        case fmap unwrapDynamic wrapped_options of
+            Nothing -> configureFromScratch
+            Just (GHCToolsOptions Nothing Nothing) -> configureFromScratch
+            Just (GHCToolsOptions (Just path_to_ghc) (Just path_to_ghc_pkg)) -> verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
+            Just (GHCToolsOptions (Just path_to_ghc) Nothing) -> configureUsingPath path_to_ghc
+            Just (GHCToolsOptions Nothing (Just path_to_ghc_pkg)) -> configureUsingPath path_to_ghc_pkg
+      where
+        -- @        @+others
+        -- @+node:gcross.20091129000542.1491:configurationError
+        configurationError = leftErrorMessageText "configuring GHCTools"
+        -- @nonl
+        -- @-node:gcross.20091129000542.1491:configurationError
+        -- @+node:gcross.20091129000542.1492:configureFromScratch
+        configureFromScratch :: Either ErrorMessage GHCTools
+        configureFromScratch =
+            case unsafePerformIO . findExecutable $ "ghc" of
+                Nothing -> configurationError "Unable to find ghc in the path"
+                Just path_to_ghc -> configureUsingPath path_to_ghc
+        -- @-node:gcross.20091129000542.1492:configureFromScratch
+        -- @+node:gcross.20091129000542.1493:configureUsingPath
+        configureUsingPath = configureUsingDirectory . takeDirectory
+        -- @nonl
+        -- @-node:gcross.20091129000542.1493:configureUsingPath
+        -- @+node:gcross.20091129000542.1494:configureUsingDirectory
+        configureUsingDirectory :: FilePath -> Either ErrorMessage GHCTools
+        configureUsingDirectory directory_to_search = do
+            path_to_ghc <- findProgram "ghc"
+            path_to_ghc_pkg <- findProgram "ghc-pkg"
+            verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg
+          where
+            findProgram program_name
+                | unsafePerformIO . doesFileExist $ first_location_to_check
+                    = Right first_location_to_check
+                | Just location <- unsafePerformIO . findExecutable $ program_name
+                    = Right location
+                | otherwise
+                    = configurationError $ "Unable to find " ++ show program_name
+              where
+                first_location_to_check = directory_to_search </> program_name
+        -- @nonl
+        -- @-node:gcross.20091129000542.1494:configureUsingDirectory
+        -- @+node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
+        verifyConsistentVersionsAndReturn :: FilePath -> FilePath -> Either ErrorMessage GHCTools
+        verifyConsistentVersionsAndReturn path_to_ghc path_to_ghc_pkg =
+            let ghc_version = getVersionOf path_to_ghc
+                ghc_pkg_version = getVersionOf path_to_ghc_pkg
+            in if ghc_version == ghc_pkg_version 
+                    then Right $
+                        GHCTools
+                            {   ghcVersion = ghc_version
+                            ,   ghcCompilerPath = path_to_ghc
+                            ,   ghcPackageQueryPath = path_to_ghc_pkg
+                            }
+                    else configurationError $
+                            "'ghc' and 'ghc-pkg' have different version! ("
+                            ++ showVersion ghc_version ++
+                            " /= "
+                            ++ showVersion ghc_pkg_version ++
+                            ")"
+          where
+            getVersionOf path_to_program =
+                readVersion
+                .
+                last
+                .
+                words
+                .
+                unsafePerformIO
+                $
+                readProcess path_to_program ["--version"] ""
+        -- @-node:gcross.20091129000542.1495:verifyConsistentVersionsAndReturn
+        -- @-others
+
 -- @-node:gcross.20091128000856.1410:AutomaticallyConfigurable GHCTools
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
@@ -243,13 +305,13 @@ readPackageDescription =
     Distribution.PackageDescription.Parse.readPackageDescription silent
 -- @-node:gcross.20091128201230.1459:readPackageDescription
 -- @+node:gcross.20091128201230.1461:configurePackageResolutions
-configurePackageResolutions :: GHCTools -> PackageDescription -> String -> Configurer [String]
+configurePackageResolutions :: GHCTools -> PackageDescription -> String -> String -> Configurer [String]
 configurePackageResolutions tools package_description =
     configureUsingSectionWith config_reader config_writer automatic_configurer
   where
     config_reader = fmap words (getConfig "packages")
     config_writer = setConfig "packages" . unwords
-    automatic_configurer =
+    automatic_configurer Nothing =
         (\(unresolved_packages,resolved_packages) ->
             if null unresolved_packages
                 then Right resolved_packages
