@@ -172,7 +172,7 @@ formatSectionPostprocessingErrorMessage :: String -> Doc -> Doc
 formatSectionPostprocessingErrorMessage = curry $
     uncurry (</>)
     .
-    (text *** nest 4)
+    (text *** indent 4)
 -- @-node:gcross.20091129000542.1475:formatSectionPostprocessingErrorMessage
 -- @+node:gcross.20091129000542.1461:findConflictingOptions
 findConflictingOptions :: [OptionSection] -> [(Either Char String, [(String,Int)])]
@@ -307,7 +307,7 @@ parseOptions args sections_with_possible_duplicates = do
         else
             Left
             .
-            errorMessage "post-processing options:"
+            errorMessage "validating options"
             .
             vcat
             .
