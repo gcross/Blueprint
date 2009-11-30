@@ -30,6 +30,7 @@
 <v t="gcross.20091121204836.1242"><vh>@thin GHC.hs</vh></v>
 <v t="gcross.20091128000856.1464"><vh>@thin Haddock.hs</vh></v>
 <v t="gcross.20091129000542.1642"><vh>@thin Installer.hs</vh></v>
+<v t="gcross.20091130051619.1559"><vh>@thin Ld.hs</vh></v>
 </v>
 </v>
 <v t="gcross.20091121210308.1297"><vh>@path tests</vh>

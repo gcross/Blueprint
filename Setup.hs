@@ -42,6 +42,7 @@ import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
 import Blueprint.Tools.Haddock
 import Blueprint.Tools.Installer
+import Blueprint.Tools.Ld
 -- @-node:gcross.20091128000856.1439:<< Import needed modules >>
 -- @nl
 
@@ -50,6 +51,7 @@ import Blueprint.Tools.Installer
 options =
     [   installerOptions
     ,   arOptions
+    ,   ldOptions
     ,   ghcOptions
     ,   haddockOptions
     ]
@@ -65,6 +67,7 @@ ghc_flags = ("-package-name="++qualified_package_name):bootstrap_ghc_flags
 data Configuration = Configuration
     {   ghcConfiguration :: GHCConfiguration
     ,   arConfiguration :: ArConfiguration
+    ,   ldConfiguration :: LdConfiguration
     ,   haddockConfiguration :: HaddockConfiguration
     ,   installerConfiguration :: InstallerConfiguration
     ,   packageDependencies :: [String]
@@ -117,11 +120,13 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
     configurations@
         (ghc_configuration
         ,ar_configuration
+        ,ld_configuration
         ,haddock_configuration
         ,install_configuration
-        ) <- (,,,)
+        ) <- (,,,,)
             <$> (configureUsingSection "GHC")
-            <*> (configureUsingSection "ar")
+            <*> (configureUsingSection "Binutils")
+            <*> (configureUsingSection "Binutils")
             <*> (configureUsingSection "Haddock")
             <*> (configureUsingSection "Installation Directories")
     package_dependencies <- configurePackageResolutions ghc_configuration package_description "GHC"
@@ -129,6 +134,7 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
         Configuration
             ghc_configuration
             ar_configuration
+            ld_configuration
             haddock_configuration
             install_configuration
             package_dependencies
@@ -145,14 +151,30 @@ build = configure >>= \configuration ->
                 "haskell-interfaces"
                 "digest-cache"
                 source_resources
+        object_resources =
+            map snd
+            .
+            filter ((=="o"). snd . fst)
+            .
+            Map.toList
+            $
+            compiled_resources
         library = formStaticLibrary
             (arConfiguration configuration)
             "digest-cache"
-            (map snd . filter ((=="o"). snd . fst) . Map.toList $ compiled_resources)
+            object_resources
             "libblueprint"
             "libraries/libblueprint.a"
+        ghci_library = linkIntoObject
+            (ldConfiguration configuration)
+            "digest-cache"
+            object_resources
+            "blueprint"
+            "libraries/blueprint.o"
     in do
-        attemptGetDigests [library] >> return (library,compiled_resources)
+        attemptGetDigests [library,ghci_library]
+        >>
+        return (library,ghci_library,compiled_resources)
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091129000542.1715:bootstrap
 bootstrap = configure >>= \configuration ->
@@ -189,7 +211,7 @@ bootstrap = configure >>= \configuration ->
 -- @+node:gcross.20091129000542.1706:install
 install = do
     configuration <- configure
-    (library_resource,compiled_resources) <- build
+    (library_resource,ghci_library_resource,compiled_resources) <- build
     let interface_resources = filter ((=="hi") . resourceType) . Map.elems $ compiled_resources
         installation_result =
             installSimplePackage
@@ -197,7 +219,10 @@ install = do
                 (installerConfiguration configuration)
                 package_description
                 (packageDependencies configuration)
-                (library_resource:interface_resources)
+                (library_resource
+                 :ghci_library_resource
+                 :interface_resources
+                )
     case installation_result of
         Nothing -> Right ()
         Just error_message -> Left error_message
