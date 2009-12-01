@@ -95,6 +95,10 @@ targets =
     [target "configure" configure
     ,target "reconfigure" $ makeReconfigureTarget configurationFilePath targets
     ,target "bootstrap" bootstrap
+    ,target "rebootstrap" $
+        (makeRemoveFilesAndDirectoriesTarget ["bootstrap"])
+        `thenTarget`
+        (toTarget bootstrap)
     ,target "build" build
     ,target "rebuild" $ makeRebuildTarget targets
     ,target "haddock" haddock
@@ -108,7 +112,6 @@ targets =
             ,"haddock"
             ,"bootstrap"
             ]
-            targets
     ,target "distclean" $
         makeDistCleanTarget
             [configurationFilePath
