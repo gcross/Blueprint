@@ -304,6 +304,12 @@ createDirectoryNoisilyIfMissing directory =
         createDirectoryIfMissing True directory
     )
 -- @-node:gcross.20091129000542.1710:createDirectoryNoisilyIfMissing
+-- @+node:gcross.20091130193227.2256:flagsFromPackageDependencies
+flagsFromPackageDependencies :: [String] -> [String]
+flagsFromPackageDependencies [] = []
+flagsFromPackageDependencies (package:rest) = "-package":package:flagsFromPackageDependencies rest
+-- @nonl
+-- @-node:gcross.20091130193227.2256:flagsFromPackageDependencies
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -726,6 +732,7 @@ ghcLinkProgram ::
     GHCConfiguration ->
     [String] ->
     FilePath ->
+    [String] ->
     [Resource] ->
     String ->
     FilePath ->
@@ -734,6 +741,7 @@ ghcLinkProgram
     tools
     options
     cache_directory
+    package_dependencies
     object_resources
     program_resource_name
     program_resource_filepath
@@ -757,6 +765,7 @@ ghcLinkProgram
         createDirectoryIfMissing True . takeDirectory $ program_resource_filepath
         let arguments = 
                 options ++
+                flagsFromPackageDependencies package_dependencies ++
                 ["-o",program_resource_filepath
                 ] ++
                 (map resourceFilePath object_resources)

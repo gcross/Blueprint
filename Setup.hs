@@ -201,8 +201,9 @@ bootstrap = configure >>= \configuration ->
 
         setup_program = ghcLinkProgram
             (ghcConfiguration configuration)
-            (((bootstrap_ghc_flags ++) . map ("-package" ++) . packageDependencies $ configuration))
+            bootstrap_ghc_flags
             "bootstrap/digest-cache"
+            (packageDependencies configuration)
             (findAllObjectDependenciesOf compiled_resources setup_object)
             "Setup"
             "Setup"
