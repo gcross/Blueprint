@@ -39,6 +39,10 @@ findProgramInPath = unsafePerformIO . findExecutable
 -- @+node:gcross.20091129000542.1699:isDirectoryAt
 isDirectoryAt = unsafePerformIO . doesDirectoryExist
 -- @-node:gcross.20091129000542.1699:isDirectoryAt
+-- @+node:gcross.20091130193227.1923:isDotFree
+isDotFree = notElem '.'
+-- @nonl
+-- @-node:gcross.20091130193227.1923:isDotFree
 -- @+node:gcross.20091129000542.1503:isFileAt
 isFileAt = unsafePerformIO . doesFileExist
 -- @-node:gcross.20091129000542.1503:isFileAt
