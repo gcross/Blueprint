@@ -12,7 +12,7 @@ Maintainer:     gcross@phys.washington.edu
 Stability:      experimental
 Homepage:       http://github.com/gcross/Blueprint
 Category:       Distribution
-Synopsis:       Preview of a new software build system based on lazy evaluations
+Synopsis:       Preview of a new build system.
 Build-Type:     Custom
 Build-Depends:  base == 4.1.*,
                 containers == 0.2.*,
