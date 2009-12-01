@@ -71,6 +71,7 @@ data Configuration = Configuration
     ,   haddockConfiguration :: HaddockConfiguration
     ,   installerConfiguration :: InstallerConfiguration
     ,   packageDependencies :: [String]
+    ,   packageModules :: PackageModules
     }
 -- @-node:gcross.20091129000542.1708:Configuration
 -- @-node:gcross.20091129000542.1707:Types
@@ -133,6 +134,7 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
             <*> (configureUsingSection "Haddock")
             <*> (configureUsingSection "Installation Directories")
     package_dependencies <- configurePackageResolutions ghc_configuration package_description "GHC"
+    package_modules <- configurePackageModules ghc_configuration package_dependencies "ZZZ - Please do not edit this unless you know what you are doing."
     return $
         Configuration
             ghc_configuration
@@ -141,15 +143,15 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
             haddock_configuration
             install_configuration
             package_dependencies
+            package_modules
 -- @-node:gcross.20091128000856.1449:configure
 -- @+node:gcross.20091128000856.1450:build
 build = configure >>= \configuration ->
-    let Right package_modules = getPackages <$> ghcConfiguration <*> packageDependencies $ configuration
-        compiled_resources = 
+    let compiled_resources = 
             ghcCompileAll
                 (ghcConfiguration configuration)
                 ghc_flags
-                package_modules
+                (packageModules configuration)
                 "objects"
                 "haskell-interfaces"
                 "digest-cache"
@@ -181,12 +183,11 @@ build = configure >>= \configuration ->
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091129000542.1715:bootstrap
 bootstrap = configure >>= \configuration ->
-    let Right package_modules = getPackages <$> ghcConfiguration <*> packageDependencies $ configuration
-        compiled_resources = 
+    let compiled_resources = 
             ghcCompileAll
                 (ghcConfiguration configuration)
                 bootstrap_ghc_flags
-                package_modules
+                (packageModules configuration)
                 "bootstrap/objects"
                 "bootstrap/haskell-interfaces"
                 "bootstrap/digest-cache"
@@ -195,7 +196,7 @@ bootstrap = configure >>= \configuration ->
             ghcCompile
                 (ghcConfiguration configuration)
                 bootstrap_ghc_flags
-                package_modules
+                (packageModules configuration)
                 compiled_resources
                 "bootstrap/objects"
                 "bootstrap/haskell-interfaces"

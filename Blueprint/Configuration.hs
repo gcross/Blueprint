@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- @-node:gcross.20091126122246.1386:<< Language extensions >>
 -- @nl
 
@@ -94,6 +95,10 @@ newtype ConfigurationKey = ConfigurationKey { unwrapConfigurationKey :: String }
 -- @-node:gcross.20091129000542.1573:ConfigurationKey
 -- @-node:gcross.20091123215917.1372:Types
 -- @+node:gcross.20091126122246.1379:Functions
+-- @+node:gcross.20091201134050.1974:signalRefreshNeeded
+signalRefreshNeeded :: (MonadError CPError m) => m a
+signalRefreshNeeded = throwError (NoOption undefined,undefined)
+-- @-node:gcross.20091201134050.1974:signalRefreshNeeded
 -- @+node:gcross.20091129000542.1574:makeConfigurationKey
 makeConfigurationKey = ConfigurationKey
 -- @-node:gcross.20091129000542.1574:makeConfigurationKey

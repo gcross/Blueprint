@@ -34,6 +34,8 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Version
 
 import Distribution.ModuleName
@@ -82,6 +84,8 @@ ghcVersionKey = makeConfigurationKey "ghc version"
 ghcCompilerPathKey = makeConfigurationKey "path to ghc"
 ghcPackageManagerKey = makeConfigurationKey "path to ghc-pkg"
 ghcPackagesKey = makeConfigurationKey "packages"
+ghcCachedPackageNamesKey = makeConfigurationKey "cached package names"
+ghcCachedPackageModulesKey = makeConfigurationKey "cached package modules"
 -- @-node:gcross.20091129000542.1587:Keys
 -- @+node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091121210308.1271:GHCConfiguration
@@ -99,7 +103,7 @@ data GHCOptions = GHCOptions
 
 -- @-node:gcross.20091129000542.1481:GHCOptions
 -- @+node:gcross.20091121210308.2025:PackageModules
-type PackageModules = Map String String
+type PackageModules = Set String
 -- @-node:gcross.20091121210308.2025:PackageModules
 -- @+node:gcross.20091128201230.1462:ResolvedPackages
 newtype ResolvedPackages = ResolvedPackages [String]
@@ -343,23 +347,13 @@ queryPackage tools field_name package_name =
     of (ExitSuccess,response,_) -> Just . filter (/= (field_name ++ ":")) . words $ response 
        _ -> Nothing
 -- @-node:gcross.20091121210308.2018:queryPackage
--- @+node:gcross.20091121210308.2019:getPackage
-getPackage :: GHCConfiguration -> String -> Maybe (Map String String)
-getPackage configuration name =
-    fmap (Map.fromList . map (flip (,) name))
+-- @+node:gcross.20091121210308.2019:getPackageModules
+getPackageModules :: GHCConfiguration -> String -> Maybe PackageModules
+getPackageModules configuration name =
+    fmap (Set.fromList)
     $
     queryPackage configuration "exposed-modules" name
-
--- @-node:gcross.20091121210308.2019:getPackage
--- @+node:gcross.20091121210308.2021:getPackages
-getPackages :: GHCConfiguration -> [String] -> Either [String] PackageModules
-getPackages tools names =
-    let either_packages =
-            flip map names $ \name -> maybe (Left name) Right (getPackage tools name)
-    in case partitionEithers either_packages of
-        ([],packages) -> Right . Map.unions $ packages
-        (not_found,_) -> Left not_found
--- @-node:gcross.20091121210308.2021:getPackages
+-- @-node:gcross.20091121210308.2019:getPackageModules
 -- @+node:gcross.20091121210308.2024:findPackagesExposingModule
 findPackagesExposingModule :: GHCConfiguration -> String -> [String]
 findPackagesExposingModule tools package_name =
@@ -431,6 +425,39 @@ configurePackageResolutions tools package_description =
                 Nothing -> Left (package_name,versions_found)
                 Just version -> Right $ package_name ++ "-" ++ showVersion version
 -- @-node:gcross.20091128201230.1461:configurePackageResolutions
+-- @+node:gcross.20091201134050.1973:configurePackageModules
+configurePackageModules :: GHCConfiguration -> [String] -> String -> Configurer PackageModules
+configurePackageModules configuration qualified_package_names =
+    configureUsingSectionWith config_reader config_writer automatic_configurer
+  where
+    sorted_package_names = sort qualified_package_names
+    config_reader =
+        fmap words (getConfig ghcCachedPackageNamesKey)
+        >>= \cached_package_names ->
+                if cached_package_names == sorted_package_names
+                    then fmap (Set.fromDistinctAscList . words) (getConfig ghcCachedPackageModulesKey)
+                    else signalRefreshNeeded
+    config_writer package_modules = do
+        setConfig ghcCachedPackageNamesKey . unwords $ sorted_package_names
+        setConfig ghcCachedPackageModulesKey . unwords . Set.toAscList $ package_modules
+    automatic_configurer _ =
+        mapBoth
+            (errorMessage "finding exposed modules for the following packages")
+            Set.unions
+        .
+        extractResultsOrError
+        .
+        myParListWHNF
+        .
+        map (
+            \qualified_package_name ->
+                case getPackageModules configuration qualified_package_name of
+                    Just package_modules -> Right package_modules
+                    Nothing -> Left . text $ qualified_package_name
+        )
+        $
+        qualified_package_names
+-- @-node:gcross.20091201134050.1973:configurePackageModules
 -- @+node:gcross.20091129000542.1711:registerPackage
 registerPackage :: GHCConfiguration -> InstalledPackageInfo -> IO (Maybe Doc)
 registerPackage configuration = do
@@ -637,7 +664,7 @@ ghcCompile
                 catMaybes
                 .
                 map (\module_name ->
-                    if Map.member module_name known_package_modules
+                    if Set.member module_name known_package_modules
                         then Nothing
                         else let resource_id = (module_name,"hi")
                               in if Map.member resource_id known_resources
