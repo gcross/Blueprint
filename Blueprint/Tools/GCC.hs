@@ -138,7 +138,7 @@ gccCompileAll
     new_resources = go old_resources (Map.elems old_resources)
     go accum_resources [] = accum_resources
     go accum_resources (resource:rest_resources) =
-        if resourceType (resource) == "c"
+        if resourceType (resource) `elem` ["c","cc","cpp","C"]
             then let object_resource =
                         gccCompile
                             tools
