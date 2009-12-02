@@ -21,6 +21,8 @@ import Control.Applicative
 import Control.Applicative.Infix
 import Control.Exception
 import Control.Monad
+import Control.Monad.Error
+import Control.Monad.Trans
 
 import Data.Array
 import qualified Data.ByteString.Lazy as L
@@ -30,6 +32,7 @@ import Data.Digest.Pure.MD5
 import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
+import Data.Function
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -70,6 +73,7 @@ import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
+import Blueprint.Tools
 import Blueprint.Tools.Installer
 
 import Debug.Trace
@@ -240,35 +244,6 @@ prefixWith :: String -> [String] -> [String]
 prefixWith _ [] = []
 prefixWith s list = s:intersperse s list
 -- @-node:gcross.20091122100142.1335:prefixWith
--- @+node:gcross.20091127142612.1403:findAllObjectDependenciesOf
-findAllObjectDependenciesOf :: Resources -> Resource -> [Resource]
-findAllObjectDependenciesOf known_resources object_resource =
-   Map.elems $ findAsMapAllObjectDependenciesOf known_resources object_resource
--- @-node:gcross.20091127142612.1403:findAllObjectDependenciesOf
--- @+node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
-findAsMapAllObjectDependenciesOf :: Resources -> Resource -> Map ResourceId Resource
-findAsMapAllObjectDependenciesOf known_resources object_resource =
-    Map.insert (resourceId object_resource) object_resource
-    .
-    Map.unions
-    .
-    catMaybes
-    .
-    map (\(resource_name,resource_type) ->
-        if resource_type /= "hi"
-            then Nothing
-            else
-                case Map.lookup (resource_name,"o") known_resources of
-                    Nothing ->
-                        error $ "Unable to find in known resources the dependent resource with id " ++ show (resource_name,"o")
-                    Just object_resource ->
-                        Just (findAsMapAllObjectDependenciesOf known_resources object_resource)
-    )
-    .
-    resourceDependencies
-    $
-    object_resource
--- @-node:gcross.20091127142612.1404:findAsMapAllObjectDependenciesOf
 -- @+node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
 qualifiedNameToPackageIdentifier :: String -> PackageIdentifier
 qualifiedNameToPackageIdentifier name =
@@ -615,39 +590,24 @@ reportUnknownModules tools source_name =
 -- @+node:gcross.20091121210308.2022:ghcCompile
 ghcCompile ::
     GHCConfiguration ->
+    FilePath ->
     [String] ->
     PackageModules ->
+    FilePath ->
+    FilePath ->
     Resources ->
-    FilePath ->
-    FilePath ->
-    FilePath ->
     Resource ->
     (Resource,Resource)
 ghcCompile
-    tools
+    configuration
+    cache_directory
     options
     known_package_modules
-    known_resources
     object_destination_directory
     interface_destination_directory
-    cache_directory
+    known_resources
     source_resource
-    =
-    (Resource
-        {   resourceName = source_name
-        ,   resourceType = "o"
-        ,   resourceFilePath = object_filepath
-        ,   resourceDigest = object_digest
-        ,   resourceDependencies = source_id:implicit_dependencies
-        }
-    ,Resource
-        {   resourceName = source_name
-        ,   resourceType = "hi"
-        ,   resourceFilePath = interface_filepath
-        ,   resourceDigest = interface_digest
-        ,   resourceDependencies = source_id:implicit_dependencies
-        }
-    )
+    = (object_resource,interface_resource)
   where
     source_filepath = resourceFilePath source_resource
     source_name = resourceName source_resource
@@ -655,165 +615,239 @@ ghcCompile
     object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
     interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "hi"
 
-    scanner = do
-        dependencies <- readDependenciesOf source_filepath
+    object_resource = Resource
+        {   resourceName = source_name
+        ,   resourceType = "o"
+        ,   resourceFilePath = object_filepath
+        ,   resourceDigest = object_digest
+        ,   resourceLinkDependencies = link_dependency_resources
+        }
+    interface_resource = Resource
+        {   resourceName = source_name
+        ,   resourceType = "hi"
+        ,   resourceFilePath = interface_filepath
+        ,   resourceDigest = interface_digest
+        ,   resourceLinkDependencies = notLinkable interface_resource
+        }
 
-        let (unknown_dependencies,resource_dependencies) =
-                partitionEithers
-                .
-                catMaybes
-                .
-                map (\module_name ->
-                    if Set.member module_name known_package_modules
-                        then Nothing
-                        else let resource_id = (module_name,"hi")
-                              in if Map.member resource_id known_resources
-                                    then Just . Right $ resource_id
-                                    else Just . Left $ module_name
-                )
-                $
-                dependencies
-
-        if null unknown_dependencies
-            then return . Right $ resource_dependencies
-            else return . Left . reportUnknownModules tools source_name $ unknown_dependencies
+    scanner =
+        ErrorT (
+            readDependenciesOf source_filepath
+            >>=
+            return
+            .
+            mapBoth
+                (reportUnknownModules configuration source_name)
+                unzip
+            .
+            extractResultsOrErrors
+            .
+            catMaybes
+            .
+            map (\module_name ->
+                if Set.member module_name known_package_modules
+                    then Nothing
+                    else let ids = ((module_name,"hi"),(module_name,"o"))
+                          in if uncurry ((&&) `on` (flip Map.member known_resources)) ids
+                                then Just . Right $ ids
+                                else Just . Left $ module_name
+            )
+        )
 
     builder =
-        let arguments = 
-                options ++
+        runProductionCommand
+            ("compiling " ++ source_name)
+            [object_filepath,interface_filepath]
+            (ghcCompilerPath configuration)
+            (options ++
                 ["-i"++interface_destination_directory
                 ,"-c",source_filepath
                 ,"-o",object_filepath
                 ,"-ohi",interface_filepath
                 ]
-            path_to_ghc = ghcCompilerPath tools
-        in do
-            createDirectoryIfMissing True . takeDirectory $ object_filepath
-            createDirectoryIfMissing True . takeDirectory $ interface_filepath
-            putStrLn . unwords $ (path_to_ghc:arguments)
-            compilation_result <- readProcessWithExitCode path_to_ghc arguments ""
-            case compilation_result of
-                (ExitFailure _,_,error_message) ->
-                    return
-                    .
-                    Just
-                    .
-                    errorMessageTextWithLines ("compiling " ++ source_name)
-                    $
-                    error_message
-                (ExitSuccess,_,_) -> return Nothing
+            )
 
-    ((object_digest,interface_digest),implicit_dependencies) =
-        case analyzeImplicitDependenciesAndRebuildIfNecessary
-                builder
-                scanner
-                known_resources
-                (cache_directory </> source_name <.> "o")
-                [object_filepath,interface_filepath]
-                (unwords options)
-                source_resource
-        of Left error_message -> ((Left error_message,Left error_message),[])
-           Right ([object_digest,interface_digest],implicit_dependencies) ->
-            ((Right object_digest,Right interface_digest),implicit_dependencies)
-           x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
+    build_result =
+        analyzeImplicitDependenciesAndRebuildIfNecessary
+            builder
+            scanner
+            known_resources
+            (cache_directory </> source_name <.> "o")
+            [object_filepath,interface_filepath]
+            (unwords options)
+            source_resource
+
+    object_digest    = fmap ((!! 0) . fst) $ build_result
+    interface_digest = fmap ((!! 1) . fst) $ build_result
+
+    link_dependency_resources =
+        fmap snd build_result
+        >>=
+        attemptGetResources
+            ("fetching resources with the following ids that are link dependencies of " ++ show source_id)
+            known_resources
+        >>=
+        return . Set.fromList
+
 -- @-node:gcross.20091121210308.2022:ghcCompile
--- @+node:gcross.20091121210308.2038:ghcCompileAll
-ghcCompileAll ::
+-- @+node:gcross.20091121210308.2038:ghcCompileAdditional
+ghcCompileAdditional ::
     GHCConfiguration ->
+    FilePath ->
     [String] ->
     PackageModules ->
     FilePath ->
     FilePath ->
-    FilePath ->
+    Resources ->
     Resources ->
     Resources
-ghcCompileAll
-    tools
+ghcCompileAdditional
+    configuration
+    cache_directory
     options
     known_package_modules
     object_destination_directory
     interface_destination_directory
-    cache_directory
-    old_resources
+    source_resources
+    previously_compiled_resources
     =
-    let new_resources = go old_resources (Map.elems old_resources)
+    let new_resources =
+            go (source_resources `Map.union` previously_compiled_resources)
+               (Map.elems source_resources)
         go accum_resources [] = accum_resources
         go accum_resources (resource:rest_resources) =
             if resourceType (resource) == "hs"
                 then let (object_resource,interface_resource) =
                             ghcCompile
-                                tools
+                                configuration
+                                cache_directory
                                 options
                                 known_package_modules
-                                new_resources
                                 object_destination_directory
                                 interface_destination_directory
-                                cache_directory
+                                new_resources
                                 resource
                      in go (addResource object_resource . addResource interface_resource $ accum_resources) rest_resources
                 else go accum_resources rest_resources
     in new_resources
--- @-node:gcross.20091121210308.2038:ghcCompileAll
+-- @-node:gcross.20091121210308.2038:ghcCompileAdditional
+-- @+node:gcross.20091201161628.1568:ghcCompileAll
+ghcCompileAll ::
+    GHCConfiguration ->
+    FilePath ->
+    [String] ->
+    PackageModules ->
+    FilePath ->
+    FilePath ->
+    Resources ->
+    Resources
+ghcCompileAll
+    configuration
+    cache_directory
+    options
+    known_package_modules
+    object_destination_directory
+    interface_destination_directory
+    source_resources
+    =
+    ghcCompileAdditional
+        configuration
+        cache_directory
+        options
+        known_package_modules
+        object_destination_directory
+        interface_destination_directory
+        source_resources
+        Map.empty
+-- @-node:gcross.20091201161628.1568:ghcCompileAll
 -- @+node:gcross.20091127142612.1402:ghcLinkProgram
 ghcLinkProgram ::
     GHCConfiguration ->
-    [String] ->
     FilePath ->
     [String] ->
-    [Resource] ->
-    String ->
+    [String] ->
     FilePath ->
+    [ResourceId] ->
+    Resources ->
     Resource
+ghcLinkProgram _ _ _ _ _ [] _ = error "You need at least one object to link for a program."
 ghcLinkProgram
-    tools
-    options
+    configuration
     cache_directory
+    options
     package_dependencies
-    object_resources
-    program_resource_name
-    program_resource_filepath
-    = Resource
-        {   resourceName = program_resource_name
-        ,   resourceType = ""
-        ,   resourceFilePath = program_resource_filepath
-        ,   resourceDigest = program_digest
-        ,   resourceDependencies = map resourceId object_resources
-        }
+    program_destination_directory
+    program_object_ids@((program_resource_name,_):_)
+    resources
+    = let resource = Resource
+            {   resourceName = program_resource_name
+            ,   resourceType = ""
+            ,   resourceFilePath = program_resource_filepath
+            ,   resourceDigest = program_digest
+            ,   resourceLinkDependencies = notLinkable resource
+            }
+      in resource
   where
-    program_digest = either Left (Right . head) $
-        analyzeExplicitDependenciesAndRebuildIfNecessary
-            builder
-            (cache_directory </> program_resource_name <.> "")
-            [program_resource_filepath]
-            ()
-            object_resources
+    program_resource_filepath = program_destination_directory </> program_resource_name
 
-    builder = do
-        createDirectoryIfMissing True . takeDirectory $ program_resource_filepath
-        let arguments = 
-                options ++
-                flagsFromPackageDependencies package_dependencies ++
-                ["-o",program_resource_filepath
-                ] ++
-                (map resourceFilePath object_resources)
-            command = ghcCompilerPath tools
-        putStrLn . unwords . (command:) $ arguments
-        compilation_result <-
-            readProcessWithExitCode
-            command
-            arguments
-            ""
-        case compilation_result of
-            (ExitFailure _,_,error_message) ->
-                return
-                .
-                Just
-                .
-                errorMessageTextWithLines ("linking " ++ program_resource_name)
-                $
-                error_message
-            (ExitSuccess,_,_) -> return Nothing
+    error_message_heading = "linking program " ++ program_resource_name
+
+    program_digest = fmap head $
+        attemptGetResources error_message_heading resources program_object_ids
+        >>=
+        findAllObjectDependenciesOf resources . Set.fromList
+        >>=
+        \program_resources_set ->
+            let program_resources = Set.toAscList program_resources_set
+                builder =
+                    runProductionCommand
+                        error_message_heading
+                        [program_resource_filepath]
+                        (ghcCompilerPath configuration)
+                        (concat
+                            [options
+                            ,flagsFromPackageDependencies package_dependencies
+                            ,["-o",program_resource_filepath]
+                            ,map resourceFilePath program_resources
+                            ]
+                        )
+            in analyzeExplicitDependenciesAndRebuildIfNecessary
+                builder
+                (cache_directory </> program_resource_name <.> "")
+                [program_resource_filepath]
+                ()
+                program_resources
 -- @-node:gcross.20091127142612.1402:ghcLinkProgram
+-- @+node:gcross.20091201183231.1597:ghcLinkPrograms
+ghcLinkPrograms ::
+    GHCConfiguration ->
+    FilePath ->
+    [String] ->
+    [String] ->
+    FilePath ->
+    [[ResourceId]] ->
+    Resources ->
+    [Resource]
+ghcLinkPrograms _ _ _ _ _ [] _ = error "You need at least program to link."
+ghcLinkPrograms
+    tools
+    cache_directory
+    options
+    package_dependencies
+    program_destination_directory
+    program_object_id_groups
+    object_resources
+    = map (\program_object_ids ->
+        ghcLinkProgram
+            tools
+            cache_directory
+            options
+            package_dependencies
+            program_destination_directory
+            program_object_ids
+            object_resources
+    ) program_object_id_groups
+-- @-node:gcross.20091201183231.1597:ghcLinkPrograms
 -- @-node:gcross.20091121210308.1275:Tools
 -- @-others
 -- @-node:gcross.20091121204836.1242:@thin GHC.hs

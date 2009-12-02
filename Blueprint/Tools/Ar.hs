@@ -30,6 +30,7 @@ import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
+import Blueprint.Tools
 -- @-node:gcross.20091122100142.1362:<< Import needed modules >>
 -- @nl
 
@@ -77,10 +78,10 @@ formStaticLibrary
         ,   resourceType = "a"
         ,   resourceFilePath = library_resource_filepath
         ,   resourceDigest = library_digest
-        ,   resourceDependencies = map resourceId object_resources
+        ,   resourceLinkDependencies = noLinkDependencies
         }
   where
-    library_digest = either Left (Right . head) $
+    library_digest = fmap head $
         analyzeExplicitDependenciesAndRebuildIfNecessary
             builder
             (cache_directory </> library_resource_name <.> "a")
@@ -88,27 +89,12 @@ formStaticLibrary
             ()
             object_resources
 
-    builder = do
-        createDirectoryIfMissing True . takeDirectory $ library_resource_filepath
-        let arguments = ("cqs":library_resource_filepath:map resourceFilePath object_resources)
-            command = (arPath tools)
-        putStrLn . unwords . (command:) $ arguments
-        compilation_result <-
-            readProcessWithExitCode
-            command
-            arguments
-            ""
-        case compilation_result of
-            (ExitFailure _,_,error_message) ->
-                return
-                .
-                Just
-                .
-                errorMessageTextWithLines ("linking " ++ library_resource_name)
-                $
-                error_message
-            (ExitSuccess,_,_) -> return Nothing
-
+    builder =
+        runProductionCommand
+            ("linking " ++ library_resource_name)
+            [library_resource_filepath]
+            (arPath tools)
+            ("cqs":library_resource_filepath:map resourceFilePath object_resources)
 -- @-node:gcross.20091122100142.1368:formStaticLibrary
 -- @-node:gcross.20091122100142.1367:Tools
 -- @-others

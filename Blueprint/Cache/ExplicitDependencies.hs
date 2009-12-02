@@ -12,6 +12,8 @@ module Blueprint.Cache.ExplicitDependencies where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1374:<< Import needed modules >>
 import Control.Monad
+import Control.Monad.Error
+import Control.Monad.Trans
 import Control.Parallel.Strategies
 
 import Data.Binary
@@ -45,7 +47,7 @@ instance (Binary a, Eq a) => Binary (CachedExplicitDependencies a) where
     get = liftM3 CachedExplicitDependencies get get get
 -- @-node:gcross.20091122100142.1380:CachedExplicitDependencies
 -- @+node:gcross.20091122100142.1385:Builder
-type Builder = IO (Maybe ErrorMessage)
+type Builder = ErrorT ErrorMessage IO ()
 -- @-node:gcross.20091122100142.1385:Builder
 -- @-node:gcross.20091122100142.1379:Types
 -- @+node:gcross.20091122100142.1386:Function
@@ -58,14 +60,16 @@ analyzeExplicitDependenciesAndRebuildIfNecessary ::
     a ->
     [Resource] ->
     Either ErrorMessage [MD5Digest]
-
+analyzeExplicitDependenciesAndRebuildIfNecessary _ _ _ _ [] = error "Must supply at least one resource for build!"
 analyzeExplicitDependenciesAndRebuildIfNecessary
     builder
     cache_filepath
     product_filepaths
     miscellaneous_cache_information
     source_resources
-  = flip (either Left) (attemptGetDigests source_resources) $ \source_digests -> unsafePerformIO $ do
+  = attemptGetDigests source_resources
+    >>=
+    \source_digests -> unsafePerformIO $ do
         let source_digests_as_map = Map.fromList $ zip (map resourceId source_resources) source_digests
             rebuildIt = rebuild source_digests_as_map
         file_exists <- doesFileExist cache_filepath
@@ -87,20 +91,21 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
                                 then rebuildIt
                                 else return . Right . digestsOfProducts $ cached_digests
   where
-    rebuild source_digests_as_map = do
-        build_result <- builder
-        case build_result of
-            Just error_message -> return . Left $ error_message
-            Nothing -> do
-                let product_digests = map digestOf product_filepaths
-                    cached_dependencies = CachedExplicitDependencies
-                        {   digestsOfDependencies = source_digests_as_map
-                        ,   digestsOfProducts = product_digests
-                        ,   cachedMiscellaneousInformation = miscellaneous_cache_information
-                        }
-                createDirectoryIfMissing True . takeDirectory $ cache_filepath
-                encodeFile cache_filepath cached_dependencies
-                return . Right $ product_digests
+    rebuild source_digests_as_map = runErrorT $
+        builder
+        >>
+        let product_digests = map digestOf product_filepaths
+            cached_dependencies = CachedExplicitDependencies
+                {   digestsOfDependencies = source_digests_as_map
+                ,   digestsOfProducts = product_digests
+                ,   cachedMiscellaneousInformation = miscellaneous_cache_information
+                }
+        in (liftIO $ do
+            createDirectoryIfMissing True . takeDirectory $ cache_filepath
+            encodeFile cache_filepath cached_dependencies
+           )
+           >>
+           return product_digests
 -- @-node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20091128000856.1483:analyzeDependencyAndRebuildIfNecessary
 analyzeDependencyAndRebuildIfNecessary ::

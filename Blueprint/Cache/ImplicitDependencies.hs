@@ -12,6 +12,8 @@ module Blueprint.Cache.ImplicitDependencies where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1313:<< Import needed modules >>
 import Control.Monad
+import Control.Monad.Error
+import Control.Monad.Trans
 import Control.Parallel.Strategies
 
 import Data.Binary
@@ -39,18 +41,19 @@ data (Binary a, Eq a) => CachedImplicitDependencies a = CachedImplicitDependenci
         {   digestOfSourceFile :: MD5Digest
         ,   digestsOfProducedFiles :: [MD5Digest]
         ,   digestOfDependentModules :: [(ResourceId,MD5Digest)]
+        ,   resourceIdsOfLinkDependencies :: [ResourceId]
         ,   cachedMiscellaneousInformation :: a
         }
 
 instance (Binary a, Eq a) => Binary (CachedImplicitDependencies a) where
-    put (CachedImplicitDependencies a b c d) = put a >> put b >> put c >> put d
-    get = liftM4 CachedImplicitDependencies get get get get
+    put (CachedImplicitDependencies a b c d e) = put a >> put b >> put c >> put d >> put e
+    get = liftM5 CachedImplicitDependencies get get get get get
 -- @-node:gcross.20091122100142.1321:CachedImplicitDependencies
 -- @+node:gcross.20091122100142.1323:Builder
-type Builder = IO (Maybe ErrorMessage)
+type Builder = ErrorT ErrorMessage IO ()
 -- @-node:gcross.20091122100142.1323:Builder
 -- @+node:gcross.20091122100142.1324:Scanner
-type Scanner = IO (Either ErrorMessage [ResourceId])
+type Scanner = ErrorT ErrorMessage IO ([ResourceId],[ResourceId])
 -- @-node:gcross.20091122100142.1324:Scanner
 -- @-node:gcross.20091122100142.1314:Types
 -- @+node:gcross.20091122100142.1317:Function
@@ -74,70 +77,69 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     product_filepaths
     miscellaneous_cache_information
     source_resource
-  = unsafePerformIO $ do
-    file_exists <- doesFileExist cache_filepath
-    if not file_exists
-        then rescanAndRebuild
-        else do
-            cached_digests <- decodeFile cache_filepath
-            if source_digest /= digestOfSourceFile cached_digests
-                then rescanAndRebuild
-                else let (resource_ids,previously_seen_digests) = unzip . digestOfDependentModules $ cached_digests
-                     in attemptGetResourceDigestsAndThenRun resource_ids $
-                        \current_resource_digests ->
-                            let rebuildIt = rebuild resource_ids current_resource_digests
-                            in if any (uncurry (/=)) $ zip current_resource_digests previously_seen_digests
-                                then rebuildIt
-                                else do
-                                    product_files_exist <- mapM doesFileExist product_filepaths
-                                    if not (and product_files_exist)
-                                        then rebuildIt
-                                        else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
+  = unsafePerformIO . runErrorT $
+    (liftIO . doesFileExist $ cache_filepath) >>=
+        \file_exists -> if not file_exists
+            then rescanAndRebuild
+            else (liftIO . decodeFile $ cache_filepath) >>=
+                \cached_digests -> if source_digest /= digestOfSourceFile cached_digests
+                    then rescanAndRebuild
+                    else let (build_dependency_resource_ids, previous_build_dependency_resource_digests) =
+                                unzip . digestOfDependentModules $ cached_digests
+                             link_dependency_resource_ids = resourceIdsOfLinkDependencies cached_digests
+                         in getResourceDigests build_dependency_resource_ids >>=
+                            \build_dependency_resource_digests ->
+                                let rebuildIt = rebuild build_dependency_resource_ids build_dependency_resource_digests link_dependency_resource_ids
+                                in if build_dependency_resource_digests /= previous_build_dependency_resource_digests
+                                    then rebuildIt
+                                    else liftIO (mapM doesFileExist product_filepaths) >>=
+                                        \files_exist -> if (any not) files_exist
                                             then rebuildIt
-                                            else return . Right $ (digestsOfProducedFiles cached_digests,resource_ids)
+                                            else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
+                                                then rebuildIt
+                                                else return (digestsOfProducedFiles cached_digests, link_dependency_resource_ids)
   where
     source_digest = (fromRight . resourceDigest) source_resource
 
-    attemptGetResourceDigestsAndThenRun resource_ids nextStep =
-        case attemptGetResourceDigests resources resource_ids of
-            Left (Left unknown_resource_ids) ->
-                return
-                .
-                Left
-                .
-                errorMessage ("finding the resources associated with the following implicit dependencies in " ++ resourceName source_resource)
-                .
-                vcat
-                .
-                map (text . show)
-                $
-                unknown_resource_ids
-            Left (Right error_message) -> return . Left $ error_message
-            Right current_resource_digests -> nextStep current_resource_digests
+    getResourceDigests :: [ResourceId] -> ErrorT ErrorMessage IO [MD5Digest]
+    getResourceDigests = ErrorT . return .
+        attemptGetResourceDigests
+            ("fetching the resources associated with the implicit dependencies of " ++ resourceName source_resource)
+            resources
 
-    rescanAndRebuild = do
-        scan_result <- scanner
-        case scan_result of
-            Left error_message -> return . Left $ error_message
-            Right resource_ids ->
-                attemptGetResourceDigestsAndThenRun resource_ids $
-                    \current_resource_digests -> rebuild resource_ids current_resource_digests
+    getLinkResources :: [ResourceId] -> ErrorT ErrorMessage IO [Resource]
+    getLinkResources = ErrorT . return .
+        attemptGetResources
+            ("fetching the resources associated with the link dependencies of " ++ resourceName source_resource)
+            resources
 
-    rebuild dependent_module_resource_ids dependent_module_digests = do
-        build_result <- builder
-        case build_result of
-            Just error_message -> return . Left $ error_message
-            Nothing -> do
-                let product_digests = map digestOf product_filepaths
-                    cached_dependencies = CachedImplicitDependencies
-                        {   digestOfSourceFile = source_digest
-                        ,   digestsOfProducedFiles = product_digests
-                        ,   digestOfDependentModules = zip dependent_module_resource_ids dependent_module_digests
-                        ,   cachedMiscellaneousInformation = miscellaneous_cache_information
-                        }
+    rescanAndRebuild =
+        scanner
+        >>=
+        \(build_dependency_resource_ids,link_dependency_resource_ids) ->
+            getResourceDigests build_dependency_resource_ids
+            >>=
+            \build_dependency_resource_digests ->
+                rebuild build_dependency_resource_ids build_dependency_resource_digests link_dependency_resource_ids
+
+    rebuild build_dependency_resource_ids build_dependency_resource_digests link_dependency_resource_ids =
+        builder
+        >>
+        let product_digests = map digestOf product_filepaths
+            cached_dependencies = CachedImplicitDependencies
+                {   digestOfSourceFile = source_digest
+                ,   digestsOfProducedFiles = product_digests
+                ,   digestOfDependentModules =
+                        zip build_dependency_resource_ids
+                            build_dependency_resource_digests
+                ,   resourceIdsOfLinkDependencies = link_dependency_resource_ids
+                ,   cachedMiscellaneousInformation = miscellaneous_cache_information
+                }
+        in  liftIO $ do
                 createDirectoryIfMissing True . takeDirectory $ cache_filepath
                 encodeFile cache_filepath cached_dependencies
-                return . Right $ (product_digests,dependent_module_resource_ids)
+            >>
+            return (product_digests,link_dependency_resource_ids)
 -- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others

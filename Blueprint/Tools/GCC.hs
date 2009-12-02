@@ -30,6 +30,7 @@ import Blueprint.Configuration
 import Blueprint.Error
 import Blueprint.Options
 import Blueprint.Resources
+import Blueprint.Tools
 -- @-node:gcross.20091123114318.1339:<< Import needed modules >>
 -- @nl
 
@@ -61,16 +62,16 @@ gccOptions = makeSimpleOptionSectionForProgram "gcc" gccOptionSectionKey
 -- @+node:gcross.20091123114318.1368:gccCompile
 gccCompile ::
     GCCConfiguration ->
-    [String] ->
     FilePath ->
+    [String] ->
     FilePath ->
     Resource ->
     Resource
 gccCompile
     tools
+    cache_directory
     options
     object_destination_directory
-    cache_directory
     source_resource
     =
     Resource
@@ -78,7 +79,7 @@ gccCompile
         ,   resourceType = "o"
         ,   resourceFilePath = object_filepath
         ,   resourceDigest = object_digest
-        ,   resourceDependencies = [resourceId source_resource]
+        ,   resourceLinkDependencies = noLinkDependencies
         }
   where
     source_filepath = resourceFilePath source_resource
@@ -86,51 +87,37 @@ gccCompile
     object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
 
     builder =
-        let arguments = 
-                options ++
+        runProductionCommand
+            ("compiling " ++ source_name)
+            [object_filepath]
+            (gccCompilerPath tools)
+            (options ++
                 ["-c",source_filepath
                 ,"-o",object_filepath
                 ]
-            path_to_gcc = gccCompilerPath tools
-        in do
-            createDirectoryIfMissing True . takeDirectory $ object_filepath
-            putStrLn . unwords $ (path_to_gcc:arguments)
-            compilation_result <- readProcessWithExitCode path_to_gcc arguments ""
-            case compilation_result of
-                (ExitFailure _,_,error_message) ->
-                    return
-                    .
-                    Just
-                    .
-                    errorMessageTextWithLines ("compiling " ++ source_name)
-                    $
-                    error_message
-                (ExitSuccess,_,_) -> return Nothing
+            )
 
-    object_digest =
-        case analyzeDependencyAndRebuildIfNecessary
-                builder
-                (cache_directory </> source_name <.> "o")
-                [object_filepath]
-                (unwords options)
-                source_resource
-        of Left error_message -> Left error_message
-           Right [object_digest] -> Right object_digest
-           x -> error $ "Programmer error:  Builder returned the wrong number of digests! (" ++ show x ++ ")"
+    object_digest = fmap head $
+        analyzeDependencyAndRebuildIfNecessary
+            builder
+            (cache_directory </> source_name <.> "o")
+            [object_filepath]
+            (unwords options)
+            source_resource
 -- @-node:gcross.20091123114318.1368:gccCompile
 -- @+node:gcross.20091123114318.1371:gccCompileAll
 gccCompileAll ::
     GCCConfiguration ->
-    [String] ->
     FilePath ->
+    [String] ->
     FilePath ->
     Resources ->
     Resources
 gccCompileAll
     tools
+    cache_directory
     options
     object_destination_directory
-    cache_directory
     old_resources
     =
     new_resources
@@ -142,9 +129,9 @@ gccCompileAll
             then let object_resource =
                         gccCompile
                             tools
+                            cache_directory
                             options
                             object_destination_directory
-                            cache_directory
                             resource
                  in go (addResource object_resource accum_resources) rest_resources
             else go accum_resources rest_resources

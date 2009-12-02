@@ -40,7 +40,6 @@ import Blueprint.Options
 import Blueprint.Resources
 import Blueprint.Tools.Ar
 import Blueprint.Tools.GHC
-import Blueprint.Tools.Haddock
 import Blueprint.Tools.Installer
 import Blueprint.Tools.Ld
 -- @-node:gcross.20091128000856.1439:<< Import needed modules >>
@@ -53,7 +52,6 @@ options =
     ,   arOptions
     ,   ldOptions
     ,   ghcOptions
-    ,   haddockOptions
     ]
 -- @-node:gcross.20091129000542.1484:Options
 -- @+node:gcross.20091128000856.1452:Flags
@@ -68,7 +66,6 @@ data Configuration = Configuration
     {   ghcConfiguration :: GHCConfiguration
     ,   arConfiguration :: ArConfiguration
     ,   ldConfiguration :: LdConfiguration
-    ,   haddockConfiguration :: HaddockConfiguration
     ,   installerConfiguration :: InstallerConfiguration
     ,   packageDependencies :: [String]
     ,   packageModules :: PackageModules
@@ -77,7 +74,7 @@ data Configuration = Configuration
 -- @-node:gcross.20091129000542.1707:Types
 -- @+node:gcross.20091128000856.1475:Values
 -- @+node:gcross.20091128000856.1476:source resources
-source_resources = resourcesWithPrefixIn "Blueprint" "Blueprint"
+source_resources = sourceResourcesWithPrefixIn "Blueprint" "Blueprint"
 -- @-node:gcross.20091128000856.1476:source resources
 -- @+node:gcross.20091128201230.1460:package description
 package_description = readPackageDescription "Blueprint.cabal"
@@ -102,7 +99,6 @@ targets =
         (toTarget bootstrap)
     ,target "build" build
     ,target "rebuild" $ makeRebuildTarget targets
-    ,target "haddock" haddock
     ,target "install" install
     ,target "clean" $
         makeCleanTarget
@@ -110,7 +106,6 @@ targets =
             ,"digest-cache"
             ,"haskell-interfaces"
             ,"libraries"
-            ,"haddock"
             ,"bootstrap"
             ]
     ,target "distclean" $
@@ -125,13 +120,11 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
         (ghc_configuration
         ,ar_configuration
         ,ld_configuration
-        ,haddock_configuration
         ,install_configuration
-        ) <- (,,,,)
+        ) <- (,,,)
             <$> (configureUsingSection "GHC")
             <*> (configureUsingSection "Binutils")
             <*> (configureUsingSection "Binutils")
-            <*> (configureUsingSection "Haddock")
             <*> (configureUsingSection "Installation Directories")
     package_dependencies <- configurePackageResolutions ghc_configuration package_description "GHC"
     package_modules <- configurePackageModules ghc_configuration package_dependencies "ZZZ - Please do not edit this unless you know what you are doing."
@@ -140,7 +133,6 @@ configure = parseCommandLineOptions options >>= \(_,options) -> runConfigurer "B
             ghc_configuration
             ar_configuration
             ld_configuration
-            haddock_configuration
             install_configuration
             package_dependencies
             package_modules
@@ -150,20 +142,13 @@ build = configure >>= \configuration ->
     let compiled_resources = 
             ghcCompileAll
                 (ghcConfiguration configuration)
+                "digest-cache"
                 ghc_flags
                 (packageModules configuration)
                 "objects"
                 "haskell-interfaces"
-                "digest-cache"
                 source_resources
-        object_resources =
-            map snd
-            .
-            filter ((=="o"). snd . fst)
-            .
-            Map.toList
-            $
-            compiled_resources
+        object_resources = selectResourcesOfTypeAsList "o" compiled_resources
         library = formStaticLibrary
             (arConfiguration configuration)
             "digest-cache"
@@ -183,41 +168,33 @@ build = configure >>= \configuration ->
 -- @-node:gcross.20091128000856.1450:build
 -- @+node:gcross.20091129000542.1715:bootstrap
 bootstrap = configure >>= \configuration ->
-    let compiled_resources = 
-            ghcCompileAll
-                (ghcConfiguration configuration)
-                bootstrap_ghc_flags
-                (packageModules configuration)
-                "bootstrap/objects"
-                "bootstrap/haskell-interfaces"
-                "bootstrap/digest-cache"
-                source_resources
-        (setup_object,_) =
-            ghcCompile
-                (ghcConfiguration configuration)
-                bootstrap_ghc_flags
-                (packageModules configuration)
-                compiled_resources
-                "bootstrap/objects"
-                "bootstrap/haskell-interfaces"
-                "bootstrap/digest-cache"
-                (createResourceFor "" "Setup.hs")
-
-        setup_program = ghcLinkProgram
-            (ghcConfiguration configuration)
-            bootstrap_ghc_flags
-            "bootstrap/digest-cache"
-            (packageDependencies configuration)
-            (findAllObjectDependenciesOf compiled_resources setup_object)
-            "Setup"
-            "Setup"
-    in attemptGetDigests [setup_program]
+    resourceDigest
+    .
+    ghcLinkProgram
+        (ghcConfiguration configuration)
+        "bootstrap/digest-cache"
+        bootstrap_ghc_flags
+        (packageDependencies configuration)
+        "."
+        [("Setup","o")]
+    .
+    ghcCompileAll
+        (ghcConfiguration configuration)
+        "bootstrap/digest-cache"
+        bootstrap_ghc_flags
+        (packageModules configuration)
+        "bootstrap/objects"
+        "bootstrap/haskell-interfaces"
+    .
+    addResource (createSourceResourceFor "" "Setup.hs")
+    $
+    source_resources
 -- @-node:gcross.20091129000542.1715:bootstrap
 -- @+node:gcross.20091129000542.1706:install
 install = do
     configuration <- configure
     (library_resource,ghci_library_resource,compiled_resources) <- build
-    let interface_resources = filter ((=="hi") . resourceType) . Map.elems $ compiled_resources
+    let interface_resources = selectResourcesOfTypeAsList "hi" compiled_resources
         installation_result =
             installSimplePackage
                 (ghcConfiguration configuration)
@@ -232,18 +209,6 @@ install = do
         Nothing -> Right ()
         Just error_message -> Left error_message
 -- @-node:gcross.20091129000542.1706:install
--- @+node:gcross.20091128000856.1474:haddock
-haddock = configure >>= \configuration ->
-    resourceDigest $
-        createDocumentation
-            (haddockConfiguration configuration)
-            (ghcConfiguration configuration)
-            []
-            []
-            "digest-cache"
-            (Map.elems source_resources)
-            "haddock"
--- @-node:gcross.20091128000856.1474:haddock
 -- @-node:gcross.20091128000856.1448:Targets
 -- @+node:gcross.20091129000542.1485:main
 main = defaultMain
