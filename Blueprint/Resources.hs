@@ -73,9 +73,7 @@ sourceResourcesWithPrefixIn prefix directory =
     let (resource_list,subdirectory_resources) =
             partitionEithers
             .
-            myParListWHNF
-            .
-            map (\filename ->
+            parMap rwhnf (\filename ->
                 let filepath = combine directory filename
                 in if (unsafePerformIO . doesDirectoryExist $ filepath)
                     then Right . sourceResourcesWithPrefixIn (applyPrefix prefix filename) $ filepath
@@ -111,9 +109,7 @@ attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
 attemptGetDigests =
     extractResultsOrError
     .
-    myParListWHNF
-    .
-    map resourceDigest
+    parMap rwhnf resourceDigest
 -- @-node:gcross.20091201183231.1580:attemptGetDigests
 -- @+node:gcross.20091201183231.1582:attemptGetResourceDigests
 attemptGetResourceDigests :: String -> Resources -> [ResourceId] -> Either ErrorMessage [MD5Digest]

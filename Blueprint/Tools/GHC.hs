@@ -23,6 +23,7 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
+import Control.Parallel.Strategies
 
 import Data.Array
 import qualified Data.ByteString.Lazy as L
@@ -379,9 +380,7 @@ configurePackageResolutions tools package_description =
         .
         partitionEithers
         .
-        myParListWHNF
-        .
-        map resolvePackage
+        parMap rwhnf resolvePackage
         .
         buildDepends
         $
@@ -422,9 +421,7 @@ configurePackageModules configuration qualified_package_names =
         .
         extractResultsOrError
         .
-        myParListWHNF
-        .
-        map (
+        parMap rwhnf (
             \qualified_package_name ->
                 case getPackageModules configuration qualified_package_name of
                     Just package_modules -> Right package_modules

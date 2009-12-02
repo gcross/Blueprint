@@ -46,13 +46,6 @@ isDotFree = notElem '.'
 -- @+node:gcross.20091129000542.1503:isFileAt
 isFileAt = unsafePerformIO . doesFileExist
 -- @-node:gcross.20091129000542.1503:isFileAt
--- @+node:gcross.20091128000856.1440:myParListWHNF
-myParListWHNF :: Strategy [a]
-myParListWHNF list = go list
-  where
-    go [] = list
-    go (x:xs) = x `par` go xs
--- @-node:gcross.20091128000856.1440:myParListWHNF
 -- @+node:gcross.20091128000856.1484:readVersion
 readVersion :: String -> Version
 readVersion = fst . last . readP_to_S parseVersion
