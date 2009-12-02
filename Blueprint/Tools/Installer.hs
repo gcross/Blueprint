@@ -67,7 +67,7 @@ instance AutomaticallyConfigurable InstallerConfiguration where
             Just (InstallerOptions maybe_prefix maybe_libdir) ->
                 case (maybe_prefix,maybe_libdir) of
                     (Nothing,Nothing) -> configureUsingPrefixOnly "/usr/local"
-                    (Just prefix,Nothing) -> configureUsingPrefixOnly "/usr/prefix"
+                    (Just prefix,Nothing) -> configureUsingPrefixOnly prefix
                     (_,Just libdir) -> Right $ InstallerConfiguration libdir
       where
         configureUsingPrefixOnly prefix = Right $ InstallerConfiguration (prefix </> "lib")
