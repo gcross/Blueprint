@@ -14,12 +14,13 @@ module Blueprint.Tools where
 import Control.Monad.Error
 import Control.Monad.Trans
 
+import Data.ErrorMessage
+
 import System.Directory
 import System.Exit
 import System.FilePath
 import System.Process
 
-import Blueprint.Error
 -- @-node:gcross.20091201183231.1594:<< Import needed modules >>
 -- @nl
 
@@ -37,7 +38,7 @@ runProductionCommand error_message_heading files_being_produced command argument
    )>>= \compilation_result ->
         case compilation_result of
             (ExitFailure _,_,error_message) ->
-                throwError $ errorMessageTextWithLines error_message_heading error_message
+                throwError $ errorMessageTextFromMultilineString error_message_heading error_message
             (ExitSuccess,_,_) -> return ()
 -- @nonl
 -- @-node:gcross.20091201183231.1592:runProductionCommand

@@ -20,6 +20,7 @@ import Control.Monad.Error
 import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Function
 import Data.List
 import Data.Map (Map)
@@ -37,7 +38,6 @@ import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
-import Blueprint.Error
 import Blueprint.Miscellaneous
 -- @-node:gcross.20091129000542.1452:<< Import needed modules >>
 -- @nl

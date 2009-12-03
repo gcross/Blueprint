@@ -18,6 +18,7 @@ import Control.Monad
 import Control.Parallel
 
 import Data.Maybe
+import Data.ErrorMessage
 
 import System.Directory
 import System.Environment
@@ -27,7 +28,6 @@ import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen
 
-import Blueprint.Error
 import Blueprint.Options
 -- @-node:gcross.20091128000856.1443:<< Import needed modules >>
 -- @nl

@@ -16,6 +16,7 @@ module Blueprint.Tools.GFortran where
 -- @+node:gcross.20091129000542.1554:<< Import needed modules >>
 import Control.Monad
 
+import Data.ErrorMessage
 import Data.Dynamic
 import qualified Data.Map as Map
 
@@ -27,7 +28,6 @@ import System.Process
 
 import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
-import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources

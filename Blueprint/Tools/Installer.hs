@@ -16,6 +16,7 @@ import Control.Applicative
 import Control.Monad
 
 import Data.Dynamic
+import Data.ErrorMessage
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
@@ -24,7 +25,6 @@ import System.FilePath
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
 
-import Blueprint.Error
 import Blueprint.Options
 import Blueprint.Configuration
 -- @-node:gcross.20091129000542.1644:<< Import needed modules >>

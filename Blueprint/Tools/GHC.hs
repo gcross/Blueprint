@@ -33,6 +33,7 @@ import Data.Digest.Pure.MD5
 import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Function
 import Data.List
 import Data.Map (Map)
@@ -70,7 +71,6 @@ import Text.Regex.TDFA.ByteString.Lazy
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Configuration
-import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
@@ -419,7 +419,7 @@ configurePackageModules configuration qualified_package_names =
             (errorMessage "finding exposed modules for the following packages")
             Set.unions
         .
-        extractResultsOrError
+        gatherResultsOrError
         .
         parMap rwhnf (
             \qualified_package_name ->
@@ -637,7 +637,7 @@ ghcCompile
                 (reportUnknownModules configuration source_name)
                 unzip
             .
-            extractResultsOrErrors
+            gatherResultsOrErrors
             .
             catMaybes
             .

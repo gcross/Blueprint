@@ -14,6 +14,7 @@ module Blueprint.Tools.GCC where
 import Control.Applicative.Infix
 import Control.Monad
 
+import Data.ErrorMessage
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -27,7 +28,6 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((</>))
 
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Configuration
-import Blueprint.Error
 import Blueprint.Options
 import Blueprint.Resources
 import Blueprint.Tools

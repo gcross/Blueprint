@@ -26,6 +26,7 @@ import Control.Monad.Writer
 import Data.ConfigFile
 import Data.Dynamic
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
@@ -38,7 +39,6 @@ import System.IO
 import System.IO.Error
 import System.IO.Unsafe
 
-import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 -- @-node:gcross.20091126122246.1381:<< Import needed modules >>

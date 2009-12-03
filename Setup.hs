@@ -20,6 +20,7 @@ import Control.Parallel
 
 import Data.ConfigFile hiding (options)
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Version
@@ -33,7 +34,6 @@ import System.IO.Unsafe
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Blueprint.Configuration
-import Blueprint.Error
 import Blueprint.Main
 import Blueprint.Miscellaneous
 import Blueprint.Options

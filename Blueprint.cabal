@@ -31,7 +31,8 @@ Build-Depends:  base == 4.1.*,
                 Cabal == 1.6.*,
                 ansi-wl-pprint == 0.5.*,
                 regex-tdfa == 1.1.*,
-                InfixApplicative == 1.0.*
+                InfixApplicative == 1.0.*,
+                error-message == 1.*
 
 Library
 -- @-node:gcross.20091128000856.1485:@thin Blueprint.cabal

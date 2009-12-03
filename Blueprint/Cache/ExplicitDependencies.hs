@@ -19,6 +19,7 @@ import Control.Parallel.Strategies
 import Data.Binary
 import Data.Digest.Pure.MD5
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Function
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -27,7 +28,6 @@ import System.Directory
 import System.FilePath
 import System.IO.Unsafe
 
-import Blueprint.Error
 import Blueprint.Resources
 
 -- @-node:gcross.20091122100142.1374:<< Import needed modules >>

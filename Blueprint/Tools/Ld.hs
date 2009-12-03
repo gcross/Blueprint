@@ -17,6 +17,7 @@ module Blueprint.Tools.Ld where
 import Control.Monad
 
 import Data.Dynamic
+import Data.ErrorMessage
 
 import System.Directory
 import System.Exit
@@ -26,7 +27,6 @@ import System.Process
 
 import Blueprint.Configuration
 import Blueprint.Cache.ExplicitDependencies
-import Blueprint.Error
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources

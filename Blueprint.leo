@@ -18,7 +18,6 @@
 <v t="gcross.20091122100142.1310"><vh>@thin ImplicitDependencies.hs</vh></v>
 </v>
 <v t="gcross.20091123215917.1369"><vh>@thin Configuration.hs</vh></v>
-<v t="gcross.20091127142612.1383"><vh>@thin Error.hs</vh></v>
 <v t="gcross.20091128000856.1441"><vh>@thin Main.hs</vh></v>
 <v t="gcross.20091127142612.1413"><vh>@thin Miscellaneous.hs</vh></v>
 <v t="gcross.20091129000542.1450"><vh>@thin Options.hs</vh></v>

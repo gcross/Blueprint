@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Digest.Pure.MD5
 import Data.Either
 import Data.Either.Unwrap
+import Data.ErrorMessage
 import Data.Function
 import Data.List
 import Data.Map (Map)
@@ -27,7 +28,6 @@ import System.IO.Unsafe
 
 import Text.PrettyPrint.ANSI.Leijen
 
-import Blueprint.Error
 import Blueprint.Miscellaneous
 -- @-node:gcross.20091121210308.1278:<< Import needed modules >>
 -- @nl
@@ -107,7 +107,7 @@ createSourceResourceFor prefix filepath =
 -- @+node:gcross.20091201183231.1580:attemptGetDigests
 attemptGetDigests :: [Resource] -> Either ErrorMessage [MD5Digest]
 attemptGetDigests =
-    extractResultsOrError
+    gatherResultsOrError
     .
     parMap rwhnf resourceDigest
 -- @-node:gcross.20091201183231.1580:attemptGetDigests
@@ -129,7 +129,7 @@ attemptGetResources error_heading resources =
         indent 4
     )
     .
-    extractResultsOrError
+    gatherResultsOrError
     .
     map (\resource_id ->
         case Map.lookup resource_id resources of
