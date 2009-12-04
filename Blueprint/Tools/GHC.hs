@@ -290,6 +290,10 @@ flagsFromPackageDependencies [] = []
 flagsFromPackageDependencies (package:rest) = "-package":package:flagsFromPackageDependencies rest
 -- @nonl
 -- @-node:gcross.20091130193227.2256:flagsFromPackageDependencies
+-- @+node:gcross.20091204093401.2928:toQualifiedName
+toQualifiedName :: PackageIdentifier -> String
+toQualifiedName (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
+-- @-node:gcross.20091204093401.2928:toQualifiedName
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -351,7 +355,7 @@ readPackageDescription =
     Distribution.PackageDescription.Parse.readPackageDescription silent
 -- @-node:gcross.20091128201230.1459:readPackageDescription
 -- @+node:gcross.20091128201230.1461:configurePackageResolutions
-configurePackageResolutions :: GHCConfiguration -> PackageDescription -> String -> Configurer [String]
+configurePackageResolutions :: GHCConfiguration -> [Dependency] -> String -> Configurer [String]
 configurePackageResolutions tools package_description =
     configureUsingSectionWith config_reader config_writer automatic_configurer
   where
@@ -381,8 +385,6 @@ configurePackageResolutions tools package_description =
         partitionEithers
         .
         parMap rwhnf resolvePackage
-        .
-        buildDepends
         $
         package_description
 

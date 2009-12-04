@@ -2,6 +2,13 @@
 -- @+node:gcross.20091121210308.1276:@thin Resources.hs
 -- @@language Haskell
 
+-- @<< Language extensions >>
+-- @+node:gcross.20091204093401.2853:<< Language extensions >>
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+-- @-node:gcross.20091204093401.2853:<< Language extensions >>
+-- @nl
+
 module Blueprint.Resources where
 
 -- @<< Import needed modules >>
@@ -53,6 +60,21 @@ type ResourceId = (String,String)
 type ResourceSet = Set Resource
 -- @-node:gcross.20091201183231.1600:ResourceSet
 -- @-node:gcross.20091121210308.1277:Types
+-- @+node:gcross.20091204093401.2258:Classes (with instances)
+-- @+node:gcross.20091204093401.2259:SourceDirectorySpecification
+class SourceDirectorySpecification a where
+    getSourceResources :: a -> Resources
+
+instance SourceDirectorySpecification FilePath where
+    getSourceResources = sourceResourcesIn
+
+instance SourceDirectorySpecification (String,FilePath) where
+    getSourceResources = uncurry sourceResourcesWithPrefixIn
+
+instance (SourceDirectorySpecification a) => SourceDirectorySpecification [a] where
+    getSourceResources = Map.unions . map getSourceResources
+-- @-node:gcross.20091204093401.2259:SourceDirectorySpecification
+-- @-node:gcross.20091204093401.2258:Classes (with instances)
 -- @+node:gcross.20091201183231.1585:Instances
 -- @+node:gcross.20091201183231.1587:Eq, Ord (Resource)
 instance Eq Resource where
@@ -204,6 +226,14 @@ noLinkDependencies :: Either ErrorMessage ResourceSet
 noLinkDependencies = Right Set.empty
 -- @nonl
 -- @-node:gcross.20091201183231.1595:noLinkDependencies
+-- @+node:gcross.20091204093401.2772:addSourceResourceFor
+addSourceResourceFor :: FilePath -> Resources -> Resources
+addSourceResourceFor = addPrefixedSourceResourceFor ""
+-- @-node:gcross.20091204093401.2772:addSourceResourceFor
+-- @+node:gcross.20091204093401.2774:addPrefixedSourceResourceFor
+addPrefixedSourceResourceFor :: String -> FilePath -> Resources -> Resources
+addPrefixedSourceResourceFor prefix = addResource . createSourceResourceFor prefix
+-- @-node:gcross.20091204093401.2774:addPrefixedSourceResourceFor
 -- @-node:gcross.20091121210308.1280:Unclassified
 -- @-node:gcross.20091201183231.1586:Functions
 -- @-others
