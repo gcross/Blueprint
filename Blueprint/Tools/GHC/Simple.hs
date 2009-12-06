@@ -18,6 +18,7 @@ import Control.Parallel
 
 import Data.ErrorMessage
 import Data.Digest.Pure.MD5
+import qualified Data.Map as Map
 
 import Distribution.Package
 import qualified Distribution.PackageDescription as Package
@@ -98,15 +99,15 @@ doConfigure package_resolution_section package_cache_section configuration_filep
             package_modules
 -- @-node:gcross.20091204093401.2766:doConfigure
 -- @+node:gcross.20091204093401.2768:buildObjects
-buildObjects :: [String] -> Resources -> Configuration -> Resources
-buildObjects flags source_resources configuration =
+buildObjects :: String -> [String] -> Resources -> Configuration -> Resources
+buildObjects build_root flags source_resources configuration =
     ghcCompileAll
         (ghcConfiguration configuration)
-        "build/digest-cache"
+        (build_root </> "digest-cache")
         flags
         (packageModules configuration)
-        "build/objects"
-        "build/haskell-interfaces"
+        (build_root </> "objects")
+        (build_root </> "haskell-interfaces")
         source_resources
 -- @-node:gcross.20091204093401.2768:buildObjects
 -- @+node:gcross.20091204093401.2770:buildLibrary
@@ -114,22 +115,29 @@ buildLibrary :: Resources -> PackageIdentifier -> Configuration -> ErrorMessageO
 buildLibrary source_resources package_identifier@(PackageIdentifier (PackageName package_name) _) configuration =
     let compiled_resources =
             buildObjects
-                (("--package-name="++(toQualifiedName package_identifier)):ghc_flags)
+                "build"
+                (("-package-name="++(toQualifiedName package_identifier)):ghc_flags)
                 source_resources
                 configuration
-        object_resources = selectResourcesOfTypeAsList "o" compiled_resources
+        object_subdirectory = "build" </> "objects"
+        object_resources =
+            filter ((== object_subdirectory) . take (length object_subdirectory) . resourceFilePath)
+            .
+            Map.elems
+            $
+            compiled_resources
         library = formStaticLibrary
             (arConfiguration configuration)
-            "build-package/digest-cache"
+            "build/digest-cache"
             object_resources
             ("lib" ++ package_name)
-            ("build-package/libraries/lib" ++ package_name ++ ".a")
+            ("build/libraries/lib" ++ package_name ++ ".a")
         ghci_library = linkIntoObject
             (ldConfiguration configuration)
-            "build-package/digest-cache"
+            "build/digest-cache"
             object_resources
             package_name
-            ("build-package/libraries/" ++ package_name ++ ".o")
+            ("build/libraries/" ++ package_name ++ ".o")
     in do
         attemptGetDigests [library,ghci_library]
         >>
@@ -142,14 +150,17 @@ buildSelf source_resources configuration =
     .
     ghcLinkProgram
         (ghcConfiguration configuration)
-        "build/digest-cache"
+        "build/self/digest-cache"
         ghc_flags
         (packageDependencies configuration)
         "."
         [("Setup","o")]
     $
-    buildObjects ghc_flags (addSourceResourceFor "Setup.hs" source_resources) configuration
--- @nonl
+    buildObjects
+        "build/self"
+        ghc_flags
+        (addSourceResourceFor "Setup.hs" source_resources)
+        configuration
 -- @-node:gcross.20091204093401.2771:buildSelf
 -- @+node:gcross.20091204093401.2776:doTest
 doTest :: Resources -> Configuration -> ErrorMessageOr ()
@@ -158,13 +169,17 @@ doTest source_resources configuration =
      .
      ghcLinkProgram
         (ghcConfiguration configuration)
-        "build/digest-cache"
+        "build/self/digest-cache"
         ghc_flags
         (packageDependencies configuration)
         "."
         [("test","o")]
      $
-     buildObjects ghc_flags source_resources configuration
+     buildObjects
+         "build/self"
+         ghc_flags
+         source_resources
+         configuration
     )
     >>
     (unsafePerformIO (system "./test") `pseq` return ())
@@ -172,7 +187,13 @@ doTest source_resources configuration =
 -- @+node:gcross.20091204093401.2778:doInstall
 doInstall :: Package.PackageDescription -> Configuration -> (Resource,Resource,Resources) -> ErrorMessageOr ()
 doInstall package_description configuration (library_resource,ghci_library_resource,compiled_resources) =
-    let interface_resources = selectResourcesOfTypeAsList "hi" compiled_resources
+    let interface_subdirectory = "build" </> "haskell-interfaces"
+        interface_resources =
+            filter ((== interface_subdirectory) . take (length interface_subdirectory) . resourceFilePath)
+            .
+            Map.elems
+            $
+            compiled_resources
         installation_result =
             installSimplePackage
                 (ghcConfiguration configuration)
@@ -215,7 +236,7 @@ defaultMain source_directory_specification maybe_test_information = do
             >>=
             buildSelf source_resources
         reself = 
-            (makeRemoveFilesAndDirectoriesTarget ["build"])
+            (makeRemoveFilesAndDirectoriesTarget ["build/self"])
             `thenTarget`
             toTarget self
         build_library = buildLibrary source_resources package_identifier
@@ -225,7 +246,7 @@ defaultMain source_directory_specification maybe_test_information = do
         clean = 
             makeCleanTarget
                 ["build"
-                ,"build-package"
+                ,"dist"
                 ]
         distclean =
             makeDistCleanTarget
@@ -264,7 +285,7 @@ defaultMain source_directory_specification maybe_test_information = do
                                         source_resources
                                     )
                             retest =
-                                clean
+                                (makeRemoveFilesAndDirectoriesTarget ["build/self"])
                                 `thenTarget`
                                 toTarget test
                         in  [target "test" test
