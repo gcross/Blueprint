@@ -1,0 +1,5 @@
+To build and install Blueprint:
+
+   runhaskell Setup.hs self
+   ./Setup build +RTS -N4 -RTS
+   ./Setup install
