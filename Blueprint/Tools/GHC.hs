@@ -51,6 +51,7 @@ import Distribution.InstalledPackageInfo
             )
 import Distribution.Package
 import Distribution.PackageDescription as Package
+import Distribution.PackageDescription.Configuration
 import qualified Distribution.PackageDescription.Parse
 import Distribution.Text
 import Distribution.Verbosity
@@ -294,6 +295,14 @@ flagsFromPackageDependencies (package:rest) = "-package":package:flagsFromPackag
 toQualifiedName :: PackageIdentifier -> String
 toQualifiedName (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
 -- @-node:gcross.20091204093401.2928:toQualifiedName
+-- @+node:gcross.20091210094146.1982:parseDependency
+parseDependency dependency_string =
+    fromMaybe (error $ "Unable to parse dependency string " ++ dependency_string)
+    .
+    simpleParse
+    $
+    dependency_string
+-- @-node:gcross.20091210094146.1982:parseDependency
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -348,7 +357,7 @@ findPackagesExposingModule tools package_name =
 -- @+node:gcross.20091128201230.1459:readPackageDescription
 readPackageDescription :: FilePath -> PackageDescription
 readPackageDescription =
-    packageDescription
+    flattenPackageDescription
     .
     unsafePerformIO
     .   

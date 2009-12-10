@@ -218,8 +218,7 @@ defaultMain source_directory_specification maybe_test_information = do
     when (null cabal_filepaths) $ do
         putStrLn "Unable to find a .cabal file."
         exitFailure
-    generic_package_description <- Parse.readPackageDescription silent . head $ cabal_filepaths
-    let package_description = flattenPackageDescription generic_package_description
+    let package_description = readPackageDescription . head $ cabal_filepaths
         package_dependencies = Package.buildDepends package_description
         package_identifier = Package.package package_description
         PackageIdentifier (PackageName package_name) _ = package_identifier
@@ -266,12 +265,7 @@ defaultMain source_directory_specification maybe_test_information = do
             ] ++ case maybe_test_information of
                     Nothing -> []
                     Just (test_directory_specification,additional_test_dependencies) ->
-                        let test_dependencies = package_dependencies ++
-                                map (\dependency_string ->
-                                    case simpleParse dependency_string of
-                                        Nothing -> error $ "Unable to parse dependency string " ++ dependency_string
-                                        Just dependency -> dependency
-                                ) additional_test_dependencies
+                        let test_dependencies = package_dependencies ++ map parseDependency additional_test_dependencies
                             test =
                                 doConfigure
                                     "Test Packages"
