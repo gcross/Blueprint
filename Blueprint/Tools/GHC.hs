@@ -49,8 +49,10 @@ import Distribution.InstalledPackageInfo
             ,InstalledPackageInfo
             ,showInstalledPackageInfo
             )
-import Distribution.Package
-import Distribution.PackageDescription as Package
+import Distribution.Package (PackageIdentifier(..),PackageName(..),Dependency(..))
+import qualified Distribution.Package as Package
+import Distribution.PackageDescription (PackageDescription)
+import qualified Distribution.PackageDescription as PackageDescription
 import Distribution.PackageDescription.Configuration
 import qualified Distribution.PackageDescription.Parse
 import Distribution.Text
@@ -60,6 +62,8 @@ import Distribution.Version
 import System.Directory
 import System.Exit
 import System.FilePath
+import System.FilePath.Find (fileName,(==?),extension)
+import qualified System.FilePath.Find as Find
 import System.IO
 import System.IO.Unsafe
 import System.Process
@@ -114,6 +118,15 @@ type PackageModules = Set String
 -- @+node:gcross.20091128201230.1462:ResolvedPackages
 newtype ResolvedPackages = ResolvedPackages [String]
 -- @-node:gcross.20091128201230.1462:ResolvedPackages
+-- @+node:gcross.20091212120817.2104:CabalInformation
+data PackageInformation = PackageInformation
+    {   packageName :: String
+    ,   packageIdentifier :: PackageIdentifier
+    ,   packageExternalDependencies :: [Dependency]
+    ,   packageDescription :: PackageDescription
+    ,   packageConfigurationFilePath :: FilePath
+    }
+-- @-node:gcross.20091212120817.2104:CabalInformation
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091127142612.1406:ConfigurationData GHCConfiguration
@@ -303,6 +316,24 @@ parseDependency dependency_string =
     $
     dependency_string
 -- @-node:gcross.20091210094146.1982:parseDependency
+-- @+node:gcross.20091212120817.2103:loadInformationFromCabalFile
+loadInformationFromCabalFile :: PackageInformation
+loadInformationFromCabalFile = unsafePerformIO $ do
+    cabal_filepaths <- Find.find (fileName ==? ".") (extension ==? ".cabal") "."
+    when (null cabal_filepaths) $ do
+        putStrLn "Unable to find a .cabal file."
+        exitFailure
+    let package_description = readPackageDescription . head $ cabal_filepaths
+        package_identifier = PackageDescription.package package_description
+        PackageIdentifier (PackageName package_name) _ = package_identifier
+    return PackageInformation
+        {   packageDescription = package_description
+        ,   packageExternalDependencies = PackageDescription.buildDepends package_description
+        ,   packageIdentifier = package_identifier
+        ,   packageName = package_name
+        ,   packageConfigurationFilePath = package_name <.> "cfg"
+        }
+-- @-node:gcross.20091212120817.2103:loadInformationFromCabalFile
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -459,7 +490,7 @@ registerPackage configuration = do
 -- @+node:gcross.20091129000542.1701:Package installation
 -- @+node:gcross.20091129000542.1702:createInstalledPackageInfo
 createInstalledPackageInfoFromPackageDescription ::
-    Package.PackageDescription ->
+    PackageDescription ->
     Bool -> -- is library exposed?
     [ModuleName] -> -- exposed modules
     [ModuleName] -> -- hidden modules
@@ -481,22 +512,22 @@ createInstalledPackageInfoFromPackageDescription ::
     InstalledPackageInfo
 createInstalledPackageInfoFromPackageDescription
     = InstalledPackageInfo
-        <$> Package.package
-        <*> Package.license
-        <*> Package.copyright
-        <*> Package.maintainer
-        <*> Package.author
-        <*> Package.stability
-        <*> Package.homepage
-        <*> Package.pkgUrl
-        <*> Package.description
-        <*> Package.category
+        <$> PackageDescription.package
+        <*> PackageDescription.license
+        <*> PackageDescription.copyright
+        <*> PackageDescription.maintainer
+        <*> PackageDescription.author
+        <*> PackageDescription.stability
+        <*> PackageDescription.homepage
+        <*> PackageDescription.pkgUrl
+        <*> PackageDescription.description
+        <*> PackageDescription.category
 -- @-node:gcross.20091129000542.1702:createInstalledPackageInfo
 -- @+node:gcross.20091129000542.1703:installSimplePackage
 installSimplePackage ::
     GHCConfiguration ->
     InstallerConfiguration ->
-    Package.PackageDescription ->
+    PackageDescription ->
     [String] ->
     [Resource] ->
     Maybe ErrorMessage
@@ -506,7 +537,7 @@ installSimplePackage
     package_description
     dependency_package_names
     resources_to_install
-  = let PackageIdentifier (PackageName name) version = Package.package package_description
+  = let PackageIdentifier (PackageName name) version = PackageDescription.package package_description
         qualified_package_name = name ++ "-" ++ showVersion version
         library_destination_path =
             installerLibraryPath installer_configuration

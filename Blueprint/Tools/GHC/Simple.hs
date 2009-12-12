@@ -20,8 +20,10 @@ import Data.ErrorMessage
 import Data.Digest.Pure.MD5
 import qualified Data.Map as Map
 
-import Distribution.Package
-import qualified Distribution.PackageDescription as Package
+import Distribution.Package (PackageIdentifier(..),PackageName(..),Dependency(..))
+import qualified Distribution.Package as Package
+import Distribution.PackageDescription (PackageDescription)
+import qualified Distribution.PackageDescription as PackageDescription
 import Distribution.PackageDescription.Configuration
 import qualified Distribution.PackageDescription.Parse as Parse
 import Distribution.Text
@@ -29,7 +31,6 @@ import Distribution.Verbosity
 
 import System.Exit
 import System.FilePath
-import System.FilePath.Find
 import System.IO.Unsafe
 import System.Process
 
@@ -185,7 +186,7 @@ doTest source_resources configuration =
     (unsafePerformIO (system "./test") `pseq` return ())
 -- @-node:gcross.20091204093401.2776:doTest
 -- @+node:gcross.20091204093401.2778:doInstall
-doInstall :: Package.PackageDescription -> Configuration -> (Resource,Resource,Resources) -> ErrorMessageOr ()
+doInstall :: PackageDescription -> Configuration -> (Resource,Resource,Resources) -> ErrorMessageOr ()
 doInstall package_description configuration (library_resource,ghci_library_resource,compiled_resources) =
     let interface_subdirectory = "build" </> "haskell-interfaces"
         interface_resources =
@@ -212,17 +213,15 @@ doInstall package_description configuration (library_resource,ghci_library_resou
 -- @+node:gcross.20091204093401.2248:Functions
 -- @+node:gcross.20091204093401.2247:defaultMain
 defaultMain :: SourceDirectorySpecification a => a -> Maybe (a,[String]) -> IO ()
-defaultMain source_directory_specification maybe_test_information = do
+defaultMain source_directory_specification maybe_test_information =
     let source_resources = getSourceResources source_directory_specification
-    cabal_filepaths <- find (fileName ==? ".") (extension ==? ".cabal") "."
-    when (null cabal_filepaths) $ do
-        putStrLn "Unable to find a .cabal file."
-        exitFailure
-    let package_description = readPackageDescription . head $ cabal_filepaths
-        package_dependencies = Package.buildDepends package_description
-        package_identifier = Package.package package_description
-        PackageIdentifier (PackageName package_name) _ = package_identifier
-        configuration_filepath = package_name <.> "cfg"
+        PackageInformation
+            {   packageDescription = package_description
+            ,   packageExternalDependencies = package_dependencies
+            ,   packageIdentifier = package_identifier
+            ,   packageName = package_name
+            ,   packageConfigurationFilePath = configuration_filepath
+            } = loadInformationFromCabalFile
         configure =
             doConfigure
                 "GHC"
@@ -285,7 +284,7 @@ defaultMain source_directory_specification maybe_test_information = do
                         in  [target "test" test
                             ,target "retest" retest
                             ]
-    Blueprint.Main.defaultMain
+    in Blueprint.Main.defaultMain
         (createDefaultHelpMessage options . map fst $ targets)
         targets
 -- @-node:gcross.20091204093401.2247:defaultMain
