@@ -25,7 +25,6 @@ import Control.Monad.Error
 import Control.Monad.Trans
 import Control.Parallel.Strategies
 
-import Data.Array
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Data.Data
@@ -69,9 +68,6 @@ import System.IO.Unsafe
 import System.Process
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((</>),(<$>))
-
-import Text.Regex.TDFA
-import Text.Regex.TDFA.ByteString.Lazy
 
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Cache.ImplicitDependencies
@@ -240,20 +236,13 @@ instance AutomaticallyConfigurable GHCConfiguration where
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
-import_matching_regex = fromRight . compile defaultCompOpt defaultExecOpt . L8.pack $ "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]+)[\\s;]?"
+import_matching_regex = compileRegularExpression "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]*)[\\s;]?"
 -- @-node:gcross.20091121210308.2015:regular expressions
 -- @-node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091121210308.2017:readDependenciesOf
 readDependenciesOf :: FilePath -> IO [String]
-readDependenciesOf =
-    L.readFile
-    >=>
-    return
-        .
-        map (L8.unpack . fst . (! 2))
-        .
-        matchAllText import_matching_regex
+readDependenciesOf = fmap (applyRegularExpression import_matching_regex) . L.readFile
 -- @-node:gcross.20091121210308.2017:readDependenciesOf
 -- @+node:gcross.20091122100142.1335:prefixWith
 prefixWith :: String -> [String] -> [String]

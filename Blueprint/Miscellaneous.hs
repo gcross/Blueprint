@@ -14,7 +14,11 @@ module Blueprint.Miscellaneous where
 import Control.Parallel
 import Control.Parallel.Strategies
 
+import Data.Array
+import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L8
 import Data.Dynamic
+import Data.Either.Unwrap
 import Data.List
 import Data.Typeable
 import Data.Version
@@ -24,11 +28,27 @@ import System.FilePath
 import System.IO.Unsafe
 
 import Text.ParserCombinators.ReadP
+import Text.Regex.TDFA
+import Text.Regex.TDFA.ByteString.Lazy
 -- @-node:gcross.20091127142612.1415:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20091127142612.1416:Functions
+-- @+node:gcross.20091214092727.1585:Regular expressions
+-- @+node:gcross.20091214092727.1583:compileRegularExpression
+compileRegularExpression :: String -> Regex
+compileRegularExpression = fromRight . compile defaultCompOpt defaultExecOpt . L8.pack
+-- @-node:gcross.20091214092727.1583:compileRegularExpression
+-- @+node:gcross.20091214092727.1586:applyRegularExpression
+applyRegularExpression :: Regex -> L.ByteString -> [String]
+applyRegularExpression regex = map (L8.unpack . fst . (! 2)) . matchAllText regex
+-- @-node:gcross.20091214092727.1586:applyRegularExpression
+-- @+node:gcross.20091214092727.1588:applyRegularExpressionToString
+applyRegularExpressionToString :: Regex -> String -> [String]
+applyRegularExpressionToString regex = applyRegularExpression regex . L8.pack
+-- @-node:gcross.20091214092727.1588:applyRegularExpressionToString
+-- @-node:gcross.20091214092727.1585:Regular expressions
 -- @+node:gcross.20091129000542.1704:dotsToSubdirectories
 dotsToSubdirectories :: String -> FilePath
 dotsToSubdirectories = joinPath . splitDot

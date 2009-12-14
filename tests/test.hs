@@ -23,6 +23,7 @@ import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
 import Blueprint.Miscellaneous
+import Blueprint.Tools.GHC
 -- @-node:gcross.20091121210308.1808:<< Import needed modules >>
 -- @nl
 
@@ -38,15 +39,39 @@ main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20091121210308.1816:<< Tests >>
     -- @+others
-    -- @+node:gcross.20091121210308.1817:Blueprint.Resources
-    [testGroup "Blueprint.Resources"
+    -- @+node:gcross.20091121210308.1817:Blueprint.Miscellaneous
+    [testGroup "Blueprint.Miscellaneous"
         -- @    @+others
         -- @+node:gcross.20091121210308.1818:splitDot
         [testProperty "splitDot" $ (uncurry (==)) . (id &&& splitDot . unsplitDot) . filter (not . null) . map (filter (/= '.'))
         -- @-node:gcross.20091121210308.1818:splitDot
         -- @-others
         ]
-    -- @-node:gcross.20091121210308.1817:Blueprint.Resources
+    -- @-node:gcross.20091121210308.1817:Blueprint.Miscellaneous
+    -- @+node:gcross.20091214092727.1580:Blueprint.Tools.GHC
+    ,testGroup "Blueprint.Tools.GHC"
+        -- @    @+others
+        -- @+node:gcross.20091214092727.1582:regular expression
+        [testCase "regular expression" $
+            let correct_modules =
+                    ["A"
+                    ,"B"
+                    ,"C"
+                    ,"D"
+                    ]
+                found_modules = applyRegularExpressionToString import_matching_regex . unlines $
+                    ["import A"
+                    ,"import qualified B as BB"
+                    ,"import C (x,y,z)"
+                    ,"import D hiding (x,y,z)"
+                    ]
+            in assertEqual "Was the correct list of modules obtained?"
+                correct_modules
+                found_modules
+        -- @-node:gcross.20091214092727.1582:regular expression
+        -- @-others
+        ]
+    -- @-node:gcross.20091214092727.1580:Blueprint.Tools.GHC
     -- @-others
     -- @-node:gcross.20091121210308.1816:<< Tests >>
     -- @nl
