@@ -34,18 +34,28 @@ import Text.Regex.TDFA.ByteString.Lazy
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091214124713.1580:Types
+-- @+node:gcross.20091214124713.1581:CompiledRegularExpression
+type CompiledRegularExpression = (Int,Regex)
+-- @-node:gcross.20091214124713.1581:CompiledRegularExpression
+-- @-node:gcross.20091214124713.1580:Types
 -- @+node:gcross.20091127142612.1416:Functions
 -- @+node:gcross.20091214092727.1585:Regular expressions
 -- @+node:gcross.20091214092727.1583:compileRegularExpression
-compileRegularExpression :: String -> Regex
-compileRegularExpression = fromRight . compile defaultCompOpt defaultExecOpt . L8.pack
+compileRegularExpression :: Int -> String -> CompiledRegularExpression
+compileRegularExpression index =
+    either error ((,) index)
+    .
+    compile defaultCompOpt defaultExecOpt
+    .
+    L8.pack
 -- @-node:gcross.20091214092727.1583:compileRegularExpression
 -- @+node:gcross.20091214092727.1586:applyRegularExpression
-applyRegularExpression :: Regex -> L.ByteString -> [String]
-applyRegularExpression regex = map (L8.unpack . fst . (! 2)) . matchAllText regex
+applyRegularExpression :: CompiledRegularExpression -> L.ByteString -> [String]
+applyRegularExpression (index,regex) = map (L8.unpack . fst . (! index)) . matchAllText regex
 -- @-node:gcross.20091214092727.1586:applyRegularExpression
 -- @+node:gcross.20091214092727.1588:applyRegularExpressionToString
-applyRegularExpressionToString :: Regex -> String -> [String]
+applyRegularExpressionToString :: CompiledRegularExpression -> String -> [String]
 applyRegularExpressionToString regex = applyRegularExpression regex . L8.pack
 -- @-node:gcross.20091214092727.1588:applyRegularExpressionToString
 -- @-node:gcross.20091214092727.1585:Regular expressions

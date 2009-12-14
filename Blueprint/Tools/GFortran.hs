@@ -40,6 +40,11 @@ import Blueprint.Tools
 gfortranOptionSectionKey = makeOptionSectionKey "gfortran"
 gfortranConfigurationKey = makeConfigurationKey "path to gfortran"
 -- @-node:gcross.20091129000542.1579:Keys
+-- @+node:gcross.20091214124713.1574:Values
+-- @+node:gcross.20091214124713.1575:regular expression
+use_matching_regex = compileRegularExpression 1 "\\s*use +([A-Za-z_][A-Za-z0-9_]*)"
+-- @-node:gcross.20091214124713.1575:regular expression
+-- @-node:gcross.20091214124713.1574:Values
 -- @+node:gcross.20091129000542.1555:Types
 -- @+node:gcross.20091129000542.1556:GFortranConfiguration
 data GFortranConfiguration = GFortranConfiguration { gfortranCompilerPath :: FilePath } deriving (Show)

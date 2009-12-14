@@ -26,8 +26,6 @@ import System.Exit
 import System.FilePath
 import System.Process
 
-import Text.Regex.TDFA
-
 import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Miscellaneous
 import Blueprint.Resources
@@ -63,7 +61,7 @@ runProductionCommand error_message_heading files_being_produced command argument
 -- @-node:gcross.20091201183231.1592:runProductionCommand
 -- @+node:gcross.20091214092727.1589:runScanner
 runScanner ::
-    Regex ->
+    CompiledRegularExpression ->
     (String -> Maybe [(DependencyType,ResourceId)]) ->
     ([(DependencyType,ResourceId)] -> ErrorMessage) ->
     Resources ->

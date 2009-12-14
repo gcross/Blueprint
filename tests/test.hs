@@ -23,6 +23,7 @@ import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
 import Blueprint.Miscellaneous
+import Blueprint.Tools.GFortran
 import Blueprint.Tools.GHC
 -- @-node:gcross.20091121210308.1808:<< Import needed modules >>
 -- @nl
@@ -72,6 +73,28 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20091214092727.1580:Blueprint.Tools.GHC
+    -- @+node:gcross.20091214124713.1578:Blueprint.Tools.GFortran
+    ,testGroup "Blueprint.Tools.GFortran"
+        -- @    @+others
+        -- @+node:gcross.20091214124713.1579:regular expression
+        [testCase "regular expression" $
+            let correct_modules =
+                    ["a"
+                    ,"b"
+                    ,"c"
+                    ]
+                found_modules = applyRegularExpressionToString use_matching_regex . unlines $
+                    ["use a"
+                    ,"use b, c => d"
+                    ,"use c, only: d"
+                    ]
+            in assertEqual "Was the correct list of modules obtained?"
+                correct_modules
+                found_modules
+        -- @-node:gcross.20091214124713.1579:regular expression
+        -- @-others
+        ]
+    -- @-node:gcross.20091214124713.1578:Blueprint.Tools.GFortran
     -- @-others
     -- @-node:gcross.20091121210308.1816:<< Tests >>
     -- @nl

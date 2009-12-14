@@ -236,7 +236,7 @@ instance AutomaticallyConfigurable GHCConfiguration where
 -- @-node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
-import_matching_regex = compileRegularExpression "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]*)[\\s;]?"
+import_matching_regex = compileRegularExpression 2 "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]*)[\\s;]?"
 -- @-node:gcross.20091121210308.2015:regular expressions
 -- @-node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2016:Functions
