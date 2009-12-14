@@ -601,21 +601,6 @@ installSimplePackage
         Left (e :: SomeException) -> Just $ errorMessageText "installing package" (show e)
 -- @-node:gcross.20091129000542.1703:installSimplePackage
 -- @-node:gcross.20091129000542.1701:Package installation
--- @+node:gcross.20091121210308.2031:Error reporting
--- @+node:gcross.20091121210308.2032:reportUnknownModules
-reportUnknownModules :: GHCConfiguration -> String -> [String] -> ErrorMessage
-reportUnknownModules tools source_name =
-    errorMessage ("tracing the following module dependencies for " ++ source_name)
-    .
-    vcat
-    .
-    map (\module_name -> text $
-        case findPackagesExposingModule tools module_name of
-            [] -> module_name ++ " (no idea where to find it)"
-            packages -> module_name ++ " which appears in packages " ++ (show packages)
-    )
--- @-node:gcross.20091121210308.2032:reportUnknownModules
--- @-node:gcross.20091121210308.2031:Error reporting
 -- @+node:gcross.20091121210308.1275:Tools
 -- @+node:gcross.20091121210308.2022:ghcCompile
 ghcCompile ::
@@ -661,28 +646,36 @@ ghcCompile
         }
 
     scanner =
-        ErrorT (
-            readDependenciesOf source_filepath
-            >>=
-            return
-            .
-            mapBoth
-                (reportUnknownModules configuration source_name)
-                unzip
-            .
-            gatherResultsOrErrors
-            .
-            catMaybes
-            .
-            map (\module_name ->
+        runScanner
+            import_matching_regex
+            (\module_name ->
                 if Set.member module_name known_package_modules
                     then Nothing
-                    else let ids = ((module_name,"hi"),(module_name,"o"))
-                          in if uncurry ((&&) `on` (flip Map.member known_resources)) ids
-                                then Just . Right $ ids
-                                else Just . Left $ module_name
+                    else Just [(BuildDependency,(module_name,"hi"))
+                              ,(LinkDependency,(module_name,"o"))
+                              ]
             )
-        )
+            (
+                errorMessage ("tracing the following module dependencies for " ++ source_name)
+                .
+                vcat
+                .
+                map (\module_name -> text $
+                    case findPackagesExposingModule configuration module_name of
+                        [] -> module_name ++ " (no idea where to find it)"
+                        packages -> module_name ++ " which appears in packages " ++ (show packages)
+                )
+                .
+                catMaybes
+                .
+                map (\(_,(resource_name,resource_type)) ->
+                    if resource_type == "hi"
+                        then Just resource_name
+                        else Nothing
+                )
+            )
+            known_resources
+            source_filepath
 
     builder =
         runProductionCommand

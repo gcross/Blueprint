@@ -11,20 +11,39 @@ module Blueprint.Tools where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091201183231.1594:<< Import needed modules >>
+import Control.Arrow
 import Control.Monad.Error
 import Control.Monad.Trans
 
+import qualified Data.ByteString.Lazy as L
+import Data.Either.Unwrap
 import Data.ErrorMessage
+import Data.Maybe
+import qualified Data.Map as Map
 
 import System.Directory
 import System.Exit
 import System.FilePath
 import System.Process
 
+import Text.Regex.TDFA
+
+import Blueprint.Cache.ImplicitDependencies
+import Blueprint.Miscellaneous
+import Blueprint.Resources
 -- @-node:gcross.20091201183231.1594:<< Import needed modules >>
 -- @nl
 
 -- @+others
+-- @+node:gcross.20091214092727.1590:Types
+-- @+node:gcross.20091214092727.1591:DependencyType
+data DependencyType =
+    BuildDependency
+ |  LinkDependency
+ |  BuildAndLinkDependency
+-- @-node:gcross.20091214092727.1591:DependencyType
+-- @-node:gcross.20091214092727.1590:Types
+-- @+node:gcross.20091214092727.1592:Runners
 -- @+node:gcross.20091201183231.1592:runProductionCommand
 runProductionCommand :: String -> [FilePath] -> String -> [String] -> ErrorT ErrorMessage IO ()
 runProductionCommand error_message_heading files_being_produced command arguments =
@@ -42,6 +61,59 @@ runProductionCommand error_message_heading files_being_produced command argument
             (ExitSuccess,_,_) -> return ()
 -- @nonl
 -- @-node:gcross.20091201183231.1592:runProductionCommand
+-- @+node:gcross.20091214092727.1589:runScanner
+runScanner ::
+    Regex ->
+    (String -> Maybe [(DependencyType,ResourceId)]) ->
+    ([(DependencyType,ResourceId)] -> ErrorMessage) ->
+    Resources ->
+    FilePath ->
+    Scanner
+runScanner
+    regex
+    postProcess
+    messageProcessor
+    known_resources
+    source_filepath
+  = ErrorT (
+        L.readFile source_filepath
+        >>=
+        return
+        .
+        mapBoth
+            messageProcessor
+            partitionDependencies
+        .
+        gatherResultsOrErrors
+        .
+        map (\dependency ->
+                if Map.member (snd dependency) known_resources
+                    then Right dependency
+                    else Left dependency
+        )
+        .
+        concat
+        .
+        catMaybes
+        . 
+        map postProcess
+        .
+        applyRegularExpression regex
+    )
+-- @nonl
+-- @-node:gcross.20091214092727.1589:runScanner
+-- @-node:gcross.20091214092727.1592:Runners
+-- @+node:gcross.20091214092727.1593:Functions
+-- @+node:gcross.20091214092727.1594:partitionDependencies
+partitionDependencies :: [(DependencyType,a)] -> ([a],[a])
+partitionDependencies = foldr (uncurry classifyDependency) ([],[])
+  where
+    classifyDependency :: DependencyType -> a -> ([a],[a]) -> ([a],[a])
+    classifyDependency BuildDependency = first . (:)
+    classifyDependency LinkDependency = second . (:)
+    classifyDependency BuildAndLinkDependency = uncurry (***) . ((:) &&& (:))
+-- @-node:gcross.20091214092727.1594:partitionDependencies
+-- @-node:gcross.20091214092727.1593:Functions
 -- @-others
 -- @-node:gcross.20091201183231.1591:@thin Tools.hs
 -- @-leo
