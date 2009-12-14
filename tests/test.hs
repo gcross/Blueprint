@@ -59,11 +59,11 @@ main = defaultMain
                     ,"C"
                     ,"D"
                     ]
-                found_modules = applyRegularExpressionToString import_matching_regex . unlines $
-                    ["import A"
-                    ,"import qualified B as BB"
-                    ,"import C (x,y,z)"
-                    ,"import D hiding (x,y,z)"
+                found_modules = applyRegularExpressionToString import_matching_regex . unlines . map ('i':) $ --'
+                    ["mport A"
+                    ,"mport qualified B as BB"
+                    ,"mport C (x,y,z)"
+                    ,"mport D hiding (x,y,z)"
                     ]
             in assertEqual "Was the correct list of modules obtained?"
                 correct_modules
