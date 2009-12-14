@@ -121,6 +121,7 @@ newtype ResolvedPackages = ResolvedPackages [String]
 -- @+node:gcross.20091212120817.2104:CabalInformation
 data PackageInformation = PackageInformation
     {   packageName :: String
+    ,   packageQualifiedName :: String
     ,   packageIdentifier :: PackageIdentifier
     ,   packageExternalDependencies :: [Dependency]
     ,   packageDescription :: PackageDescription
@@ -325,12 +326,13 @@ loadInformationFromCabalFile = unsafePerformIO $ do
         exitFailure
     let package_description = readPackageDescription . head $ cabal_filepaths
         package_identifier = PackageDescription.package package_description
-        PackageIdentifier (PackageName package_name) _ = package_identifier
+        PackageIdentifier (PackageName package_name) version = package_identifier
     return PackageInformation
         {   packageDescription = package_description
         ,   packageExternalDependencies = PackageDescription.buildDepends package_description
         ,   packageIdentifier = package_identifier
         ,   packageName = package_name
+        ,   packageQualifiedName = package_name ++ "-" ++ showVersion version
         ,   packageConfigurationFilePath = package_name <.> "cfg"
         }
 -- @-node:gcross.20091212120817.2103:loadInformationFromCabalFile
