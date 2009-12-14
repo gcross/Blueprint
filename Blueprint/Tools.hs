@@ -18,6 +18,7 @@ import Control.Monad.Trans
 import qualified Data.ByteString.Lazy as L
 import Data.Either.Unwrap
 import Data.ErrorMessage
+import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
 
@@ -25,6 +26,8 @@ import System.Directory
 import System.Exit
 import System.FilePath
 import System.Process
+
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>),(<$>))
 
 import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Miscellaneous
@@ -63,14 +66,14 @@ runProductionCommand error_message_heading files_being_produced command argument
 runScanner ::
     CompiledRegularExpression ->
     (String -> Maybe [(DependencyType,ResourceId)]) ->
-    ([(DependencyType,ResourceId)] -> ErrorMessage) ->
+    ((DependencyType,ResourceId) -> Maybe Doc) ->
     Resources ->
     FilePath ->
     Scanner
 runScanner
     regex
     postProcess
-    messageProcessor
+    messageProcess
     known_resources
     source_filepath
   = ErrorT (
@@ -79,7 +82,15 @@ runScanner
         return
         .
         mapBoth
-            messageProcessor
+            (
+                errorMessage ("tracing the following module dependencies for " ++ source_filepath)
+                .
+                vcat
+                .
+                catMaybes
+                .
+                map messageProcess
+            )
             partitionDependencies
         .
         gatherResultsOrErrors
@@ -111,6 +122,34 @@ partitionDependencies = foldr (uncurry classifyDependency) ([],[])
     classifyDependency LinkDependency = second . (:)
     classifyDependency BuildAndLinkDependency = uncurry (***) . ((:) &&& (:))
 -- @-node:gcross.20091214092727.1594:partitionDependencies
+-- @+node:gcross.20091214124713.1588:compileAdditionalWithImplicitDependencies
+compileAdditionalWithImplicitDependencies ::
+    [String] ->
+    (Resources -> Resource -> [Resource]) ->
+    Resources ->
+    Resources ->
+    Resources
+compileAdditionalWithImplicitDependencies
+    accepted_resource_types
+    compile
+    source_resources
+    previously_compiled_resources
+    =
+    let new_resources =
+            go (Map.elems source_resources)
+               (source_resources `Map.union` previously_compiled_resources)
+        go [] = id
+        go (resource:rest_resources) =
+            go rest_resources
+            .
+            if resourceType (resource) `elem` accepted_resource_types
+                then
+                    flip (foldl' (flip addResource)) -- '
+                    $
+                    compile new_resources resource
+                else id
+    in new_resources
+-- @-node:gcross.20091214124713.1588:compileAdditionalWithImplicitDependencies
 -- @-node:gcross.20091214092727.1593:Functions
 -- @-others
 -- @-node:gcross.20091201183231.1591:@thin Tools.hs

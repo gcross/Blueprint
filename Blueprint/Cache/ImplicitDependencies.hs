@@ -11,6 +11,7 @@ module Blueprint.Cache.ImplicitDependencies where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20091122100142.1313:<< Import needed modules >>
+import Control.Arrow
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
@@ -23,6 +24,8 @@ import Data.ErrorMessage
 import Data.Function
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import System.Directory
 import System.FilePath
@@ -57,8 +60,8 @@ type Scanner = ErrorT ErrorMessage IO ([ResourceId],[ResourceId])
 -- @-node:gcross.20091122100142.1324:Scanner
 -- @-node:gcross.20091122100142.1314:Types
 -- @+node:gcross.20091122100142.1317:Function
--- @+node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
-analyzeImplicitDependenciesAndRebuildIfNecessary ::
+-- @+node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary_
+analyzeImplicitDependenciesAndRebuildIfNecessary_ ::
     (Binary a, Eq a) =>
     Builder ->
     Scanner ->
@@ -67,9 +70,9 @@ analyzeImplicitDependenciesAndRebuildIfNecessary ::
     [FilePath] ->
     a ->
     Resource ->
-    Either ErrorMessage ([MD5Digest],[ResourceId])
+    ErrorMessageOr ([MD5Digest],[ResourceId])
 
-analyzeImplicitDependenciesAndRebuildIfNecessary
+analyzeImplicitDependenciesAndRebuildIfNecessary_
     builder
     scanner
     resources
@@ -140,7 +143,52 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
                 encodeFile cache_filepath cached_dependencies
             >>
             return (product_digests,link_dependency_resource_ids)
--- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary
+-- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary_
+-- @+node:gcross.20091214124713.1584:analyzeImplicitDependenciesAndRebuildIfNecessary
+analyzeImplicitDependenciesAndRebuildIfNecessary ::
+    (Binary a, Eq a) =>
+    Builder ->
+    Scanner ->
+    Resources ->
+    FilePath ->
+    [FilePath] ->
+    a ->
+    Resource ->
+    ([ErrorMessageOr MD5Digest],ErrorMessageOr (Set Resource))
+
+analyzeImplicitDependenciesAndRebuildIfNecessary
+    builder
+    scanner
+    resources
+    cache_filepath
+    product_filepaths
+    miscellaneous_cache_information
+    source_resource
+    =
+    either
+        (repeat . Left &&& Left)
+        (
+            map Right
+            ***
+            (attemptGetResources
+                ("fetching resources with the following ids that are link dependencies of "
+                    ++ (show.resourceId) source_resource
+                )
+                resources
+             >=>
+             return . Set.fromList
+            )
+        )
+    $
+    analyzeImplicitDependenciesAndRebuildIfNecessary_
+        builder
+        scanner
+        resources
+        cache_filepath
+        product_filepaths
+        miscellaneous_cache_information
+        source_resource
+-- @-node:gcross.20091214124713.1584:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others
 -- @-node:gcross.20091122100142.1310:@thin ImplicitDependencies.hs

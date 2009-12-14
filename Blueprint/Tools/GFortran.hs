@@ -26,8 +26,10 @@ import System.FilePath
 import System.IO.Unsafe
 import System.Process
 
+import Text.PrettyPrint.ANSI.Leijen hiding ((</>),(<$>))
+
 import Blueprint.Configuration
-import Blueprint.Cache.ExplicitDependencies
+import Blueprint.Cache.ImplicitDependencies
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
@@ -64,6 +66,14 @@ instance AutomaticallyConfigurable GFortranConfiguration where
 -- @+node:gcross.20091129000542.1560:Options processing
 gfortranOptions = makeSimpleOptionSectionForProgram "gfortran" gfortranOptionSectionKey
 -- @-node:gcross.20091129000542.1560:Options processing
+-- @+node:gcross.20091214124713.1582:Functions
+-- @+node:gcross.20091214124713.1583:doubleUnderscoreToDots
+doubleUnderscoreToDots :: String -> String
+doubleUnderscoreToDots [] = []
+doubleUnderscoreToDots ('_':'_':xs) = '.':doubleUnderscoreToDots xs -- '
+doubleUnderscoreToDots (x:xs) = x:doubleUnderscoreToDots xs
+-- @-node:gcross.20091214124713.1583:doubleUnderscoreToDots
+-- @-node:gcross.20091214124713.1582:Functions
 -- @+node:gcross.20091129000542.1566:Tools
 -- @+node:gcross.20091129000542.1567:gfortranCompile
 gfortranCompile ::
@@ -72,33 +82,62 @@ gfortranCompile ::
     [String] ->
     FilePath ->
     FilePath ->
+    Resources ->
     Resource ->
-    Resource
+    [Resource]
 gfortranCompile
-    tools
+    configuration
     cache_directory
     options
     object_destination_directory
     interface_destination_directory
+    known_resources
     source_resource
-    =
-    Resource
+    = [object_resource,interface_resource]
+  where
+    source_filepath = resourceFilePath source_resource
+    source_name = resourceName source_resource
+    object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
+    interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "hi"
+
+    object_resource = Resource
         {   resourceName = source_name
         ,   resourceType = "o"
         ,   resourceFilePath = object_filepath
         ,   resourceDigest = object_digest
         ,   resourceLinkDependencies = noLinkDependencies
         }
-  where
-    source_filepath = resourceFilePath source_resource
-    source_name = resourceName source_resource
-    object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
+    interface_resource = Resource
+        {   resourceName = source_name
+        ,   resourceType = "mod"
+        ,   resourceFilePath = interface_filepath
+        ,   resourceDigest = interface_digest
+        ,   resourceLinkDependencies = notLinkable interface_resource
+        }
+
+    scanner =
+        runScanner
+            use_matching_regex
+            (\dependency ->
+                let resource_name = doubleUnderscoreToDots dependency
+                in Just
+                    [(BuildDependency,(resource_name,"mod"))
+                    ,(LinkDependency,(resource_name,"o"))
+                    ]
+            )
+            (\(_,(resource_name,resource_type)) ->
+                if resource_type == "mod"
+                    then Just . text $ resource_name
+                    else Nothing
+            )
+            known_resources
+            source_filepath
 
     builder = 
         runProductionCommand
             ("compiling " ++ source_name)
-            [object_filepath]
-            (gfortranCompilerPath tools)
+            [object_filepath,interface_filepath]
+            (gfortranCompilerPath configuration)
             (options ++
                 ["-J"++interface_destination_directory
                 ,"-c",source_filepath
@@ -106,15 +145,45 @@ gfortranCompile
                 ]
             )
 
-    object_digest = fmap head $
-        analyzeDependencyAndRebuildIfNecessary
+    (object_digest:interface_digest:_,link_dependency_resources) =
+        analyzeImplicitDependenciesAndRebuildIfNecessary
             builder
+            scanner
+            known_resources
             (cache_directory </> source_name <.> "o")
-            [object_filepath]
+            [object_filepath,interface_filepath]
             (unwords options)
             source_resource
+
 -- @-node:gcross.20091129000542.1567:gfortranCompile
--- @+node:gcross.20091129000542.1568:gfortranCompileAll
+-- @+node:gcross.20091129000542.1568:gfortranCompileAdditional
+gfortranCompileAdditional ::
+    GFortranConfiguration ->
+    FilePath ->
+    [String] ->
+    FilePath ->
+    FilePath ->
+    Resources ->
+    Resources ->
+    Resources
+gfortranCompileAdditional
+    configuration
+    cache_directory
+    options
+    object_destination_directory
+    interface_destination_directory
+    =
+    compileAdditionalWithImplicitDependencies
+        ["f","f77","f90","f95"]
+        (gfortranCompile
+            configuration
+            cache_directory
+            options
+            object_destination_directory
+            interface_destination_directory
+        )
+-- @-node:gcross.20091129000542.1568:gfortranCompileAdditional
+-- @+node:gcross.20091214124713.1590:gfortranCompileAll
 gfortranCompileAll ::
     GFortranConfiguration ->
     FilePath ->
@@ -124,31 +193,22 @@ gfortranCompileAll ::
     Resources ->
     Resources
 gfortranCompileAll
-    tools
+    configuration
     cache_directory
     options
     object_destination_directory
     interface_destination_directory
-    old_resources
+    source_resources
     =
-    new_resources
-  where
-    new_resources = go old_resources (Map.elems old_resources)
-    go accum_resources [] = accum_resources
-    go accum_resources (resource:rest_resources) =
-        if resourceType (resource) `elem` ["f","f77","f90","f95"]
-            then let object_resource =
-                        gfortranCompile
-                            tools
-                            cache_directory
-                            options
-                            object_destination_directory
-                            interface_destination_directory
-                            resource
-                 in go (addResource object_resource $ accum_resources) rest_resources
-            else go accum_resources rest_resources
-
--- @-node:gcross.20091129000542.1568:gfortranCompileAll
+    gfortranCompileAdditional
+        configuration
+        cache_directory
+        options
+        object_destination_directory
+        interface_destination_directory
+        source_resources
+        Map.empty
+-- @-node:gcross.20091214124713.1590:gfortranCompileAll
 -- @-node:gcross.20091129000542.1566:Tools
 -- @-others
 -- @-node:gcross.20091129000542.1552:@thin GFortran.hs

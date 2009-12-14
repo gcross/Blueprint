@@ -612,7 +612,7 @@ ghcCompile ::
     FilePath ->
     Resources ->
     Resource ->
-    (Resource,Resource)
+    [Resource]
 ghcCompile
     configuration
     cache_directory
@@ -622,7 +622,7 @@ ghcCompile
     interface_destination_directory
     known_resources
     source_resource
-    = (object_resource,interface_resource)
+    = [object_resource,interface_resource]
   where
     source_filepath = resourceFilePath source_resource
     source_name = resourceName source_resource
@@ -655,24 +655,13 @@ ghcCompile
                               ,(LinkDependency,(module_name,"o"))
                               ]
             )
-            (
-                errorMessage ("tracing the following module dependencies for " ++ source_name)
-                .
-                vcat
-                .
-                map (\module_name -> text $
-                    case findPackagesExposingModule configuration module_name of
-                        [] -> module_name ++ " (no idea where to find it)"
-                        packages -> module_name ++ " which appears in packages " ++ (show packages)
-                )
-                .
-                catMaybes
-                .
-                map (\(_,(resource_name,resource_type)) ->
-                    if resource_type == "hi"
-                        then Just resource_name
-                        else Nothing
-                )
+            (\(_,(resource_name,resource_type)) ->
+                if resource_type == "hi"
+                    then Just . text . (resource_name ++) $
+                             case findPackagesExposingModule configuration resource_name of
+                                [] -> " (no idea where to find it)"
+                                packages -> " which appears in packages " ++ (show packages)
+                    else Nothing
             )
             known_resources
             source_filepath
@@ -690,7 +679,7 @@ ghcCompile
                 ]
             )
 
-    build_result =
+    (object_digest:interface_digest:_,link_dependency_resources) =
         analyzeImplicitDependenciesAndRebuildIfNecessary
             builder
             scanner
@@ -699,19 +688,6 @@ ghcCompile
             [object_filepath,interface_filepath]
             (unwords options)
             source_resource
-
-    object_digest    = fmap ((!! 0) . fst) $ build_result
-    interface_digest = fmap ((!! 1) . fst) $ build_result
-
-    link_dependency_resources =
-        fmap snd build_result
-        >>=
-        attemptGetResources
-            ("fetching resources with the following ids that are link dependencies of " ++ show source_id)
-            known_resources
-        >>=
-        return . Set.fromList
-
 -- @-node:gcross.20091121210308.2022:ghcCompile
 -- @+node:gcross.20091121210308.2038:ghcCompileAdditional
 ghcCompileAdditional ::
@@ -731,28 +707,17 @@ ghcCompileAdditional
     known_package_modules
     object_destination_directory
     interface_destination_directory
-    source_resources
-    previously_compiled_resources
     =
-    let new_resources =
-            go (source_resources `Map.union` previously_compiled_resources)
-               (Map.elems source_resources)
-        go accum_resources [] = accum_resources
-        go accum_resources (resource:rest_resources) =
-            if resourceType (resource) == "hs"
-                then let (object_resource,interface_resource) =
-                            ghcCompile
-                                configuration
-                                cache_directory
-                                options
-                                known_package_modules
-                                object_destination_directory
-                                interface_destination_directory
-                                new_resources
-                                resource
-                     in go (addResource object_resource . addResource interface_resource $ accum_resources) rest_resources
-                else go accum_resources rest_resources
-    in new_resources
+    compileAdditionalWithImplicitDependencies
+        ["hs"]
+        (ghcCompile
+            configuration
+            cache_directory
+            options
+            known_package_modules
+            object_destination_directory
+            interface_destination_directory
+        )
 -- @-node:gcross.20091121210308.2038:ghcCompileAdditional
 -- @+node:gcross.20091201161628.1568:ghcCompileAll
 ghcCompileAll ::
