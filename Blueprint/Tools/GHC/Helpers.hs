@@ -105,9 +105,9 @@ makeConfigurer =
 -- @-node:gcross.20091214124713.1684:makeConfigurer
 -- @-node:gcross.20091214124713.1680:Configurers
 -- @+node:gcross.20091214124713.1604:Functions
--- @+node:gcross.20091214124713.1700:buildTestProgram
-buildTestProgram :: Configuration -> [String] -> Resources -> ErrorMessageOr Resource
-buildTestProgram configuration ghc_flags =
+-- @+node:gcross.20091214124713.1700:buildProgram
+buildProgram :: String -> Configuration -> [String] -> Resources -> ErrorMessageOr Resource
+buildProgram resource_name configuration ghc_flags =
     assertResourceExists
     .
     ghcLinkProgram
@@ -116,12 +116,12 @@ buildTestProgram configuration ghc_flags =
        ghc_flags
        (packageDependencies configuration)
        "."
-       [("test","o")]
+       [(resource_name,"o")]
     .
     compileObjectsForProgram
         configuration
         ghc_flags
--- @-node:gcross.20091214124713.1700:buildTestProgram
+-- @-node:gcross.20091214124713.1700:buildProgram
 -- @+node:gcross.20091214124713.1607:compileObjectsWithRoot
 compileObjectsWithRoot :: String -> Configuration -> [String] -> Resources -> Resources
 compileObjectsWithRoot build_root configuration flags source_resources  =
@@ -192,6 +192,27 @@ linkLibrary
     object_resources = selectResourcesInSubdirectoryAsList object_subdirectory compiled_resources
     interface_resources = selectResourcesInSubdirectoryAsList interface_subdirectory compiled_resources
 -- @-node:gcross.20091214124713.1609:linkLibrary
+-- @+node:gcross.20091214215701.1624:buildAndLinkLibrary
+buildAndLinkLibrary ::
+    String ->
+    Configuration ->
+    [String] ->
+    Resources ->
+    ErrorMessageOr [Resource]
+buildAndLinkLibrary
+    qualified_package_name
+    configuration
+    ghc_flags
+    = 
+    linkLibrary
+        configuration
+        qualified_package_name
+    .
+    compileObjectsForLibrary
+        configuration
+        qualified_package_name
+        ghc_flags
+-- @-node:gcross.20091214215701.1624:buildAndLinkLibrary
 -- @-node:gcross.20091214124713.1604:Functions
 -- @-others
 -- @-node:gcross.20091214124713.1597:@thin Helpers.hs

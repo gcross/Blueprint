@@ -30,9 +30,8 @@
 <v t="gcross.20091129000542.1552"><vh>@thin GFortran.hs</vh></v>
 <v t="gcross.20091121204836.1242"><vh>@thin GHC.hs</vh></v>
 <v t="gcross.20091204093401.2245"><vh>@path GHC</vh>
-<v t="gcross.20091204093401.2246"><vh>@thin Simple.hs</vh></v>
+<v t="gcross.20091214124713.1714"><vh>@thin Main.hs</vh></v>
 <v t="gcross.20091214124713.1597"><vh>@thin Helpers.hs</vh></v>
-<v t="gcross.20091214124713.1617"><vh>@thin Targets.hs</vh></v>
 </v>
 <v t="gcross.20091129000542.1642"><vh>@thin Installer.hs</vh></v>
 <v t="gcross.20091130051619.1559"><vh>@thin Ld.hs</vh></v>
