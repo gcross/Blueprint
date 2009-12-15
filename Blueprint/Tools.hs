@@ -46,11 +46,23 @@ data DependencyType =
 -- @-node:gcross.20091214092727.1590:Types
 -- @+node:gcross.20091214092727.1592:Runners
 -- @+node:gcross.20091201183231.1592:runProductionCommand
-runProductionCommand :: String -> [FilePath] -> String -> [String] -> ErrorT ErrorMessage IO ()
-runProductionCommand error_message_heading files_being_produced command arguments =
-    (liftIO $ do
+runProductionCommand ::
+    String ->
+    [FilePath] ->
+    [FilePath] ->
+    String ->
+    [String] ->
+    ErrorT ErrorMessage IO ()
+runProductionCommand
+    error_message_heading
+    mandatory_product_filepaths
+    optional_product_filepaths
+    command
+    arguments
+  = (liftIO $ do
         putStrLn . unwords . (command:) $ arguments
-        mapM_ (createDirectoryIfMissing True . takeDirectory) $ files_being_produced
+        mapM_ (createDirectoryIfMissing True . takeDirectory) $
+            mandatory_product_filepaths ++ optional_product_filepaths
         readProcessWithExitCode
             command
             arguments
@@ -59,8 +71,24 @@ runProductionCommand error_message_heading files_being_produced command argument
         case compilation_result of
             (ExitFailure _,_,error_message) ->
                 throwError $ errorMessageTextFromMultilineString error_message_heading error_message
-            (ExitSuccess,_,_) -> return ()
--- @nonl
+            (ExitSuccess,_,_) ->
+                liftIO (filterM (fmap not . doesFileExist) mandatory_product_filepaths)
+                >>=
+                \missing_mandatory_files ->
+                    if null missing_mandatory_files
+                        then return ()
+                        else throwError $
+                            errorMessage error_message_heading
+                            .
+                            (text "The following files were supposed to have been produced, but were not:" <$$>)
+                            .
+                            indent 4
+                            .
+                            vcat
+                            .
+                            map text
+                            $
+                            missing_mandatory_files
 -- @-node:gcross.20091201183231.1592:runProductionCommand
 -- @+node:gcross.20091214092727.1589:runScanner
 runScanner ::

@@ -81,11 +81,12 @@ formStaticLibrary
         ,   resourceLinkDependencies = noLinkDependencies
         }
   where
-    library_digest = fmap head $
+    ([library_digest],[]) =
         analyzeExplicitDependenciesAndRebuildIfNecessary
             builder
             (cache_directory </> library_resource_name <.> "a")
             [library_resource_filepath]
+            []
             ()
             object_resources
 
@@ -93,6 +94,7 @@ formStaticLibrary
         runProductionCommand
             ("Error linking " ++ library_resource_name ++ ":")
             [library_resource_filepath]
+            []
             (arPath tools)
             ("cqs":library_resource_filepath:map resourceFilePath object_resources)
 -- @-node:gcross.20091122100142.1368:formStaticLibrary

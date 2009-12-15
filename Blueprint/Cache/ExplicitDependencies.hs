@@ -38,33 +38,36 @@ import Blueprint.Resources
 -- @+node:gcross.20091122100142.1380:CachedExplicitDependencies
 data (Binary a, Eq a) => CachedExplicitDependencies a = CachedExplicitDependencies
         {   digestsOfDependencies :: Map ResourceId MD5Digest
-        ,   digestsOfProducts :: [MD5Digest]
+        ,   digestsOfMandatoryProducts :: [MD5Digest]
+        ,   digestsOfOptionalProducts :: [Maybe MD5Digest]
         ,   cachedMiscellaneousInformation :: a
         }
 
 instance (Binary a, Eq a) => Binary (CachedExplicitDependencies a) where
-    put (CachedExplicitDependencies a b c) = put a >> put b >> put c
-    get = liftM3 CachedExplicitDependencies get get get
+    put (CachedExplicitDependencies a b c d) = put a >> put b >> put c >> put d
+    get = liftM4 CachedExplicitDependencies get get get get
 -- @-node:gcross.20091122100142.1380:CachedExplicitDependencies
 -- @+node:gcross.20091122100142.1385:Builder
 type Builder = ErrorT ErrorMessage IO ()
 -- @-node:gcross.20091122100142.1385:Builder
 -- @-node:gcross.20091122100142.1379:Types
 -- @+node:gcross.20091122100142.1386:Function
--- @+node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary
-analyzeExplicitDependenciesAndRebuildIfNecessary ::
+-- @+node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary_
+analyzeExplicitDependenciesAndRebuildIfNecessary_ ::
     (Binary a, Eq a) =>
     Builder ->
     FilePath ->
     [FilePath] ->
+    [FilePath] ->
     a ->
     [Resource] ->
-    Either ErrorMessage [MD5Digest]
-analyzeExplicitDependenciesAndRebuildIfNecessary _ _ _ _ [] = error "Must supply at least one resource for build!"
-analyzeExplicitDependenciesAndRebuildIfNecessary
+    ErrorMessageOr ([MD5Digest],[Maybe MD5Digest])
+analyzeExplicitDependenciesAndRebuildIfNecessary_ _ _ _ _ _ [] = error "Must supply at least one resource for build!"
+analyzeExplicitDependenciesAndRebuildIfNecessary_
     builder
     cache_filepath
-    product_filepaths
+    mandatory_product_filepaths
+    optional_product_filepaths
     miscellaneous_cache_information
     source_resources
   = attemptGetDigests source_resources
@@ -84,20 +87,25 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
                    || not (Map.fold (&&) True compared_digests)
                     then rebuildIt
                     else do
-                        product_files_exist <- mapM doesFileExist product_filepaths
+                        product_files_exist <- mapM doesFileExist mandatory_product_filepaths
                         if not (and product_files_exist)
                             then rebuildIt
                             else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
                                 then rebuildIt
-                                else return . Right . digestsOfProducts $ cached_digests
+                                else return . Right $
+                                    (digestsOfMandatoryProducts cached_digests
+                                    ,digestsOfOptionalProducts cached_digests
+                                    )
   where
     rebuild source_digests_as_map = runErrorT $
         builder
         >>
-        let product_digests = map digestOf product_filepaths
+        let mandatory_product_digests = map digestOf mandatory_product_filepaths
+            optional_product_digests = map maybeDigestOf optional_product_filepaths
             cached_dependencies = CachedExplicitDependencies
                 {   digestsOfDependencies = source_digests_as_map
-                ,   digestsOfProducts = product_digests
+                ,   digestsOfMandatoryProducts = mandatory_product_digests
+                ,   digestsOfOptionalProducts = optional_product_digests
                 ,   cachedMiscellaneousInformation = miscellaneous_cache_information
                 }
         in (liftIO $ do
@@ -105,32 +113,44 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
             encodeFile cache_filepath cached_dependencies
            )
            >>
-           return product_digests
--- @-node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary
--- @+node:gcross.20091128000856.1483:analyzeDependencyAndRebuildIfNecessary
-analyzeDependencyAndRebuildIfNecessary ::
+           return (mandatory_product_digests,optional_product_digests)
+-- @-node:gcross.20091122100142.1387:analyzeExplicitDependenciesAndRebuildIfNecessary_
+-- @+node:gcross.20091215083221.1611:analyzeExplicitDependenciesAndRebuildIfNecessary
+analyzeExplicitDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) =>
     Builder ->
     FilePath ->
     [FilePath] ->
+    [FilePath] ->
     a ->
-    Resource ->
-    Either ErrorMessage [MD5Digest]
-analyzeDependencyAndRebuildIfNecessary
+    [Resource] ->
+    ([ErrorMessageOr MD5Digest],[Maybe (ErrorMessageOr MD5Digest)])
+analyzeExplicitDependenciesAndRebuildIfNecessary
     builder
     cache_filepath
-    product_filepaths
+    mandatory_product_filepaths
+    optional_product_filepaths
     miscellaneous_cache_information
-    source_resource
-    =
-    analyzeExplicitDependenciesAndRebuildIfNecessary
-        builder
-        cache_filepath
-        product_filepaths
-        miscellaneous_cache_information
-        [source_resource]
--- @nonl
--- @-node:gcross.20091128000856.1483:analyzeDependencyAndRebuildIfNecessary
+    source_resources
+  = case build_result of
+        Left error_message ->
+            (replicate (length mandatory_product_filepaths) (Left error_message)
+            ,replicate (length optional_product_filepaths) (Just $ Left error_message)
+            )
+        Right (mandatory_product_digests,optional_product_digests) ->
+                (map Right mandatory_product_digests
+                ,map (fmap Right) optional_product_digests
+                )
+  where
+    build_result =
+        analyzeExplicitDependenciesAndRebuildIfNecessary_
+            builder
+            cache_filepath
+            mandatory_product_filepaths
+            optional_product_filepaths
+            miscellaneous_cache_information
+            source_resources
+-- @-node:gcross.20091215083221.1611:analyzeExplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1386:Function
 -- @-others
 -- @-node:gcross.20091122100142.1369:@thin ExplicitDependencies.hs

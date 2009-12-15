@@ -81,11 +81,12 @@ linkIntoObject
         ,   resourceLinkDependencies = noLinkDependencies
         }
   where
-    library_digest = fmap head $
+    ([library_digest],[]) =
         analyzeExplicitDependenciesAndRebuildIfNecessary
             builder
             (cache_directory </> library_resource_name <.> "a")
             [library_resource_filepath]
+            []
             ()
             object_resources
 
@@ -93,6 +94,7 @@ linkIntoObject
         runProductionCommand
             ("Error linking object " ++ library_resource_name ++ ":")
             [library_resource_filepath]
+            []
             (ldPath tools)
             ("-x":"-r":"-o":library_resource_filepath:map resourceFilePath object_resources)
 -- @-node:gcross.20091129000542.1739:linkIntoObject

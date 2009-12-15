@@ -668,8 +668,9 @@ ghcCompile
 
     builder =
         runProductionCommand
-            ("compiling " ++ source_name)
+            ("Error compiling " ++ source_name ++ ":")
             [object_filepath,interface_filepath]
+            []
             (ghcCompilerPath configuration)
             (options ++
                 ["-i"++interface_destination_directory
@@ -679,13 +680,14 @@ ghcCompile
                 ]
             )
 
-    (object_digest:interface_digest:_,link_dependency_resources) =
+    ([object_digest,interface_digest],[],link_dependency_resources) =
         analyzeImplicitDependenciesAndRebuildIfNecessary
             builder
             scanner
             known_resources
             (cache_directory </> source_name <.> "o")
             [object_filepath,interface_filepath]
+            []
             (unwords options)
             source_resource
 -- @-node:gcross.20091121210308.2022:ghcCompile
@@ -780,7 +782,7 @@ ghcLinkProgram
 
     error_message_heading = "Error linking program " ++ program_resource_name ++ ":"
 
-    program_digest = fmap head $
+    program_digest = fmap (head . fst) $
         attemptGetResources error_message_heading resources program_object_ids
         >>=
         findAllObjectDependenciesOf resources . Set.fromList
@@ -791,6 +793,7 @@ ghcLinkProgram
                     runProductionCommand
                         error_message_heading
                         [program_resource_filepath]
+                        []
                         (ghcCompilerPath configuration)
                         (concat
                             [options
@@ -799,10 +802,11 @@ ghcLinkProgram
                             ,map resourceFilePath program_resources
                             ]
                         )
-            in analyzeExplicitDependenciesAndRebuildIfNecessary
+            in analyzeExplicitDependenciesAndRebuildIfNecessary_
                 builder
                 (cache_directory </> program_resource_name <.> "")
                 [program_resource_filepath]
+                []
                 ()
                 program_resources
 -- @-node:gcross.20091127142612.1402:ghcLinkProgram

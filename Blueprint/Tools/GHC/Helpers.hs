@@ -112,8 +112,14 @@ libraryBuildRoot = "build" </> "library"
 -- @-node:gcross.20091214215701.2072:Directories
 -- @+node:gcross.20091214215701.2067:Functions
 -- @+node:gcross.20091214124713.1700:buildProgram
-buildProgram :: String -> Configuration -> [String] -> Resources -> ErrorMessageOr Resource
-buildProgram resource_name configuration ghc_flags =
+buildProgram ::
+    String ->
+    [ResourceId] ->
+    Configuration ->
+    [String] ->
+    Resources ->
+    ErrorMessageOr Resource
+buildProgram resource_name additional_objects configuration ghc_flags =
     assertResourceExists
     .
     ghcLinkProgram
@@ -122,7 +128,7 @@ buildProgram resource_name configuration ghc_flags =
        ghc_flags
        (packageDependencies configuration)
        "."
-       [(resource_name,"o")]
+       ((resource_name,"o"):additional_objects)
     .
     compileObjectsForProgram
         configuration

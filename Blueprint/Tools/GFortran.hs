@@ -15,10 +15,12 @@ module Blueprint.Tools.GFortran where
 -- @<< Import needed modules >>
 -- @+node:gcross.20091129000542.1554:<< Import needed modules >>
 import Control.Monad
+import Control.Monad.Trans
 
 import Data.ErrorMessage
 import Data.Dynamic
 import qualified Data.Map as Map
+import Data.Maybe
 
 import System.Directory
 import System.Exit
@@ -98,7 +100,7 @@ gfortranCompile
     source_filepath = resourceFilePath source_resource
     source_name = resourceName source_resource
     object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
-    interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "hi"
+    interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "mod"
 
     object_resource = Resource
         {   resourceName = source_name
@@ -111,7 +113,13 @@ gfortranCompile
         {   resourceName = source_name
         ,   resourceType = "mod"
         ,   resourceFilePath = interface_filepath
-        ,   resourceDigest = interface_digest
+        ,   resourceDigest =
+                fromMaybe 
+                    (leftErrorMessageText
+                        ("Error finding " ++ interface_filepath ++ ":")
+                        ("The Fortran source resource " ++ source_name ++ " does not seem to declare a module, as no module interface file was produced.")
+                    )
+                    maybe_interface_digest
         ,   resourceLinkDependencies = notLinkable interface_resource
         }
 
@@ -135,8 +143,9 @@ gfortranCompile
 
     builder = 
         runProductionCommand
-            [object_filepath,interface_filepath]
             ("Error compiling " ++ source_name ++ ":")
+            [object_filepath]
+            [interface_filepath]
             (gfortranCompilerPath configuration)
             (options ++
                 ["-J"++interface_destination_directory
@@ -145,16 +154,16 @@ gfortranCompile
                 ]
             )
 
-    (object_digest:interface_digest:_,link_dependency_resources) =
+    ([object_digest],[maybe_interface_digest],link_dependency_resources) =
         analyzeImplicitDependenciesAndRebuildIfNecessary
             builder
             scanner
             known_resources
             (cache_directory </> source_name <.> "o")
-            [object_filepath,interface_filepath]
+            [object_filepath]
+            [interface_filepath]
             (unwords options)
             source_resource
-
 -- @-node:gcross.20091129000542.1567:gfortranCompile
 -- @+node:gcross.20091129000542.1568:gfortranCompileAdditional
 gfortranCompileAdditional ::

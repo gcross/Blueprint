@@ -42,15 +42,23 @@ import Blueprint.Resources
 -- @+node:gcross.20091122100142.1321:CachedImplicitDependencies
 data (Binary a, Eq a) => CachedImplicitDependencies a = CachedImplicitDependencies
         {   digestOfSourceFile :: MD5Digest
-        ,   digestsOfProducedFiles :: [MD5Digest]
+        ,   digestsOfMandatoryProducts :: [MD5Digest]
+        ,   digestsOfOptionalProducts :: [Maybe MD5Digest]
         ,   digestOfDependentModules :: [(ResourceId,MD5Digest)]
         ,   resourceIdsOfLinkDependencies :: [ResourceId]
         ,   cachedMiscellaneousInformation :: a
         }
 
 instance (Binary a, Eq a) => Binary (CachedImplicitDependencies a) where
-    put (CachedImplicitDependencies a b c d e) = put a >> put b >> put c >> put d >> put e
-    get = liftM5 CachedImplicitDependencies get get get get get
+    put (CachedImplicitDependencies a b c d e f) = put a >> put b >> put c >> put d >> put e >> put f
+    get = do
+        a <- get
+        b <- get
+        c <- get
+        d <- get
+        e <- get
+        f <- get
+        return (CachedImplicitDependencies a b c d e f)
 -- @-node:gcross.20091122100142.1321:CachedImplicitDependencies
 -- @+node:gcross.20091122100142.1323:Builder
 type Builder = ErrorT ErrorMessage IO ()
@@ -68,16 +76,18 @@ analyzeImplicitDependenciesAndRebuildIfNecessary_ ::
     Resources ->
     FilePath ->
     [FilePath] ->
+    [FilePath] ->
     a ->
     Resource ->
-    ErrorMessageOr ([MD5Digest],[ResourceId])
+    ErrorMessageOr ([MD5Digest],[Maybe MD5Digest],[ResourceId])
 
 analyzeImplicitDependenciesAndRebuildIfNecessary_
     builder
     scanner
     resources
     cache_filepath
-    product_filepaths
+    mandatory_product_filepaths
+    optional_product_filepaths
     miscellaneous_cache_information
     source_resource
   = unsafePerformIO . runErrorT $
@@ -95,12 +105,16 @@ analyzeImplicitDependenciesAndRebuildIfNecessary_
                                 let rebuildIt = rebuild build_dependency_resource_ids build_dependency_resource_digests link_dependency_resource_ids
                                 in if build_dependency_resource_digests /= previous_build_dependency_resource_digests
                                     then rebuildIt
-                                    else liftIO (mapM doesFileExist product_filepaths) >>=
+                                    else liftIO (mapM doesFileExist mandatory_product_filepaths) >>=
                                         \files_exist -> if (any not) files_exist
                                             then rebuildIt
                                             else if miscellaneous_cache_information /= cachedMiscellaneousInformation cached_digests
                                                 then rebuildIt
-                                                else return (digestsOfProducedFiles cached_digests, link_dependency_resource_ids)
+                                                else return
+                                                    (digestsOfMandatoryProducts cached_digests
+                                                    ,digestsOfOptionalProducts cached_digests
+                                                    ,link_dependency_resource_ids
+                                                    )
   where
     source_digest = (fromRight . resourceDigest) source_resource
 
@@ -128,10 +142,12 @@ analyzeImplicitDependenciesAndRebuildIfNecessary_
     rebuild build_dependency_resource_ids build_dependency_resource_digests link_dependency_resource_ids =
         builder
         >>
-        let product_digests = map digestOf product_filepaths
+        let mandatory_product_digests = map digestOf mandatory_product_filepaths
+            optional_product_digests = map maybeDigestOf optional_product_filepaths
             cached_dependencies = CachedImplicitDependencies
                 {   digestOfSourceFile = source_digest
-                ,   digestsOfProducedFiles = product_digests
+                ,   digestsOfMandatoryProducts = mandatory_product_digests
+                ,   digestsOfOptionalProducts = optional_product_digests
                 ,   digestOfDependentModules =
                         zip build_dependency_resource_ids
                             build_dependency_resource_digests
@@ -142,7 +158,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary_
                 createDirectoryIfMissing True . takeDirectory $ cache_filepath
                 encodeFile cache_filepath cached_dependencies
             >>
-            return (product_digests,link_dependency_resource_ids)
+            return (mandatory_product_digests,optional_product_digests,link_dependency_resource_ids)
 -- @-node:gcross.20091122100142.1322:analyzeImplicitDependenciesAndRebuildIfNecessary_
 -- @+node:gcross.20091214124713.1584:analyzeImplicitDependenciesAndRebuildIfNecessary
 analyzeImplicitDependenciesAndRebuildIfNecessary ::
@@ -152,42 +168,49 @@ analyzeImplicitDependenciesAndRebuildIfNecessary ::
     Resources ->
     FilePath ->
     [FilePath] ->
+    [FilePath] ->
     a ->
     Resource ->
-    ([ErrorMessageOr MD5Digest],ErrorMessageOr (Set Resource))
+    ([ErrorMessageOr MD5Digest],[Maybe (ErrorMessageOr MD5Digest)],ErrorMessageOr (Set Resource))
 
 analyzeImplicitDependenciesAndRebuildIfNecessary
     builder
     scanner
     resources
     cache_filepath
-    product_filepaths
+    mandatory_product_filepaths
+    optional_product_filepaths
     miscellaneous_cache_information
     source_resource
     =
-    either
-        (repeat . Left &&& Left)
-        (
-            map Right
-            ***
-            (attemptGetResources
-                ("fetching resources with the following ids that are link dependencies of "
-                    ++ (show.resourceId) source_resource
-                )
-                resources
-             >=>
-             return . Set.fromList
+    case build_result of
+        Left error_message ->
+            (replicate (length mandatory_product_filepaths) (Left error_message)
+            ,replicate (length optional_product_filepaths) (Just $ Left error_message)
+            ,Left error_message
             )
-        )
-    $
-    analyzeImplicitDependenciesAndRebuildIfNecessary_
-        builder
-        scanner
-        resources
-        cache_filepath
-        product_filepaths
-        miscellaneous_cache_information
-        source_resource
+        Right (mandatory_product_digests,optional_product_digests,link_dependency_ids) ->
+                (map Right mandatory_product_digests
+                ,map (fmap Right) optional_product_digests
+                ,fmap Set.fromList $
+                    attemptGetResources
+                        ("fetching resources with the following ids that are link dependencies of "
+                            ++ (show.resourceId) source_resource
+                        )
+                        resources
+                        link_dependency_ids
+                )
+ where
+    build_result = 
+        analyzeImplicitDependenciesAndRebuildIfNecessary_
+            builder
+            scanner
+            resources
+            cache_filepath
+            mandatory_product_filepaths
+            optional_product_filepaths
+            miscellaneous_cache_information
+            source_resource
 -- @-node:gcross.20091214124713.1584:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20091122100142.1317:Function
 -- @-others

@@ -45,7 +45,7 @@ defaultMain ::
     (Configuration -> c -> FilePath -> FilePath -> FilePath -> FilePath -> Resources -> Resources) ->
     [OptionSection] ->
     a ->
-    Maybe (a,[String]) ->
+    Maybe (a,[ResourceId],[String]) ->
     [String] ->
     IO ()
 defaultMain
@@ -73,10 +73,16 @@ defaultMain
                 configurer
                 configureAdditional
         configure = doConfigure (makeConfigurer package_dependencies)
-        buildUsing builder build_root resources (configuration,additional_configuration) =
+        buildUsing
+            builder
+            build_root
+            extra_flags
+            resources
+            (configuration,additional_configuration)
+          =
             builder
                 configuration
-                ghc_flags
+                (extra_flags ++ ghc_flags)
             .
             compileAdditional
                 configuration
@@ -93,6 +99,7 @@ defaultMain
             buildUsing
                 (buildAndLinkLibrary qualified_package_name)
                 libraryBuildRoot
+                []
                 source_resources
 
         targets =
@@ -113,8 +120,9 @@ defaultMain
                 configure
                 >>=
                 buildUsing
-                    (buildProgram "Setup")
+                    (buildProgram "Setup" [])
                     libraryBuildRoot
+                    (if "-threaded" `elem` ghc_flags then [] else ["-threaded"])
                     (addSourceResourceFor "Setup.hs" source_resources)                                            
             ,target "reself" $
                 makeRemoveFilesAndDirectoriesTarget [programBuildRoot]
@@ -132,15 +140,20 @@ defaultMain
                     targets
             ] ++ case maybe_test_information of
                     Nothing -> []
-                    Just (test_directory_specification,additional_test_dependencies) ->
+                    Just 
+                        (test_directory_specification
+                        ,additional_test_objects
+                        ,additional_test_dependencies
+                        ) ->
                         [target "test" $
                             doConfigure (makeTestConfigurer package_dependencies additional_test_dependencies)
                             >>=
                             makeRunTestTarget
                             .
                             (buildUsing
-                                (buildProgram "test")
+                                (buildProgram "test" additional_test_objects)
                                 programBuildRoot
+                                []
                                 .
                                 addResources (getSourceResources test_directory_specification)
                                 $
@@ -157,7 +170,7 @@ defaultMain
 simpleDefaultMain ::
     SourceDirectorySpecification a =>
     a ->
-    Maybe (a,[String]) ->
+    Maybe (a,[ResourceId],[String]) ->
     [String] ->
     IO ()
 simpleDefaultMain =

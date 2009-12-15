@@ -90,6 +90,7 @@ gccCompile
         runProductionCommand
             ("Error compiling " ++ source_name ++ ":")
             [object_filepath]
+            []
             (gccCompilerPath tools)
             (options ++
                 ["-c",source_filepath
@@ -97,13 +98,14 @@ gccCompile
                 ]
             )
 
-    object_digest = fmap head $
-        analyzeDependencyAndRebuildIfNecessary
+    ([object_digest],[]) =
+        analyzeExplicitDependenciesAndRebuildIfNecessary
             builder
             (cache_directory </> source_name <.> "o")
             [object_filepath]
+            []
             (unwords options)
-            source_resource
+            [source_resource]
 -- @-node:gcross.20091123114318.1368:gccCompile
 -- @+node:gcross.20091123114318.1371:gccCompileAll
 gccCompileAll ::

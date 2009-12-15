@@ -182,6 +182,16 @@ selectResourcesInSubdirectoryAsList subdirectory =
 digestOf :: FilePath -> MD5Digest
 digestOf = md5 . unsafePerformIO . L.readFile
 -- @-node:gcross.20091121210308.1285:digestOf
+-- @+node:gcross.20091215083221.1609:maybeDigestOf
+maybeDigestOf :: FilePath -> Maybe MD5Digest
+maybeDigestOf filepath = unsafePerformIO $
+    doesFileExist filepath
+    >>=
+    \exists ->
+        if exists
+            then fmap (Just . md5) (L.readFile filepath)
+            else return Nothing
+-- @-node:gcross.20091215083221.1609:maybeDigestOf
 -- @+node:gcross.20091121210308.2039:addResource
 addResource :: Resource -> Resources -> Resources
 addResource resource = Map.insert ((resourceName &&& resourceType) resource) resource
