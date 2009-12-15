@@ -103,10 +103,12 @@ defaultMain
             ,target "rebuild" $
                 makeRebuildTarget targets
             ,target "install" $
-                liftA2
-                    (installLibrary package_description)
+                (liftA2 (,)
                     (fmap fst configure)
                     build
+                )
+                >>=
+                uncurry (installLibrary package_description)
             ,target "self" $
                 configure
                 >>=
