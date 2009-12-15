@@ -42,7 +42,8 @@ import Blueprint.Tools.GHC.Helpers
 defaultMain ::
     SourceDirectorySpecification a =>
     Configurer c ->
-    (Configuration -> c -> FilePath -> Resources -> Resources) ->
+    (Configuration -> c -> FilePath -> FilePath -> FilePath -> FilePath -> Resources -> Resources) ->
+    [OptionSection] ->
     a ->
     Maybe (a,[String]) ->
     [String] ->
@@ -50,6 +51,7 @@ defaultMain ::
 defaultMain
     configureAdditional
     compileAdditional
+    additional_options
     source_directory_specification
     maybe_test_information
     ghc_flags
@@ -66,8 +68,8 @@ defaultMain
         doConfigure configurer =
             parseCommandLineOptionsAndThenRunConfigurer
                 configuration_filepath
-                ghc_options
-            $ liftM2 (,)
+                (additional_options ++ ghc_options)
+            $ liftA2 (,)
                 configurer
                 configureAdditional
         configure = doConfigure (makeConfigurer package_dependencies)
@@ -80,6 +82,9 @@ defaultMain
                 configuration
                 additional_configuration
                 build_root
+                (digestCacheSubdirectory build_root)
+                (objectSubdirectory build_root)
+                (interfaceSubdirectory build_root)
             $
             resources
         build =
@@ -156,7 +161,9 @@ simpleDefaultMain ::
 simpleDefaultMain =
     defaultMain
         (return ())
-        (\_ _ _ -> id)
+        (\_ _ _ _ _ _ -> id)
+        []
+
 -- @-node:gcross.20091214215701.1629:simpleDefaultMain
 -- @-node:gcross.20091214124713.1719:Functions
 -- @-others

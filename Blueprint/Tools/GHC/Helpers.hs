@@ -47,10 +47,6 @@ data Configuration = Configuration
 -- @-node:gcross.20091214124713.1603:Configuration
 -- @-node:gcross.20091214124713.1601:Types
 -- @+node:gcross.20091214124713.1613:Values
--- @+node:gcross.20091214124713.1614:build roots
-programBuildRoot = "build" </> "programs"
-libraryBuildRoot = "build" </> "library"
--- @-node:gcross.20091214124713.1614:build roots
 -- @+node:gcross.20091214124713.1706:ghc_options
 ghc_options =
     [   installerOptions
@@ -104,7 +100,17 @@ makeConfigurer =
         "ZZZ - Package Module Cache - Please do not edit this unless you know what you are doing."
 -- @-node:gcross.20091214124713.1684:makeConfigurer
 -- @-node:gcross.20091214124713.1680:Configurers
--- @+node:gcross.20091214124713.1604:Functions
+-- @+node:gcross.20091214215701.2072:Directories
+digestCacheSubdirectory = (</> "digest-cache")
+objectSubdirectory = (</> "objects")
+librarySubdirectory = (</> "libraries")
+interfaceSubdirectory = (</> "interfaces")
+haskellInterfaceSubdirectory = (</> "haskell") . interfaceSubdirectory
+
+programBuildRoot = "build" </> "programs"
+libraryBuildRoot = "build" </> "library"
+-- @-node:gcross.20091214215701.2072:Directories
+-- @+node:gcross.20091214215701.2067:Functions
 -- @+node:gcross.20091214124713.1700:buildProgram
 buildProgram :: String -> Configuration -> [String] -> Resources -> ErrorMessageOr Resource
 buildProgram resource_name configuration ghc_flags =
@@ -112,7 +118,7 @@ buildProgram resource_name configuration ghc_flags =
     .
     ghcLinkProgram
        (ghcConfiguration configuration)
-       (programBuildRoot </> "digest-cache")
+       (digestCacheSubdirectory programBuildRoot)
        ghc_flags
        (packageDependencies configuration)
        "."
@@ -127,11 +133,11 @@ compileObjectsWithRoot :: String -> Configuration -> [String] -> Resources -> Re
 compileObjectsWithRoot build_root configuration flags source_resources  =
     ghcCompileAll
         (ghcConfiguration configuration)
-        (build_root </> "digest-cache")
+        (digestCacheSubdirectory build_root)
         flags
         (packageModules configuration)
-        (build_root </> "objects")
-        (build_root </> "haskell-interfaces")
+        (objectSubdirectory build_root)
+        (haskellInterfaceSubdirectory build_root)
         source_resources
 -- @-node:gcross.20091214124713.1607:compileObjectsWithRoot
 -- @+node:gcross.20091214124713.1612:compileObjectsFor___
@@ -170,27 +176,29 @@ linkLibrary
         $
         formStaticLibrary
             (arConfiguration configuration)
-            cache_subdirectory
+            (digestCacheSubdirectory libraryBuildRoot)
             object_resources
             ("lib" ++ package_name)
-            (library_subdirectory </> "lib" ++ package_name <.> "a")
+            (librarySubdirectory libraryBuildRoot </> "lib" ++ package_name <.> "a")
     ghci_library <-
         assertResourceExists
         $
         linkIntoObject
             (ldConfiguration configuration)
-            cache_subdirectory
+            (digestCacheSubdirectory libraryBuildRoot)
             object_resources
             package_name
-            (library_subdirectory </> package_name <.> "o")
+            (librarySubdirectory libraryBuildRoot </> package_name <.> "o")
     return (library:ghci_library:interface_resources)
   where
-    object_subdirectory = libraryBuildRoot </> "objects"
-    interface_subdirectory = libraryBuildRoot </> "haskell-interfaces"
-    library_subdirectory = libraryBuildRoot </> "libraries"
-    cache_subdirectory = libraryBuildRoot </> "digest-cache"
-    object_resources = selectResourcesInSubdirectoryAsList object_subdirectory compiled_resources
-    interface_resources = selectResourcesInSubdirectoryAsList interface_subdirectory compiled_resources
+    object_resources =
+        selectResourcesInSubdirectoryAsList
+            (objectSubdirectory libraryBuildRoot)
+            compiled_resources
+    interface_resources =
+        selectResourcesInSubdirectoryAsList
+            (haskellInterfaceSubdirectory libraryBuildRoot)
+            compiled_resources
 -- @-node:gcross.20091214124713.1609:linkLibrary
 -- @+node:gcross.20091214215701.1624:buildAndLinkLibrary
 buildAndLinkLibrary ::
@@ -213,7 +221,7 @@ buildAndLinkLibrary
         qualified_package_name
         ghc_flags
 -- @-node:gcross.20091214215701.1624:buildAndLinkLibrary
--- @-node:gcross.20091214124713.1604:Functions
+-- @-node:gcross.20091214215701.2067:Functions
 -- @-others
 -- @-node:gcross.20091214124713.1597:@thin Helpers.hs
 -- @-leo
