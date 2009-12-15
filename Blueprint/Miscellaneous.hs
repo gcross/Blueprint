@@ -96,6 +96,10 @@ unwrapDynamic :: Typeable a => Dynamic -> a
 unwrapDynamic dyn = fromDyn dyn (error $ "Unable to cast Dynamic to the expected type!  (Type of Dynamic is " ++ show (dynTypeRep dyn) ++ ".)")
 
 -- @-node:gcross.20091129000542.1499:unwrapDynamic
+-- @+node:gcross.20091214124713.1704:liftMaybeToUnit
+liftMaybeErrorToEither :: Maybe a -> Either a ()
+liftMaybeErrorToEither = maybe (Right ()) Left
+-- @-node:gcross.20091214124713.1704:liftMaybeToUnit
 -- @-node:gcross.20091127142612.1416:Functions
 -- @-others
 -- @-node:gcross.20091127142612.1413:@thin Miscellaneous.hs

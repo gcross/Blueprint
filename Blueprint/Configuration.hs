@@ -161,6 +161,14 @@ runConfigurer configuration_filepath parsed_options configurer = unsafePerformIO
                 writeFile configuration_filepath . to_string . modifyConfiguration $ old_configuration
                 return result
 -- @-node:gcross.20091128000856.1412:runConfigurer
+-- @+node:gcross.20091214124713.1686:parseCommandLineOptionsAndThenRunConfigurer
+parseCommandLineOptionsAndThenRunConfigurer :: FilePath -> [OptionSection] -> Configurer a -> Either ErrorMessage a
+parseCommandLineOptionsAndThenRunConfigurer configuration_filepath options configurer =
+    parseCommandLineOptions options
+    >>=
+    \(_,parsed_options) ->
+        runConfigurer configuration_filepath parsed_options configurer
+-- @-node:gcross.20091214124713.1686:parseCommandLineOptionsAndThenRunConfigurer
 -- @+node:gcross.20091128000856.1414:cpErrorMessage
 cpErrorMessage :: String -> CPError -> ErrorMessage
 cpErrorMessage section_name = errorMessageText ("parsing section " ++ section_name) . show

@@ -159,6 +159,10 @@ attemptGetResources error_heading resources =
             Just resource -> Right resource
     )
 -- @-node:gcross.20091201183231.1584:attemptGetResources
+-- @+node:gcross.20091214124713.1702:assertResourceExists
+assertResourceExists :: Resource -> ErrorMessageOr Resource
+assertResourceExists resource = resourceDigest resource >> return resource
+-- @-node:gcross.20091214124713.1702:assertResourceExists
 -- @-node:gcross.20091201183231.1578:Fetching with the possibility of errors
 -- @+node:gcross.20091121210308.1280:Unclassified
 -- @+node:gcross.20091201183231.1598:selectResourcesOfType
@@ -167,6 +171,13 @@ selectResourcesOfType desired_type = Map.filter ((== desired_type) . resourceTyp
 -- @+node:gcross.20091201183231.1599:selectResourcesOfTypeAsList
 selectResourcesOfTypeAsList desired_type = Map.elems . selectResourcesOfType desired_type
 -- @-node:gcross.20091201183231.1599:selectResourcesOfTypeAsList
+-- @+node:gcross.20091214124713.1703:selectResourcesInSubdirectoryAsList
+selectResourcesInSubdirectoryAsList :: FilePath -> Resources -> [Resource]
+selectResourcesInSubdirectoryAsList subdirectory =
+    filter ((== subdirectory) . take (length subdirectory) . resourceFilePath)
+    .
+    Map.elems
+-- @-node:gcross.20091214124713.1703:selectResourcesInSubdirectoryAsList
 -- @+node:gcross.20091121210308.1285:digestOf
 digestOf :: FilePath -> MD5Digest
 digestOf = md5 . unsafePerformIO . L.readFile
