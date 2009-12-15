@@ -91,7 +91,7 @@ formStaticLibrary
 
     builder =
         runProductionCommand
-            ("linking " ++ library_resource_name)
+            ("Error linking " ++ library_resource_name ++ ":")
             [library_resource_filepath]
             (arPath tools)
             ("cqs":library_resource_filepath:map resourceFilePath object_resources)

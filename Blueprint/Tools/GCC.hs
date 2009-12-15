@@ -88,7 +88,7 @@ gccCompile
 
     builder =
         runProductionCommand
-            ("compiling " ++ source_name)
+            ("Error compiling " ++ source_name ++ ":")
             [object_filepath]
             (gccCompilerPath tools)
             (options ++

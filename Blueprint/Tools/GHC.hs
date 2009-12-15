@@ -778,7 +778,7 @@ ghcLinkProgram
   where
     program_resource_filepath = program_destination_directory </> program_resource_name
 
-    error_message_heading = "linking program " ++ program_resource_name
+    error_message_heading = "Error linking program " ++ program_resource_name ++ ":"
 
     program_digest = fmap head $
         attemptGetResources error_message_heading resources program_object_ids

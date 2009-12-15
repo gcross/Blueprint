@@ -91,7 +91,7 @@ linkIntoObject
 
     builder =
         runProductionCommand
-            ("linking " ++ library_resource_name)
+            ("Error linking object " ++ library_resource_name ++ ":")
             [library_resource_filepath]
             (ldPath tools)
             ("-x":"-r":"-o":library_resource_filepath:map resourceFilePath object_resources)

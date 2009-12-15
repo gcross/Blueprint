@@ -135,8 +135,8 @@ gfortranCompile
 
     builder = 
         runProductionCommand
-            ("compiling " ++ source_name)
             [object_filepath,interface_filepath]
+            ("Error compiling " ++ source_name ++ ":")
             (gfortranCompilerPath configuration)
             (options ++
                 ["-J"++interface_destination_directory
