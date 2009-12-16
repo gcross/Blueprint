@@ -114,7 +114,7 @@ type PackageModules = Set String
 -- @+node:gcross.20091128201230.1462:ResolvedPackages
 newtype ResolvedPackages = ResolvedPackages [String]
 -- @-node:gcross.20091128201230.1462:ResolvedPackages
--- @+node:gcross.20091212120817.2104:CabalInformation
+-- @+node:gcross.20091212120817.2104:PackageInformation
 data PackageInformation = PackageInformation
     {   packageName :: String
     ,   packageQualifiedName :: String
@@ -123,7 +123,7 @@ data PackageInformation = PackageInformation
     ,   packageDescription :: PackageDescription
     ,   packageConfigurationFilePath :: FilePath
     }
--- @-node:gcross.20091212120817.2104:CabalInformation
+-- @-node:gcross.20091212120817.2104:PackageInformation
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091127142612.1406:ConfigurationData GHCConfiguration
@@ -325,6 +325,15 @@ loadInformationFromCabalFile = unsafePerformIO $ do
         ,   packageConfigurationFilePath = package_name <.> "cfg"
         }
 -- @-node:gcross.20091212120817.2103:loadInformationFromCabalFile
+-- @+node:gcross.20091215145007.1610:libraryLinkFlags
+libraryLinkFlags :: PackageInformation -> [String]
+libraryLinkFlags package_information =
+    (map ("-l"++) . PackageDescription.extraLibs $ build_info)
+    ++
+    (map ("-L"++) . PackageDescription.extraLibDirs $ build_info)
+  where
+    build_info = PackageDescription.libBuildInfo . fromJust . PackageDescription.library . packageDescription $ package_information
+-- @-node:gcross.20091215145007.1610:libraryLinkFlags
 -- @-node:gcross.20091121210308.2016:Functions
 -- @+node:gcross.20091129000542.1479:Options processing
 ghcOptions =
@@ -479,10 +488,10 @@ registerPackage configuration = do
 -- @-node:gcross.20091129000542.1711:registerPackage
 -- @-node:gcross.20091121210308.2023:Package queries
 -- @+node:gcross.20091129000542.1701:Package installation
--- @+node:gcross.20091129000542.1702:createInstalledPackageInfo
+-- @+node:gcross.20091129000542.1702:createInstalledPackageInfoFromPackageDescription
 createInstalledPackageInfoFromPackageDescription ::
     PackageDescription ->
-    Bool -> -- is library exposed?
+    Bool -> -- is the package exposed?
     [ModuleName] -> -- exposed modules
     [ModuleName] -> -- hidden modules
     [FilePath] -> -- import directories
@@ -513,29 +522,28 @@ createInstalledPackageInfoFromPackageDescription
         <*> PackageDescription.pkgUrl
         <*> PackageDescription.description
         <*> PackageDescription.category
--- @-node:gcross.20091129000542.1702:createInstalledPackageInfo
+-- @-node:gcross.20091129000542.1702:createInstalledPackageInfoFromPackageDescription
 -- @+node:gcross.20091129000542.1703:installSimplePackage
 installSimplePackage ::
     GHCConfiguration ->
     InstallerConfiguration ->
-    PackageDescription ->
+    PackageInformation ->
     [String] ->
     [Resource] ->
     Maybe ErrorMessage
 installSimplePackage
     ghc_configuration
     installer_configuration
-    package_description
-    dependency_package_names
+    package_information
+    qualified_dependency_package_names
     resources_to_install
-  = let PackageIdentifier (PackageName name) version = PackageDescription.package package_description
-        qualified_package_name = name ++ "-" ++ showVersion version
-        library_destination_path =
+  = let library_destination_path =
             installerLibraryPath installer_configuration
             </>
-            qualified_package_name
+            (packageQualifiedName package_information)
             </>
             (("ghc-" ++) . showVersion . ghcVersion $ ghc_configuration)
+
         haskell_libraries :: [FilePath]
         haskell_libraries =
             map (drop 3 . dotsToSubdirectories . resourceName)
@@ -544,21 +552,31 @@ installSimplePackage
             $
             resources_to_install
 
+        package_description = packageDescription package_information
+        library = fromJust . PackageDescription.library $ package_description
+        build_info = PackageDescription.libBuildInfo library
+
+        hidden_modules = PackageDescription.otherModules build_info
+
         exposed_modules :: [ModuleName]
         exposed_modules =
-            map (fromJust . simpleParse . resourceName)
-            .
-            filter ((== "hi") . resourceType)
-            $
-            resources_to_install
+            if not . null . PackageDescription.exposedModules $ library
+               then PackageDescription.exposedModules library
+               else (\\ hidden_modules)
+                    .
+                    map (fromJust . simpleParse . resourceName)
+                    .
+                    filter ((== "hi") . resourceType)
+                    $
+                    resources_to_install
 
         installed_package_info :: InstalledPackageInfo
         installed_package_info =
             createInstalledPackageInfoFromPackageDescription
                 package_description
-                True
+                (PackageDescription.libExposed library)
                 exposed_modules
-                []
+                hidden_modules
                 [library_destination_path]
                 [library_destination_path]
                 haskell_libraries
@@ -566,10 +584,10 @@ installSimplePackage
                 []
                 []
                 []
-                (map qualifiedNameToPackageIdentifier dependency_package_names)
+                (map qualifiedNameToPackageIdentifier qualified_dependency_package_names)
                 []
                 []
-                []
+                (libraryLinkFlags package_information)
                 []
                 []
                 []
@@ -591,7 +609,7 @@ installSimplePackage
                     putStrLn $ "Copying " ++ source_filepath ++ " --> " ++ destination_filepath
                     copyFile source_filepath destination_filepath
             makeEverythingReadableIn library_destination_path
-            putStrLn $ "Registering " ++ qualified_package_name
+            putStrLn $ "Registering " ++ (packageQualifiedName package_information)
             fmap (fmap (errorMessage "installing package")) $
                 registerPackage ghc_configuration installed_package_info
 
@@ -807,7 +825,7 @@ ghcLinkProgram
                 (cache_directory </> program_resource_name <.> "")
                 [program_resource_filepath]
                 []
-                ()
+                (unwords options)
                 program_resources
 -- @-node:gcross.20091127142612.1402:ghcLinkProgram
 -- @+node:gcross.20091201183231.1597:ghcLinkPrograms

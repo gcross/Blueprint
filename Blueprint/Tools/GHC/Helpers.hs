@@ -115,17 +115,18 @@ libraryBuildRoot = "build" </> "library"
 buildProgram ::
     String ->
     [ResourceId] ->
+    [String] ->
     Configuration ->
     [String] ->
     Resources ->
     ErrorMessageOr Resource
-buildProgram resource_name additional_objects configuration ghc_flags =
+buildProgram resource_name additional_objects extra_link_flags configuration ghc_flags =
     assertResourceExists
     .
     ghcLinkProgram
        (ghcConfiguration configuration)
        (digestCacheSubdirectory programBuildRoot)
-       ghc_flags
+       (ghc_flags ++ extra_link_flags)
        (packageDependencies configuration)
        "."
        ((resource_name,"o"):additional_objects)
@@ -156,14 +157,14 @@ compileObjectsForProgram =
     compileObjectsWithRoot programBuildRoot
 -- @-node:gcross.20091214124713.1612:compileObjectsFor___
 -- @+node:gcross.20091214124713.1696:installLibrary
-installLibrary :: PackageDescription -> Configuration -> [Resource] -> ErrorMessageOr ()
-installLibrary package_description configuration =
+installLibrary :: PackageInformation -> Configuration -> [Resource] -> ErrorMessageOr ()
+installLibrary package_information configuration =
     liftMaybeErrorToEither
     .
     installSimplePackage
         (ghcConfiguration configuration)
         (installerConfiguration configuration)
-        package_description
+        package_information
         (packageDependencies configuration)
 -- @-node:gcross.20091214124713.1696:installLibrary
 -- @+node:gcross.20091214124713.1609:linkLibrary

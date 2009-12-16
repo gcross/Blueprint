@@ -57,7 +57,7 @@ defaultMain
     ghc_flags
     =
     let source_resources = getSourceResources source_directory_specification
-        PackageInformation
+        package_information @ PackageInformation
             {   packageDescription = package_description
             ,   packageExternalDependencies = package_dependencies
             ,   packageIdentifier = package_identifier
@@ -115,12 +115,12 @@ defaultMain
                     build
                 )
                 >>=
-                uncurry (installLibrary package_description)
+                uncurry (installLibrary package_information)
             ,target "self" $
                 configure
                 >>=
                 buildUsing
-                    (buildProgram "Setup" [])
+                    (buildProgram "Setup" [] [])
                     libraryBuildRoot
                     (if "-threaded" `elem` ghc_flags then [] else ["-threaded"])
                     (addSourceResourceFor "Setup.hs" source_resources)                                            
@@ -151,7 +151,7 @@ defaultMain
                             makeRunTestTarget
                             .
                             (buildUsing
-                                (buildProgram "test" additional_test_objects)
+                                (buildProgram "test" additional_test_objects (libraryLinkFlags package_information))
                                 programBuildRoot
                                 []
                                 .
