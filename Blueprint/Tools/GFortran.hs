@@ -36,6 +36,8 @@ import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Resources
 import Blueprint.Tools
+
+import Debug.Trace
 -- @-node:gcross.20091129000542.1554:<< Import needed modules >>
 -- @nl
 
@@ -75,6 +77,12 @@ doubleUnderscoreToDots [] = []
 doubleUnderscoreToDots ('_':'_':xs) = '.':doubleUnderscoreToDots xs -- '
 doubleUnderscoreToDots (x:xs) = x:doubleUnderscoreToDots xs
 -- @-node:gcross.20091214124713.1583:doubleUnderscoreToDots
+-- @+node:gcross.20100105133009.1608:dotsToDoubleUnderscore
+dotsToDoubleUnderscore :: String -> String
+dotsToDoubleUnderscore [] = []
+dotsToDoubleUnderscore ('.':xs) = '_':'_':dotsToDoubleUnderscore xs -- '
+dotsToDoubleUnderscore (x:xs) = x:dotsToDoubleUnderscore xs
+-- @-node:gcross.20100105133009.1608:dotsToDoubleUnderscore
 -- @-node:gcross.20091214124713.1582:Functions
 -- @+node:gcross.20091129000542.1566:Tools
 -- @+node:gcross.20091129000542.1567:gfortranCompile
@@ -100,14 +108,14 @@ gfortranCompile
     source_filepath = resourceFilePath source_resource
     source_name = resourceName source_resource
     object_filepath = getFilePathForNameAndType object_destination_directory source_name "o"
-    interface_filepath = getFilePathForNameAndType interface_destination_directory source_name "mod"
+    interface_filepath = getFilePathForNameAndType interface_destination_directory (dotsToDoubleUnderscore source_name) "mod"
 
     object_resource = Resource
         {   resourceName = source_name
         ,   resourceType = "o"
         ,   resourceFilePath = object_filepath
         ,   resourceDigest = object_digest
-        ,   resourceLinkDependencies = noLinkDependencies
+        ,   resourceLinkDependencies = link_dependency_resources
         }
     interface_resource = Resource
         {   resourceName = source_name
