@@ -139,6 +139,10 @@ runScanner
     )
 -- @nonl
 -- @-node:gcross.20091214092727.1589:runScanner
+-- @+node:gcross.20100105133009.1609:thenScanner
+thenScanner :: Scanner -> Scanner -> Scanner
+thenScanner = liftM2 $ \(a,b) (c,d) -> (a++c,b++d)
+-- @-node:gcross.20100105133009.1609:thenScanner
 -- @-node:gcross.20091214092727.1592:Runners
 -- @+node:gcross.20091214092727.1593:Functions
 -- @+node:gcross.20091214092727.1594:partitionDependencies

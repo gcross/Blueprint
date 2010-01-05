@@ -52,24 +52,46 @@ main = defaultMain
     -- @+node:gcross.20091214092727.1580:Blueprint.Tools.GHC
     ,testGroup "Blueprint.Tools.GHC"
         -- @    @+others
-        -- @+node:gcross.20091214092727.1582:regular expression
-        [testCase "regular expression" $
-            let correct_modules =
-                    ["A"
-                    ,"B"
-                    ,"C"
-                    ,"D"
-                    ]
-                found_modules = applyRegularExpressionToString import_matching_regex . unlines . map ('i':) $ --'
-                    ["mport A"
-                    ,"mport qualified B as BB"
-                    ,"mport C (x,y,z)"
-                    ,"mport D hiding (x,y,z)"
-                    ]
-            in assertEqual "Was the correct list of modules obtained?"
-                correct_modules
-                found_modules
-        -- @-node:gcross.20091214092727.1582:regular expression
+        -- @+node:gcross.20100105133009.1610:regular expressions
+        [testGroup "regular expressions"
+            -- @    @+others
+            -- @+node:gcross.20091214092727.1582:import matching
+            [testCase "import matching" $
+                let correct_modules =
+                        ["A"
+                        ,"B"
+                        ,"C"
+                        ,"D"
+                        ]
+                    found_modules = applyRegularExpressionToString import_matching_regex . unlines . map ('i':) $ --'
+                        ["mport A"
+                        ,"mport qualified B as BB"
+                        ,"mport C (x,y,z)"
+                        ,"mport D hiding (x,y,z)"
+                        ]
+                in assertEqual "Was the correct list of modules obtained?"
+                    correct_modules
+                    found_modules
+            -- @-node:gcross.20091214092727.1582:import matching
+            -- @+node:gcross.20100105133009.1612:pragma matching
+            ,testCase "pragma matching" $
+                let correct_dependencies =
+                        [["foo","o"]
+                        ,["bar","o"]
+                        ,["a.b.c","d.e"]
+                        ]
+                    found_dependencies = map words . applyRegularExpressionToString pragma_matching_regex . unlines . map ('{':) $ --'
+                        ["-# BLUEPRINT-LINK-DEPENDENCY foo o #-}"
+                        ,"-#   BLUEPRINT-LINK-DEPENDENCY  bar    o    #-}"
+                        ,"-# BLUEPRINT-LINK-DEPENDENCY a.b.c d.e #-}"
+                        ]
+                in assertEqual "Was the correct list of dependencies obtained?"
+                    correct_dependencies
+                    found_dependencies
+            -- @-node:gcross.20100105133009.1612:pragma matching
+            -- @-others
+            ]
+        -- @-node:gcross.20100105133009.1610:regular expressions
         -- @-others
         ]
     -- @-node:gcross.20091214092727.1580:Blueprint.Tools.GHC

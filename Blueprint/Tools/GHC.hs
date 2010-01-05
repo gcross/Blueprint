@@ -237,6 +237,7 @@ instance AutomaticallyConfigurable GHCConfiguration where
 -- @+node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2015:regular expressions
 import_matching_regex = compileRegularExpression 2 "\\s*import +(qualified +)?([A-Z][A-Za-z0-9_.]*)[\\s;]?"
+pragma_matching_regex = compileRegularExpression 1 "\\s*\\{\\-\\# +BLUEPRINT-LINK-DEPENDENCY +([A-Za-z0-9_.]* +[A-Za-z0-9_.]*) +\\#\\-\\}[\\s;]?"
 -- @-node:gcross.20091121210308.2015:regular expressions
 -- @-node:gcross.20091121210308.2014:Values
 -- @+node:gcross.20091121210308.2016:Functions
@@ -664,25 +665,36 @@ ghcCompile
         }
 
     scanner =
-        runScanner
-            import_matching_regex
-            (\module_name ->
-                if Set.member module_name known_package_modules
-                    then Nothing
-                    else Just [(BuildDependency,(module_name,"hi"))
-                              ,(LinkDependency,(module_name,"o"))
-                              ]
-            )
-            (\(_,(resource_name,resource_type)) ->
-                if resource_type == "hi"
-                    then Just . text . (resource_name ++) $
-                             case findPackagesExposingModule configuration resource_name of
-                                [] -> " (no idea where to find it)"
-                                packages -> " which appears in packages " ++ (show packages)
-                    else Nothing
-            )
-            known_resources
-            source_filepath
+        (
+            runScanner
+                import_matching_regex
+                (\module_name ->
+                    if Set.member module_name known_package_modules
+                        then Nothing
+                        else Just [(BuildDependency,(module_name,"hi"))
+                                  ,(LinkDependency,(module_name,"o"))
+                                  ]
+                )
+                (\(_,(resource_name,resource_type)) ->
+                    if resource_type == "hi"
+                        then Just . text . (resource_name ++) $
+                                 case findPackagesExposingModule configuration resource_name of
+                                    [] -> " (no idea where to find it)"
+                                    packages -> " which appears in packages " ++ (show packages)
+                        else Nothing
+                )
+                known_resources
+                source_filepath
+        )
+        `thenScanner`
+        (
+            runScanner
+                pragma_matching_regex
+                (\dependency -> let [resource_name,resource_type] = words dependency in Just [(LinkDependency,(resource_name,resource_type))])
+                undefined
+                known_resources
+                source_filepath
+        )
 
     builder =
         runProductionCommand
