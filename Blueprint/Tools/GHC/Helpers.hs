@@ -18,7 +18,12 @@ import Data.ErrorMessage
 import Data.Function
 import qualified Data.Map as Map
 
-import Distribution.Package (PackageIdentifier(..),PackageName(..),Dependency(..))
+import Distribution.Package
+            (PackageIdentifier(..)
+            ,PackageName(..)
+            ,Dependency(..)
+            ,InstalledPackageId(..)
+            )
 import Distribution.PackageDescription (PackageDescription)
 
 import System.FilePath
@@ -41,7 +46,7 @@ data Configuration = Configuration
     ,   arConfiguration :: ArConfiguration
     ,   ldConfiguration :: LdConfiguration
     ,   installerConfiguration :: InstallerConfiguration
-    ,   packageDependencies :: [String]
+    ,   packageDependencies :: [ResolvedPackage]
     ,   packageModules :: PackageModules
     }
 -- @-node:gcross.20091214124713.1603:Configuration
@@ -127,7 +132,7 @@ buildProgram resource_name additional_objects extra_link_flags configuration ghc
        (ghcConfiguration configuration)
        (digestCacheSubdirectory programBuildRoot)
        (ghc_flags ++ extra_link_flags)
-       (packageDependencies configuration)
+       (map resolvedPackageQualifiedName . packageDependencies $ configuration)
        "."
        ((resource_name,"o"):additional_objects)
     .

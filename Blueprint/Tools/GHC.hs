@@ -48,7 +48,12 @@ import Distribution.InstalledPackageInfo
             ,InstalledPackageInfo
             ,showInstalledPackageInfo
             )
-import Distribution.Package (PackageIdentifier(..),PackageName(..),Dependency(..))
+import Distribution.Package
+            (PackageIdentifier(..)
+            ,PackageName(..)
+            ,Dependency(..)
+            ,InstalledPackageId(..)
+            )
 import qualified Distribution.Package as Package
 import Distribution.PackageDescription (PackageDescription)
 import qualified Distribution.PackageDescription as PackageDescription
@@ -68,6 +73,7 @@ import System.IO.Unsafe
 import System.Process
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((</>),(<$>))
+import Text.PrettyPrint.HughesPJ (render)
 
 import Blueprint.Cache.ExplicitDependencies
 import Blueprint.Cache.ImplicitDependencies
@@ -112,7 +118,7 @@ data GHCOptions = GHCOptions
 type PackageModules = Set String
 -- @-node:gcross.20091121210308.2025:PackageModules
 -- @+node:gcross.20091128201230.1462:ResolvedPackages
-newtype ResolvedPackages = ResolvedPackages [String]
+newtype ResolvedPackages = ResolvedPackages [InstalledPackageId]
 -- @-node:gcross.20091128201230.1462:ResolvedPackages
 -- @+node:gcross.20091212120817.2104:PackageInformation
 data PackageInformation = PackageInformation
@@ -124,6 +130,14 @@ data PackageInformation = PackageInformation
     ,   packageConfigurationFilePath :: FilePath
     }
 -- @-node:gcross.20091212120817.2104:PackageInformation
+-- @+node:gcross.20100503170100.2079:PackageResolution
+data ResolvedPackage = ResolvedPackage
+    {   resolvedInstalledPackageId :: !InstalledPackageId
+    ,   resolvedPackageName :: !String
+    ,   resolvedPackageVersion :: !Version
+    ,   resolvedPackageQualifiedName :: !String
+    } deriving (Eq,Ord,Read,Show)
+-- @-node:gcross.20100503170100.2079:PackageResolution
 -- @-node:gcross.20091121210308.1270:Types
 -- @+node:gcross.20091127142612.1405:Instances
 -- @+node:gcross.20091127142612.1406:ConfigurationData GHCConfiguration
@@ -250,21 +264,6 @@ prefixWith :: String -> [String] -> [String]
 prefixWith _ [] = []
 prefixWith s list = s:intersperse s list
 -- @-node:gcross.20091122100142.1335:prefixWith
--- @+node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
-qualifiedNameToPackageIdentifier :: String -> PackageIdentifier
-qualifiedNameToPackageIdentifier name =
-    uncurry PackageIdentifier
-    .
-    (PackageName *** (readVersion . tail))
-    .
-    flip splitAt name
-    .
-    last
-    .
-    elemIndices '-'
-    $
-    name
--- @-node:gcross.20091129000542.1705:qualifiedNameToPackageIdentifier
 -- @+node:gcross.20091129000542.1709:makeEverythingReadableIn
 makeEverythingReadableIn :: FilePath -> IO ()
 makeEverythingReadableIn path = do
@@ -370,19 +369,20 @@ queryPackage tools field_name package_name =
 -- @-node:gcross.20091121210308.2018:queryPackage
 -- @+node:gcross.20091121210308.2019:getPackageModules
 getPackageModules :: GHCConfiguration -> String -> Maybe PackageModules
-getPackageModules configuration name =
+getPackageModules configuration qualified_package_name =
     fmap (Set.fromList)
     $
-    queryPackage configuration "exposed-modules" name
+    queryPackage configuration "exposed-modules" qualified_package_name
+
 -- @-node:gcross.20091121210308.2019:getPackageModules
 -- @+node:gcross.20091121210308.2024:findPackagesExposingModule
 findPackagesExposingModule :: GHCConfiguration -> String -> [String]
-findPackagesExposingModule tools package_name =
+findPackagesExposingModule tools module_name =
     words
     .
     unsafePerformIO
     .
-    readProcess (ghcPackageManagerPath tools) ["--simple-output","find-module",package_name]
+    readProcess (ghcPackageManagerPath tools) ["--simple-output","find-module",module_name]
     $
     ""
 -- @-node:gcross.20091121210308.2024:findPackagesExposingModule
@@ -396,12 +396,12 @@ readPackageDescription =
     Distribution.PackageDescription.Parse.readPackageDescription silent
 -- @-node:gcross.20091128201230.1459:readPackageDescription
 -- @+node:gcross.20091128201230.1461:configurePackageResolutions
-configurePackageResolutions :: GHCConfiguration -> [Dependency] -> String -> Configurer [String]
+configurePackageResolutions :: GHCConfiguration -> [Dependency] -> String -> Configurer [ResolvedPackage]
 configurePackageResolutions tools package_description =
     configureUsingSectionWith config_reader config_writer automatic_configurer
   where
-    config_reader = fmap words (getConfig ghcPackagesKey)
-    config_writer = setConfig ghcPackagesKey . unwords
+    config_reader = fmap read (getConfig ghcPackagesKey)
+    config_writer = setConfig ghcPackagesKey . show
     automatic_configurer _ =
         (\(unresolved_packages,resolved_packages) ->
             if null unresolved_packages
@@ -429,6 +429,7 @@ configurePackageResolutions tools package_description =
         $
         package_description
 
+    resolvePackage :: Dependency -> Either (String,[Version]) ResolvedPackage
     resolvePackage dependency@(Dependency (PackageName package_name) version_range) =
         let versions_found = 
                 map readVersion
@@ -440,22 +441,40 @@ configurePackageResolutions tools package_description =
                 package_name
         in case find (flip withinRange version_range) versions_found of
                 Nothing -> Left (package_name,versions_found)
-                Just version -> Right $ package_name ++ "-" ++ showVersion version
+                Just package_version -> Right $
+                    let qualified_package_name =
+                            package_name ++ "-" ++ showVersion package_version
+                        installed_package_id =
+                            InstalledPackageId
+                            .
+                            head
+                            .
+                            fromJust
+                            .
+                            queryPackage tools "id"
+                            $
+                            qualified_package_name
+                    in ResolvedPackage
+                        {   resolvedInstalledPackageId = installed_package_id
+                        ,   resolvedPackageName = package_name
+                        ,   resolvedPackageVersion = package_version
+                        ,   resolvedPackageQualifiedName = qualified_package_name
+                        }
 -- @-node:gcross.20091128201230.1461:configurePackageResolutions
 -- @+node:gcross.20091201134050.1973:configurePackageModules
-configurePackageModules :: GHCConfiguration -> [String] -> String -> Configurer PackageModules
-configurePackageModules configuration qualified_package_names =
+configurePackageModules :: GHCConfiguration -> [ResolvedPackage] -> String -> Configurer PackageModules
+configurePackageModules configuration packages =
     configureUsingSectionWith config_reader config_writer automatic_configurer
   where
-    sorted_package_names = sort qualified_package_names
+    sorted_packages = sort packages
     config_reader =
-        fmap words (getConfig ghcCachedPackageNamesKey)
-        >>= \cached_package_names ->
-                if cached_package_names == sorted_package_names
+        fmap read (getConfig ghcCachedPackageNamesKey)
+        >>= \cached_packages ->
+                if cached_packages == sorted_packages
                     then fmap (Set.fromDistinctAscList . words) (getConfig ghcCachedPackageModulesKey)
                     else signalRefreshNeeded
     config_writer package_modules = do
-        setConfig ghcCachedPackageNamesKey . unwords $ sorted_package_names
+        setConfig ghcCachedPackageNamesKey . show $ sorted_packages
         setConfig ghcCachedPackageModulesKey . unwords . Set.toAscList $ package_modules
     automatic_configurer _ =
         mapBoth
@@ -465,13 +484,13 @@ configurePackageModules configuration qualified_package_names =
         gatherResultsOrError
         .
         parMap rwhnf (
-            \qualified_package_name ->
+            \(ResolvedPackage { resolvedPackageQualifiedName = qualified_package_name}) ->
                 case getPackageModules configuration qualified_package_name of
                     Just package_modules -> Right package_modules
                     Nothing -> Left . text $ qualified_package_name
         )
         $
-        qualified_package_names
+        sorted_packages
 -- @-node:gcross.20091201134050.1973:configurePackageModules
 -- @+node:gcross.20091129000542.1711:registerPackage
 registerPackage :: GHCConfiguration -> InstalledPackageInfo -> IO (Maybe Doc)
@@ -479,6 +498,8 @@ registerPackage configuration = do
     readProcessWithExitCode
         (ghcPackageManagerPath configuration)
         ["update","-"]
+    .
+    (\x -> trace x $ x)
     .
     showInstalledPackageInfo
     >=>
@@ -502,7 +523,7 @@ createInstalledPackageInfoFromPackageDescription ::
     [String] -> -- extra GHCI libraries
     [FilePath] -> -- include directories
     [String] -> -- includes
-    [PackageIdentifier] -> -- package dependencies
+    [InstalledPackageId] -> -- package dependencies
     [String] -> -- hugs options
     [String] -> -- cc options
     [String] -> -- ld options
@@ -513,7 +534,16 @@ createInstalledPackageInfoFromPackageDescription ::
     InstalledPackageInfo
 createInstalledPackageInfoFromPackageDescription
     = InstalledPackageInfo
-        <$> PackageDescription.package
+        <$> (
+                InstalledPackageId
+                .
+                render
+                .
+                disp
+                .
+                PackageDescription.package
+            )
+        <*> PackageDescription.package
         <*> PackageDescription.license
         <*> PackageDescription.copyright
         <*> PackageDescription.maintainer
@@ -529,14 +559,14 @@ installSimplePackage ::
     GHCConfiguration ->
     InstallerConfiguration ->
     PackageInformation ->
-    [String] ->
+    [ResolvedPackage] ->
     [Resource] ->
     Maybe ErrorMessage
 installSimplePackage
     ghc_configuration
     installer_configuration
     package_information
-    qualified_dependency_package_names
+    resolved_package_dependencies
     resources_to_install
   = let library_destination_path =
             installerLibraryPath installer_configuration
@@ -585,7 +615,7 @@ installSimplePackage
                 []
                 []
                 []
-                (map qualifiedNameToPackageIdentifier qualified_dependency_package_names)
+                (map resolvedInstalledPackageId resolved_package_dependencies)
                 []
                 []
                 (libraryLinkFlags package_information)

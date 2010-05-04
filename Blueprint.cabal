@@ -16,9 +16,9 @@ Synopsis:       Preview of a new build system.
 Build-Type:     Custom
 
 Library
-    Build-Depends:  base == 4.1.*,
-                    containers == 0.2.*,
-                    array == 0.2.*,
+    Build-Depends:  base >= 4.1 && < 4.3,
+                    containers >= 0.2 && < 0.4,
+                    array >= 0.2 && < 0.4,
                     bytestring == 0.9.*,
                     mtl == 1.1.*,
                     directory == 1.0.*,
@@ -26,15 +26,16 @@ Library
                     process == 1.0.*,
                     parallel == 2.2.*,
                     binary == 0.5.*,
-                    stringtable-atom == 0.0.6,
-                    ConfigFile == 1.0.*,
-                    either-unwrap == 1.1.*,
-                    pureMD5 == 1.0.*,
-                    Cabal == 1.6.*,
-                    ansi-wl-pprint == 0.5.*,
-                    regex-tdfa == 1.1.*,
-                    InfixApplicative == 1.0.*,
+                    stringtable-atom >= 0.0.6 && < 0.1,
+                    ConfigFile >= 1.0 && < 1.1,
+                    either-unwrap >= 1.1 && < 1.2,
+                    pureMD5 >= 1.0 && < 1.2,
+                    Cabal >= 1.8 && < 1.9,
+                    ansi-wl-pprint >= 0.5 && < 0.6,
+                    pretty >= 1.0 && < 1.1,
+                    regex-tdfa >= 1.1 && < 1.2,
+                    InfixApplicative >= 1 && < 1.2,
                     error-message >= 1.1 && <2,
-                    FileManip == 0.3.*
+                    FileManip >= 0.3 && < 0.4
 -- @-node:gcross.20091128000856.1485:@thin Blueprint.cabal
 -- @-leo
