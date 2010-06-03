@@ -252,6 +252,36 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
+    -- @+node:gcross.20100603132252.1338:options
+    ,testCase "options" $
+        assertEqual
+            "Is the options map correct?"
+            (Map.fromList
+                [("A"
+                 ,Option
+                    (Set.fromList "abc")
+                    (Set.fromList ["long-1","long-2"])
+                    "0"
+                    (NoArgument "1")
+                    "Option A"
+                 )
+                ,("B"
+                 ,Option
+                    (Set.fromList "def")
+                    (Set.fromList ["long"])
+                    ""
+                    (RequiredArgument "TYPE")
+                    "Option B"
+                 )
+                ]
+            )
+            .
+            options
+            $
+            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+            ]
+    -- @-node:gcross.20100603132252.1338:options
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl

@@ -52,9 +52,9 @@ data Option =
     ,   optionDefaultValue :: String
     ,   optionArgumentType :: OptionArgumentType
     ,   optionDescription :: String
-    }
+    } deriving (Eq,Show)
 -- @-node:gcross.20100602141408.1275:Option
--- @+node:gcross.20100602152546.1272:OptionArgument
+-- @+node:gcross.20100602152546.1272:OptionArgumentType
 data OptionArgumentType =
     NoArgument { optionValueIfPresent :: String }
   | RequiredArgument { optionValueTypeDescription :: String }
@@ -62,7 +62,8 @@ data OptionArgumentType =
     {   optionValueTypeDescription :: String
     ,   optionValueIfPresentButNotSpecified :: String
     }
--- @-node:gcross.20100602152546.1272:OptionArgument
+  deriving (Eq,Show)
+-- @-node:gcross.20100602152546.1272:OptionArgumentType
 -- @+node:gcross.20100602152546.1274:OptionSpecification
 data OptionSpecification =
     OptionSpecification
@@ -76,7 +77,7 @@ type OptionValues = Map String String
 -- @-node:gcross.20100602152546.1279:OptionValues
 -- @-node:gcross.20100602141408.1274:Types
 -- @+node:gcross.20100602152546.1268:Functions
--- @+node:gcross.20100602152546.1269:optionToOptDesc
+-- @+node:gcross.20100602152546.1269:computeGetOptDescriptors
 computeGetOptDescriptors :: OptionSpecification → [GetOpt.OptDescr (String,String)]
 computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_resolutions options) =
     map (uncurry makeDescriptor)
@@ -102,7 +103,7 @@ computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_r
                         type_description
             )
             optionDescription
--- @-node:gcross.20100602152546.1269:optionToOptDesc
+-- @-node:gcross.20100602152546.1269:computeGetOptDescriptors
 -- @+node:gcross.20100602152546.1876:createOptionSpecification
 createOptionSpecification = createOptionSpecificationAcceptingDuplicateOptionForms Map.empty Map.empty
 
@@ -186,6 +187,24 @@ filterConflictsAndConvertToList key conflict_resolutions =
     .
     Set.toList
 -- @-node:gcross.20100602195250.1296:filterConflictsAndConvertToList
+-- @+node:gcross.20100603132252.1336:options
+options :: [(String,[Char],[String],String,OptionArgumentType,String)] → Map String Option
+options =
+    Map.fromList
+    .
+    map (
+        \(key,short_forms,long_forms,default_value,argument_type,description) →
+            (key
+            ,Option
+                (Set.fromList short_forms)
+                (Set.fromList long_forms)
+                default_value
+                argument_type
+                description
+            )
+    )
+-- @nonl
+-- @-node:gcross.20100603132252.1336:options
 -- @-node:gcross.20100602152546.1268:Functions
 -- @-others
 -- @-node:gcross.20100602141408.1273:@thin Options.hs
