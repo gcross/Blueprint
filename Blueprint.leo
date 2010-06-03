@@ -13,6 +13,7 @@
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
 <v t="gcross.20100602141408.1273"><vh>@thin Options.hs</vh></v>
 </v>
+<v t="gcross.20100602152546.1280"><vh>@thin test.hs</vh></v>
 </vnodes>
 <tnodes>
 <t tx="gcross.20100521181123.1261"></t>
