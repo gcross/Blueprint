@@ -15,7 +15,6 @@ module Blueprint.Options where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100602152546.1270:<< Import needed modules >>
 import Control.Arrow
-import Control.Applicative.Infix
 import Control.Exception
 
 import Data.Either
