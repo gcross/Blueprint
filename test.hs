@@ -168,6 +168,90 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100603132252.1293:findConflicts
+    -- @+node:gcross.20100603132252.1314:filterConflictsAndConvertToList
+    ,testGroup "filterConflictsAndConvertToList"
+        -- @    @+others
+        -- @+node:gcross.20100603132252.1316:lists with () values
+        [testGroup "lists with () values"
+            -- @    @+others
+            -- @+node:gcross.20100603132252.1317:empty set
+            [testCase "empty set" $
+                assert . null . filterConflictsAndConvertToList undefined undefined $ (Set.empty :: Set ())
+            -- @-node:gcross.20100603132252.1317:empty set
+            -- @+node:gcross.20100603132252.1319:singleton set with no conflict
+            ,testCase "singleton set with no conflict" $
+                assertEqual
+                    "Is the output set correct?"
+                    [()]
+                    .
+                    filterConflictsAndConvertToList undefined Map.empty
+                    $
+                    Set.singleton ()
+            -- @-node:gcross.20100603132252.1319:singleton set with no conflict
+            -- @+node:gcross.20100603132252.1321:singleton set with conflict
+            ,testCase "singleton set with conflict" $
+                assertEqual
+                    "Is the output set correct?"
+                    []
+                    .
+                    filterConflictsAndConvertToList "A" (Map.singleton () "B")
+                    $
+                    Set.singleton ()
+            -- @-node:gcross.20100603132252.1321:singleton set with conflict
+            -- @+node:gcross.20100603132252.1323:singleton set with resolved conflict
+            ,testCase "singleton set with conflict" $
+                assertEqual
+                    "Is the output set correct?"
+                    [()]
+                    .
+                    filterConflictsAndConvertToList "A" (Map.singleton () "A")
+                    $
+                    Set.singleton ()
+            -- @-node:gcross.20100603132252.1323:singleton set with resolved conflict
+            -- @-others
+            ]
+        -- @-node:gcross.20100603132252.1316:lists with () values
+        -- @+node:gcross.20100603132252.1329:lists with () values
+        ,testGroup "lists with Int values"
+            -- @    @+others
+            -- @+node:gcross.20100603132252.1331:set with no conflicts
+            [testCase "set with no conflict" $
+                assertEqual
+                    "Is the output set correct?"
+                    [1,2,3,4]
+                    .
+                    filterConflictsAndConvertToList undefined Map.empty
+                    .
+                    Set.fromList
+                    $
+                    [1,2,3,4]
+            -- @-node:gcross.20100603132252.1331:set with no conflicts
+            -- @+node:gcross.20100603132252.1335:set with some conflicts
+            ,testCase "set with some conflicts" $
+                assertEqual
+                    "Is the output set correct?"
+                    [1,2,4,6,7,8,10]
+                    .
+                    filterConflictsAndConvertToList "A"
+                        (Map.fromList
+                            [(1,"A")
+                            ,(3,"B")
+                            ,(5,"C")
+                            ,(8,"A")
+                            ,(9,"D")
+                            ]
+                        )
+                    .
+                    Set.fromList
+                    $
+                    [1..10]
+            -- @-node:gcross.20100603132252.1335:set with some conflicts
+            -- @-others
+            ]
+        -- @-node:gcross.20100603132252.1329:lists with () values
+        -- @-others
+        ]
+    -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl
