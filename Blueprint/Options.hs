@@ -77,6 +77,24 @@ type OptionValues = Map String String
 -- @-node:gcross.20100602152546.1279:OptionValues
 -- @-node:gcross.20100602141408.1274:Types
 -- @+node:gcross.20100602152546.1268:Functions
+-- @+node:gcross.20100603132252.2071:processOptions
+processOptions :: OptionSpecification → [String] → Either [String] (Map String String,[String])
+processOptions option_specification arguments =
+    if null error_messages
+        then Right (option_values,non_matching_arguments)
+        else Left error_messages
+  where
+    (key_value_updates,non_matching_arguments,error_messages) =
+        GetOpt.getOpt
+            GetOpt.Permute
+            (computeGetOptDescriptors option_specification)
+            arguments
+
+    option_values =
+        Map.union
+            (Map.fromList key_value_updates)
+            (defaultOptionValues option_specification)
+-- @-node:gcross.20100603132252.2071:processOptions
 -- @+node:gcross.20100602152546.1269:computeGetOptDescriptors
 computeGetOptDescriptors :: OptionSpecification → [GetOpt.OptDescr (String,String)]
 computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_resolutions options) =
@@ -205,6 +223,10 @@ options =
     )
 -- @nonl
 -- @-node:gcross.20100603132252.1336:options
+-- @+node:gcross.20100603184437.1357:defaultOptionValues
+defaultOptionValues = Map.map optionDefaultValue . optionSpecificationOptions
+
+-- @-node:gcross.20100603184437.1357:defaultOptionValues
 -- @-node:gcross.20100602152546.1268:Functions
 -- @-others
 -- @-node:gcross.20100602141408.1273:@thin Options.hs

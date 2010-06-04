@@ -384,6 +384,28 @@ main = defaultMain
         ]
     -- @nonl
     -- @-node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
+    -- @+node:gcross.20100603132252.2064:computeGetOptDescriptors
+    ,testGroup "processOptions"
+        -- @    @+others
+        -- @+node:gcross.20100603132252.2065:empty
+        [testCase "empty" $
+            assertEqual
+                "Are the parsed option correct?"
+                (Right (Map.empty,[]))
+            $
+            processOptions
+                (createOptionSpecificationWithResolvedConflicts
+                    Map.empty
+                    Map.empty
+                    Map.empty
+                )
+                []
+
+        -- @-node:gcross.20100603132252.2065:empty
+        -- @-others
+        ]
+    -- @nonl
+    -- @-node:gcross.20100603132252.2064:computeGetOptDescriptors
     -- @+node:gcross.20100603132252.1338:options
     ,testCase "options" $
         assertEqual
