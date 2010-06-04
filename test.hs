@@ -15,6 +15,7 @@ import Prelude hiding (catch)
 import Control.Arrow
 import Control.Exception hiding (assert)
 
+import Data.Either.Unwrap
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -384,13 +385,13 @@ main = defaultMain
         ]
     -- @nonl
     -- @-node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
-    -- @+node:gcross.20100603132252.2064:computeGetOptDescriptors
+    -- @+node:gcross.20100603132252.2064:processOptions
     ,testGroup "processOptions"
         -- @    @+others
         -- @+node:gcross.20100603132252.2065:empty
         [testCase "empty" $
             assertEqual
-                "Are the parsed option correct?"
+                "Were the options parsed correctly?"
                 (Right (Map.empty,[]))
             $
             processOptions
@@ -402,10 +403,89 @@ main = defaultMain
                 []
 
         -- @-node:gcross.20100603132252.2065:empty
+        -- @+node:gcross.20100603184437.1358:test case #1
+        ,testCase "test case #1" $
+            assertEqual
+                "Were the options parsed correctly?"
+                (Right
+                    (Map.fromList $
+                        [("A","1")
+                        ,("B","2")
+                        ]
+                    ,["foo","bar"]
+                    )
+                )
+            $
+            processOptions
+                (createOptionSpecificationWithResolvedConflicts
+                    Map.empty
+                    Map.empty
+                    (options
+                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                        ]
+                    )
+                )
+                ["foo","-a","--long=2","bar"]
+        -- @-node:gcross.20100603184437.1358:test case #1
+        -- @+node:gcross.20100604110000.1360:test case #2
+        ,testCase "test case #2" $
+            assertEqual
+                "Were the options parsed correctly?"
+                (Right
+                    (Map.fromList $
+                        [("A","1")
+                        ,("B","")
+                        ,("C","1")
+                        ]
+                    ,["foo","bar"]
+                    )
+                )
+            $
+            processOptions
+                (createOptionSpecificationWithResolvedConflicts
+                    (Map.fromList
+                        [('d',"C") -- '
+                        ]
+                    )
+                    Map.empty
+                    (options
+                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                        ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                        ]
+                    )
+                )
+                ["foo","-a","bar","-d"]
+        -- @-node:gcross.20100604110000.1360:test case #2
+        -- @+node:gcross.20100604110000.1362:test case #2
+        ,testCase "test case #3" $
+            assertEqual
+                "Were the options parsed correctly?"
+                (Left 2)
+            .
+            mapLeft length
+            $
+            processOptions
+                (createOptionSpecificationWithResolvedConflicts
+                    (Map.fromList
+                        [('d',"C") -- '
+                        ]
+                    )
+                    Map.empty
+                    (options
+                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                        ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                        ]
+                    )
+                )
+                ["-q","--long"]
+        -- @-node:gcross.20100604110000.1362:test case #2
         -- @-others
         ]
     -- @nonl
-    -- @-node:gcross.20100603132252.2064:computeGetOptDescriptors
+    -- @-node:gcross.20100603132252.2064:processOptions
     -- @+node:gcross.20100603132252.1338:options
     ,testCase "options" $
         assertEqual
