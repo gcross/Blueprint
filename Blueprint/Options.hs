@@ -38,7 +38,7 @@ data ConflictingOptionFormsException =
     ConflictingOptionFormsException 
     {   conflictingShortForms :: Map Char (Set String)
     ,   conflictingLongForms :: Map String (Set String)
-    } deriving (Show,Typeable)
+    } deriving (Eq,Show,Typeable)
 
 instance Exception ConflictingOptionFormsException
 -- @-node:gcross.20100602195250.1301:ConflictingOptionFormsException
@@ -70,7 +70,7 @@ data OptionSpecification =
     {   optionSpecificationResolvedShortForms :: Map Char String
     ,   optionSpecificationResolvedLongForms :: Map String String
     ,   optionSpecificationOptions :: Map String Option
-    }
+    } deriving (Eq,Show)
 -- @-node:gcross.20100602152546.1274:OptionSpecification
 -- @+node:gcross.20100602152546.1279:OptionValues
 type OptionValues = Map String String

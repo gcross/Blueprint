@@ -10,7 +10,10 @@
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100602152546.1869:<< Import needed modules >>
+import Prelude hiding (catch)
+
 import Control.Arrow
+import Control.Exception hiding (assert)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -45,6 +48,16 @@ import Blueprint.Options
 -- @-at
 -- @@c
 -- @-node:gcross.20100602195250.1299:findDuplicates
+-- @+node:gcross.20100603132252.2058:assertThrows
+assertThrows :: (Eq e, Exception e) => e → IO a → Assertion
+assertThrows exception thunk =
+    catch
+        (thunk >> assertFailure "No exception was thrown.")
+        (assertEqual
+            "Was the correct exception thrown?"
+            exception
+        )
+-- @-node:gcross.20100603132252.2058:assertThrows
 -- @-node:gcross.20100602195250.1297:Functions
 -- @+node:gcross.20100602152546.1874:Values
 -- @-node:gcross.20100602152546.1874:Values
@@ -211,7 +224,7 @@ main = defaultMain
             -- @-others
             ]
         -- @-node:gcross.20100603132252.1316:lists with () values
-        -- @+node:gcross.20100603132252.1329:lists with () values
+        -- @+node:gcross.20100603132252.1329:lists with Int values
         ,testGroup "lists with Int values"
             -- @    @+others
             -- @+node:gcross.20100603132252.1331:set with no conflicts
@@ -248,10 +261,124 @@ main = defaultMain
             -- @-node:gcross.20100603132252.1335:set with some conflicts
             -- @-others
             ]
-        -- @-node:gcross.20100603132252.1329:lists with () values
+        -- @-node:gcross.20100603132252.1329:lists with Int values
         -- @-others
         ]
     -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
+    -- @+node:gcross.20100603132252.1341:createOptionSpecificationAcceptingDuplicateOptionForms
+    ,testGroup "createOptionSpecificationAcceptingDuplicateOptionForms"
+        -- @    @+others
+        -- @+node:gcross.20100603132252.1342:empty
+        [testCase "empty" $
+            let opts =
+                    options $
+                        []
+            in assertEqual
+                "Is the computed specification correct?"
+                (OptionSpecification
+                    Map.empty
+                    Map.empty
+                    opts
+                )
+                $
+                createOptionSpecificationAcceptingDuplicateOptionForms
+                    Map.empty
+                    Map.empty
+                    opts
+        -- @-node:gcross.20100603132252.1342:empty
+        -- @+node:gcross.20100603132252.1344:some non-conflicting options
+        ,testCase "some non-conflicting options" $
+            let opts =
+                    options $
+                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                        ]
+            in assertEqual
+                "Is the computed specification correct?"
+                (OptionSpecification
+                    Map.empty
+                    Map.empty
+                    opts
+                )
+                $
+                createOptionSpecificationAcceptingDuplicateOptionForms
+                    Map.empty
+                    Map.empty
+                    opts
+        -- @-node:gcross.20100603132252.1344:some non-conflicting options
+        -- @+node:gcross.20100603132252.1346:some options with resolved conflicts
+        ,testCase "some options with resolved conflicts" $
+            let opts =
+                    options
+                        [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
+                        ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                        ]
+                short_form_resolutions =
+                    Map.fromList
+                        [('b',"A")
+                        ,('c',"C")
+                        ,('f',"B")
+                        ,('z',"A") -- '
+                        ]
+                long_form_resolutions =
+                    Map.fromList
+                        [("long-1","B")
+                        ,("long-2","C")
+                        ]
+            in assertEqual
+                "Is the computed specification correct?"
+                (OptionSpecification
+                    short_form_resolutions
+                    long_form_resolutions
+                    opts
+                )
+                $
+                createOptionSpecificationAcceptingDuplicateOptionForms
+                    short_form_resolutions
+                    long_form_resolutions
+                    opts
+        -- @-node:gcross.20100603132252.1346:some options with resolved conflicts
+        -- @+node:gcross.20100603132252.1348:some options with unresolved conflicts
+        ,testCase "some options with unresolved conflicts" $
+            let opts =
+                    options
+                        [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                        ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
+                        ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                        ]
+                short_form_resolutions =
+                    Map.fromList
+                        [('b',"A")
+                        ,('c',"C") -- '
+                        ]
+                long_form_resolutions =
+                    Map.fromList
+                        [("long-1","B")
+                        ]
+            in assertThrows
+                (ConflictingOptionFormsException
+                    (Map.fromList
+                        [('z',Set.fromList ["A","B","C"])
+                        ,('f',Set.fromList ["B","C"]) -- '
+                        ]
+                    )
+                    (Map.fromList
+                        [("long-2",Set.fromList ["A","C"])
+                        ]
+                    )
+                )
+                .
+                evaluate
+                $
+                createOptionSpecificationAcceptingDuplicateOptionForms
+                    short_form_resolutions
+                    long_form_resolutions
+                    opts
+        -- @-node:gcross.20100603132252.1348:some options with unresolved conflicts
+        -- @-others
+        ]
+    -- @-node:gcross.20100603132252.1341:createOptionSpecificationAcceptingDuplicateOptionForms
     -- @+node:gcross.20100603132252.1338:options
     ,testCase "options" $
         assertEqual
