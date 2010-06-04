@@ -105,16 +105,15 @@ computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_r
             optionDescription
 -- @-node:gcross.20100602152546.1269:computeGetOptDescriptors
 -- @+node:gcross.20100602152546.1876:createOptionSpecification
-createOptionSpecification = createOptionSpecificationAcceptingDuplicateOptionForms Map.empty Map.empty
-
+createOptionSpecification = createOptionSpecificationWithResolvedConflicts Map.empty Map.empty
 -- @-node:gcross.20100602152546.1876:createOptionSpecification
--- @+node:gcross.20100602152546.1273:createOptionSpecificationAcceptingDuplicateOptionForms
-createOptionSpecificationAcceptingDuplicateOptionForms ::
+-- @+node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
+createOptionSpecificationWithResolvedConflicts ::
     Map Char String →
     Map String String →
     Map String Option →
     OptionSpecification
-createOptionSpecificationAcceptingDuplicateOptionForms
+createOptionSpecificationWithResolvedConflicts
     short_form_conflict_resolutions
     long_form_conflict_resolutions
     options
@@ -147,7 +146,8 @@ createOptionSpecificationAcceptingDuplicateOptionForms
             (optionLongForms . snd)
         $
         options_as_list
--- @-node:gcross.20100602152546.1273:createOptionSpecificationAcceptingDuplicateOptionForms
+-- @nonl
+-- @-node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
 -- @+node:gcross.20100602152546.1882:findConflicts
 findConflicts :: Ord a => Set a → (b → String) → (b → Set a) → [b] → Map a (Set String)
 findConflicts values_to_ignore getName getValues =

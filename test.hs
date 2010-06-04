@@ -265,8 +265,8 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
-    -- @+node:gcross.20100603132252.1341:createOptionSpecificationAcceptingDuplicateOptionForms
-    ,testGroup "createOptionSpecificationAcceptingDuplicateOptionForms"
+    -- @+node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
+    ,testGroup "createOptionSpecificationWithResolvedConflicts"
         -- @    @+others
         -- @+node:gcross.20100603132252.1342:empty
         [testCase "empty" $
@@ -281,10 +281,11 @@ main = defaultMain
                     opts
                 )
                 $
-                createOptionSpecificationAcceptingDuplicateOptionForms
+                createOptionSpecificationWithResolvedConflicts
                     Map.empty
                     Map.empty
                     opts
+        -- @nonl
         -- @-node:gcross.20100603132252.1342:empty
         -- @+node:gcross.20100603132252.1344:some non-conflicting options
         ,testCase "some non-conflicting options" $
@@ -301,10 +302,11 @@ main = defaultMain
                     opts
                 )
                 $
-                createOptionSpecificationAcceptingDuplicateOptionForms
+                createOptionSpecificationWithResolvedConflicts
                     Map.empty
                     Map.empty
                     opts
+        -- @nonl
         -- @-node:gcross.20100603132252.1344:some non-conflicting options
         -- @+node:gcross.20100603132252.1346:some options with resolved conflicts
         ,testCase "some options with resolved conflicts" $
@@ -334,10 +336,11 @@ main = defaultMain
                     opts
                 )
                 $
-                createOptionSpecificationAcceptingDuplicateOptionForms
+                createOptionSpecificationWithResolvedConflicts
                     short_form_resolutions
                     long_form_resolutions
                     opts
+        -- @nonl
         -- @-node:gcross.20100603132252.1346:some options with resolved conflicts
         -- @+node:gcross.20100603132252.1348:some options with unresolved conflicts
         ,testCase "some options with unresolved conflicts" $
@@ -371,14 +374,16 @@ main = defaultMain
                 .
                 evaluate
                 $
-                createOptionSpecificationAcceptingDuplicateOptionForms
+                createOptionSpecificationWithResolvedConflicts
                     short_form_resolutions
                     long_form_resolutions
                     opts
+        -- @nonl
         -- @-node:gcross.20100603132252.1348:some options with unresolved conflicts
         -- @-others
         ]
-    -- @-node:gcross.20100603132252.1341:createOptionSpecificationAcceptingDuplicateOptionForms
+    -- @nonl
+    -- @-node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
     -- @+node:gcross.20100603132252.1338:options
     ,testCase "options" $
         assertEqual
