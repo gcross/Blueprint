@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100604184944.1291:<< Language extensions >>
 -- @nl
@@ -21,9 +22,12 @@ import Control.Concurrent.Chan
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Parallel.Strategies
 
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.IVar.Simple (IVar)
 import qualified Data.IVar.Simple as IVar
 import Data.List
@@ -78,7 +82,7 @@ data Job result =
 -- @+node:gcross.20100604184944.1294:JobStatus
 data JobStatus result =
     Pending (JobTask result result)
-  | Running (IVar result)
+  | Running IntSet [Int] (IVar result)
   | Succeeded result
   | Failed (IntMap SomeException)
 -- @-node:gcross.20100604184944.1294:JobStatus
@@ -100,14 +104,22 @@ type JobRegistry result = Map String (JobStatus result)
 type JobServer result = Chan (JobRequest result)
 -- @-node:gcross.20100604204549.1344:JobServer
 -- @+node:gcross.20100604204549.1375:JobServerState
-data JobServerState result = JobServerState
+data NFData result => JobServerState result = JobServerState
     {   serverNextJobId :: Int
     ,   serverJobIds :: Map String Int
     ,   serverJobStatuses :: IntMap (JobStatus result)
     ,   serverJobQueue :: Chan (Job result)
+    ,   serverPausedJobs :: IntMap (PausedJob result)
     -- ,   serverIOTaskQueue :: Chan (IOTask _)
     }
 -- @-node:gcross.20100604204549.1375:JobServerState
+-- @+node:gcross.20100604204549.1380:PausedJob
+data PausedJob result = PausedJob
+    {   pausedJobPendingRequests :: IntSet
+    ,   pausedJobRequests :: [Int]
+    ,   pausedJobTask :: [result] -> JobTask result result
+    }
+-- @-node:gcross.20100604204549.1380:PausedJob
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask
@@ -141,7 +153,11 @@ spawnIOTaskRunner task_queue result_queue =
         \(IOTask task f) → (try task >>= writeChan result_queue . f)
 -- @-node:gcross.20100604204549.1366:spawnIOTaskRunner
 -- @+node:gcross.20100604204549.1367:processJob
-processJob :: JobServerState result -> Job result -> IO (JobServerState result)
+processJob ::
+    NFData result =>
+    JobServerState result ->
+    Job result ->
+    IO (JobServerState result)
 processJob state@JobServerState{..} job =
     case job of
         -- @        @+others
@@ -180,9 +196,12 @@ processJob state@JobServerState{..} job =
                             return $
                                 state
                                 {   serverJobStatuses =
-                                        IntMap.insert job_id (Running result_ivar) serverJobStatuses
+                                        IntMap.insert
+                                            job_id
+                                            (Running IntSet.empty [] result_ivar)
+                                            serverJobStatuses
                                 }
-                        Running result_ivar -> do
+                        Running _ _ result_ivar -> do
                             IVar.write destination_ivar (IVar.read result_ivar)
                             return state
                         Succeeded result -> do
@@ -201,10 +220,76 @@ processJob state@JobServerState{..} job =
                             return state
         -- @-node:gcross.20100604204549.1373:ExternalRequest
         -- @+node:gcross.20100604204549.1378:JobTask
-        JobTask _ _ -> return state
+        JobTask job_id task -> return state
         -- @-node:gcross.20100604204549.1378:JobTask
         -- @-others
 -- @-node:gcross.20100604204549.1367:processJob
+-- @+node:gcross.20100604204549.1381:processJobTask
+processJobTask ::
+    NFData result =>
+    JobServerState result ->
+    Int ->
+    JobTask result result ->
+    IO (JobServerState result)
+processJobTask state@JobServerState{..} job_id task =
+    case task of
+        -- @        @+others
+        -- @+node:gcross.20100604204549.1382:Return
+        Return result_ -> do
+            result <- evaluate . withStrategy rdeepseq $ result_
+            let Just (Running _ requesting_job_ids result_ivar) =
+                    IntMap.lookup job_id serverJobStatuses
+            IVar.write result_ivar result
+            paused_job_updates <-
+                fmap (IntMap.fromList . catMaybes)
+                .
+                forM requesting_job_ids
+                $
+                \paused_job_id ->
+                    let Just (paused_job@PausedJob{..}) =
+                            IntMap.lookup paused_job_id serverPausedJobs
+                    in if IntSet.size pausedJobPendingRequests == 1
+                        then
+                            (writeChan serverJobQueue .| rwhnf)
+                            (
+                            (JobTask paused_job_id .|| rwhnf)
+                            (
+                            pausedJobTask
+                            .
+                            map (\requested_job_id ->
+                                    if requested_job_id == job_id
+                                        then result
+                                        else
+                                            let Just (Succeeded result) =
+                                                    IntMap.lookup
+                                                        requested_job_id
+                                                        serverJobStatuses
+                                            in result
+                                )
+                            ))
+                            pausedJobRequests
+                            >>
+                            return Nothing
+                        else
+                            return . Just . (paused_job_id,) $
+                                paused_job
+                                {   pausedJobPendingRequests =
+                                        IntSet.delete job_id pausedJobPendingRequests
+                                }
+            return $
+                state { serverJobStatuses = 
+                            IntMap.insert
+                                job_id
+                                (Succeeded result)
+                                serverJobStatuses
+                      , serverPausedJobs =
+                            IntMap.union
+                                paused_job_updates
+                                serverPausedJobs
+                       }
+        -- @-node:gcross.20100604204549.1382:Return
+        -- @-others
+-- @-node:gcross.20100604204549.1381:processJobTask
 -- @-node:gcross.20100604204549.1359:Functions
 -- @-others
 -- @-node:gcross.20100604184944.1289:@thin Jobs.hs
