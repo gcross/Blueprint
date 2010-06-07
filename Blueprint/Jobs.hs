@@ -77,13 +77,14 @@ instance Show CombinedException where
     show (CombinedException exceptions) =
         intercalate (replicate 72 '=' ++ "\n")
         .
-        map (\(names,exception) ->
+        map (\(names,exception) →
             "Error executing job " ++ show names ++ ":\n" ++ show exception
         )
         $
         exceptions
 
 instance Exception CombinedException
+-- @nonl
 -- @-node:gcross.20100604204549.1377:CombinedException
 -- @+node:gcross.20100604204549.7672:JobHasCyclicDependency
 data JobHasCyclicDependency = JobHasCyclicDependency deriving Typeable
@@ -130,8 +131,9 @@ type JobServer result = Chan (JobRequest result)
 data PausedJob result = PausedJob
     {   pausedJobPendingRequests :: IntSet
     ,   pausedJobRequests :: [Int]
-    ,   pausedJobComputeTask :: [result] -> JobTask result result
+    ,   pausedJobComputeTask :: [result] → JobTask result result
     }
+-- @nonl
 -- @-node:gcross.20100604204549.1380:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
 data JobServerState result = JobServerState
@@ -171,9 +173,9 @@ instance MonadIO (JobTask r) where
 -- @-node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604204549.1359:Functions
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions
-failJobWithExceptions :: Int -> IntMap SomeException -> StateT (JobServerState result) IO ()
+failJobWithExceptions :: Int → IntMap SomeException → StateT (JobServerState result) IO ()
 failJobWithExceptions job_id exceptions = do
-    combined_exception <- combineExceptions exceptions
+    combined_exception ← combineExceptions exceptions
     Just (Running _ requesting_job_ids result_ivar) ←
         fmap (IntMap.lookup job_id)
         .
@@ -182,40 +184,42 @@ failJobWithExceptions job_id exceptions = do
         IntMap.insert job_id (Failed exceptions combined_exception)
     liftIO . IVar.write result_ivar . throw $ combined_exception
     notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
+-- @nonl
 -- @-node:gcross.20100604204549.7666:failJobWithExceptions
 -- @+node:gcross.20100604204549.1388:fetchResultsAndRunJobTask
 fetchResultsAndRunJobTask ::
-    Int ->
-    [Int] ->
-    ([result] -> JobTask result result) -> 
+    Int →
+    [Int] →
+    ([result] → JobTask result result) →
     StateT (JobServerState result) IO ()
 fetchResultsAndRunJobTask job_id requested_job_ids computeTask = do
-    server_job_statuses <- get serverJobStatuses
+    server_job_statuses ← get serverJobStatuses
     let (exceptions,results) =
             first IntMap.unions
             .
             partitionEithers
             .
             map (
-                \job_id ->
+                \job_id →
                     case fromJust (IntMap.lookup job_id server_job_statuses) of
-                        Failed exceptions _ -> Left exceptions
-                        Succeeded result -> Right result
+                        Failed exceptions _ → Left exceptions
+                        Succeeded result → Right result
             )
             $
             requested_job_ids
     if (not . IntMap.null) exceptions
         then failJobWithExceptions job_id exceptions
         else do
-            server_job_queue <- get serverJobQueue
+            server_job_queue ← get serverJobQueue
             (liftIO . writeChan server_job_queue . JobTask job_id . computeTask) $|| rwhnf $ results
+-- @nonl
 -- @-node:gcross.20100604204549.1388:fetchResultsAndRunJobTask
 -- @+node:gcross.20100604204549.1387:combineExceptions
-combineExceptions :: IntMap SomeException -> StateT (JobServerState result) IO CombinedException
+combineExceptions :: IntMap SomeException → StateT (JobServerState result) IO CombinedException
 combineExceptions exceptions =
     get serverJobNames
     >>=
-    \server_job_names ->
+    \server_job_names →
         return
         .
         CombinedException
@@ -225,9 +229,10 @@ combineExceptions exceptions =
         IntMap.assocs
         $
         exceptions
+-- @nonl
 -- @-node:gcross.20100604204549.1387:combineExceptions
 -- @+node:gcross.20100604204549.7678:notifyPausedJobsThatRequestedJobIsFinished
-notifyPausedJobsThatRequestedJobIsFinished :: Int -> [Int] -> StateT (JobServerState result) IO ()
+notifyPausedJobsThatRequestedJobIsFinished :: Int → [Int] → StateT (JobServerState result) IO ()
 notifyPausedJobsThatRequestedJobIsFinished job_id =
     mapM_ $ \paused_job_id → do
         Just (paused_job@PausedJob{..}) ← fmap (IntMap.lookup paused_job_id) (get serverPausedJobs)
@@ -241,23 +246,25 @@ notifyPausedJobsThatRequestedJobIsFinished job_id =
                      $
                      paused_job { pausedJobPendingRequests = IntSet.delete job_id pausedJobPendingRequests }
                     )
+-- @nonl
 -- @-node:gcross.20100604204549.7678:notifyPausedJobsThatRequestedJobIsFinished
 -- @+node:gcross.20100604204549.7668:startJobTask
-startJobTask :: Int -> JobTask result result -> StateT (JobServerState result) IO (IVar result)
+startJobTask :: Int → JobTask result result → StateT (JobServerState result) IO (IVar result)
 startJobTask job_id task = do
     get serverJobQueue >>= liftIO . flip writeChan (JobTask job_id task)
-    result_ivar <- liftIO IVar.new
+    result_ivar ← liftIO IVar.new
     modify serverJobStatuses
         .
         IntMap.insert job_id
         $
         Running IntSet.empty [] result_ivar
     return result_ivar
+-- @nonl
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100604204549.7659:processJob
 processJob ::
     NFData result =>
-    Job result ->
+    Job result →
     StateT (JobServerState result) IO ()
 -- @+others
 -- @+node:gcross.20100604204549.7660:JobSubmission
@@ -398,9 +405,9 @@ processJob (JobTask job_id task) =
                         else do
                             -- @                    << Compute all dependencies. >>
                             -- @+node:gcross.20100604204549.7669:<< Compute all dependencies. >>
-                            paused_jobs <- get serverPausedJobs
-                            let getDependencies accum (IntSet.minView -> Nothing) = accum
-                                getDependencies accum (IntSet.minView -> Just (dependency_job_id,rest_dependency_job_ids)) =
+                            paused_jobs ← get serverPausedJobs
+                            let getDependencies accum (IntSet.minView → Nothing) = accum
+                                getDependencies accum (IntSet.minView → Just (dependency_job_id,rest_dependency_job_ids)) =
                                     getDependencies (IntSet.insert dependency_job_id accum)
                                     .
                                     (IntSet.union rest_dependency_job_ids)
@@ -420,6 +427,7 @@ processJob (JobTask job_id task) =
                                     IntSet.fromList
                                     $
                                     pending_job_ids
+                            -- @nonl
                             -- @-node:gcross.20100604204549.7669:<< Compute all dependencies. >>
                             -- @nl
                             if IntSet.member job_id all_dependency_ids
@@ -445,7 +453,7 @@ processJob (JobTask job_id task) =
                                         }
                                     (serverJobStatuses %:)
                                         $
-                                        \statuses ->
+                                        \statuses →
                                         foldl' -- '
                                             (\statuses requested_job_id →
                                                 IntMap.adjust
@@ -462,7 +470,7 @@ processJob (JobTask job_id task) =
                                             pending_job_ids
                                     (serverJobStatuses %:)
                                         $
-                                        \statuses ->
+                                        \statuses →
                                             foldl' -- '
                                                 (\statuses dependency_job_id →
                                                     IntMap.adjust
@@ -480,6 +488,7 @@ processJob (JobTask job_id task) =
                                             IntSet.toList
                                             $
                                             all_dependency_ids
+                                    -- @nonl
                                     -- @-node:gcross.20100604204549.7671:<< Update the state of the job server. >>
                                     -- @nl
         -- @-node:gcross.20100604204549.7667:Request
@@ -503,7 +512,7 @@ processJob (JobTask job_id task) =
         PerformIO action computeTask →
             get serverIOTaskQueue
             >>=
-            \io_task_queue ->
+            \io_task_queue →
                 liftIO
                 .
                 writeChan io_task_queue
@@ -513,10 +522,12 @@ processJob (JobTask job_id task) =
                 either
                     (JobFailure job_id . IntMap.singleton job_id)
                     ((JobTask job_id . computeTask) $|| rwhnf)
+        -- @nonl
         -- @-node:gcross.20100604204549.7663:PerformIO
         -- @-others
 -- @-node:gcross.20100604204549.7662:JobTask
 -- @-others
+-- @nonl
 -- @-node:gcross.20100604204549.7659:processJob
 -- @-node:gcross.20100604204549.1359:Functions
 -- @-others

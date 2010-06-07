@@ -178,7 +178,7 @@ findConflicts values_to_ignore getName getValues =
     addFoundConflicts conflicts x =
         Set.fold
             (\value conflicts →
-                (\new_set -> Map.insert value new_set conflicts)
+                (\new_set → Map.insert value new_set conflicts)
                 .
                 Set.insert name
                 .
@@ -193,6 +193,7 @@ findConflicts values_to_ignore getName getValues =
             getValues x `Set.difference` values_to_ignore
       where
         name = getName x
+-- @nonl
 -- @-node:gcross.20100602152546.1882:findConflicts
 -- @+node:gcross.20100602195250.1296:filterConflictsAndConvertToList
 filterConflictsAndConvertToList :: Ord a => String → Map a String → Set a → [a]
