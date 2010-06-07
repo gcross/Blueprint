@@ -433,19 +433,19 @@ processJob (JobTask job_id task) =
         Request requested_job_names computeTask → do
             -- @    << Fetch ids of the requested jobs. >>
             -- @+node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
-            server_job_ids ← get serverJobIds
-            let (non_existing_jobs,requested_job_ids) =
-                    partitionEithers
-                    .
-                    map (
-                        \request_name →
-                            maybe (Left request_name) Right
-                            $
-                            Map.lookup request_name server_job_ids
-                    )
-                    $
-                    requested_job_names
-            -- @nonl
+            (non_existing_jobs,requested_job_ids) ← get serverJobIds >>= \server_job_ids →
+                return
+                .
+                partitionEithers
+                .
+                map (
+                    \request_name →
+                        maybe (Left request_name) Right
+                        $
+                        Map.lookup request_name server_job_ids
+                )
+                $
+                requested_job_names
             -- @-node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
             -- @nl
             if (not . null) non_existing_jobs
@@ -462,8 +462,7 @@ processJob (JobTask job_id task) =
                 else do
                     -- @            << Look up statuses of the requested job ids. >>
                     -- @+node:gcross.20100604204549.7670:<< Look up statuses of the requested job ids. >>
-                    server_job_statuses ← get serverJobStatuses
-                    pending_job_ids ←
+                    pending_job_ids ← get serverJobStatuses >>= \server_job_statuses ->
                         filterM
                             (\requested_job_id →
                                 case fromJust (IntMap.lookup requested_job_id server_job_statuses) of
@@ -482,22 +481,25 @@ processJob (JobTask job_id task) =
                         else do
                             -- @                    << Compute all dependencies. >>
                             -- @+node:gcross.20100604204549.7669:<< Compute all dependencies. >>
-                            let getDependencies accum (IntSet.minView → Nothing) = accum
-                                getDependencies accum (IntSet.minView → Just (dependency_job_id,rest_dependency_job_ids)) =
-                                    getDependencies (IntSet.insert dependency_job_id accum)
+                            all_dependency_ids ← get serverJobStatuses >>= \server_job_statuses →
+                                let getDependencies accum (IntSet.minView → Nothing) = accum
+                                    getDependencies accum (IntSet.minView → Just (dependency_job_id,rest_dependency_job_ids)) =
+                                        getDependencies (IntSet.insert dependency_job_id accum)
+                                        .
+                                        (IntSet.union rest_dependency_job_ids)
+                                        .
+                                        (`IntSet.difference` accum)
+                                        .
+                                        (\(Running all_dependents_ids _ _) → all_dependents_ids)
+                                        .
+                                        fromJust
+                                        .
+                                        flip IntMap.lookup server_job_statuses
+                                        $
+                                        dependency_job_id
+                                in
+                                    return
                                     .
-                                    (IntSet.union rest_dependency_job_ids)
-                                    .
-                                    (`IntSet.difference` accum)
-                                    .
-                                    (\(Running all_dependents_ids _ _) → all_dependents_ids)
-                                    .
-                                    fromJust
-                                    .
-                                    flip IntMap.lookup server_job_statuses
-                                    $
-                                    dependency_job_id
-                                all_dependency_ids =
                                     getDependencies IntSet.empty
                                     .
                                     IntSet.fromList

@@ -354,6 +354,25 @@ main = defaultMain
             -- @-others
             ]
         -- @-node:gcross.20100607083309.1407:single jobs
+        -- @+node:gcross.20100607083309.1430:two jobs
+        ,testGroup "single jobs" $
+            -- @    @+others
+            -- @+node:gcross.20100607083309.1431:simple request
+            [testCase "simple request" $ do
+                job_server ← startJobServer 1 Map.empty
+                submitJob job_server ["job1"] . const $
+                    returnWithoutCache 1
+                submitJob job_server ["job2"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                requestJobResult job_server "job2"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        (1 :: Int)
+            -- @-node:gcross.20100607083309.1431:simple request
+            -- @-others
+            ]
+        -- @-node:gcross.20100607083309.1430:two jobs
         -- @-others
         ]
     -- @-node:gcross.20100607083309.1396:Blueprint.Jobs
