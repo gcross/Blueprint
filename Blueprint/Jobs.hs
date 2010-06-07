@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RelaxedPolyRec #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -31,6 +32,8 @@ import Control.Parallel.Strategies
 
 import Data.Accessor.Monad.Trans.State
 import Data.Accessor.Template
+import Data.Binary (Binary,encode,decode)
+import Data.ByteString.Lazy (ByteString)
 import Data.Either
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -98,14 +101,14 @@ instance Exception JobHasCyclicDependency
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604204549.1368:Job
 data Job result = 
-    JobSubmission [String] (JobTask result result) ThreadId
+    forall cache. Binary cache => JobSubmission [String] (Maybe cache → JobTask result (result,cache)) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest String (IVar result)
-  | JobTask Int (JobTask result result)
+  | forall cache. Binary cache => JobTask Int (JobTask result (result,cache))
 -- @-node:gcross.20100604204549.1368:Job
 -- @+node:gcross.20100604184944.1294:JobStatus
 data JobStatus result =
-    Pending (JobTask result result)
+    forall cache. Binary cache => Pending (Maybe cache → JobTask result (result,cache))
   | Running IntSet [Int] (IVar result)
   | Succeeded result
   | Failed (IntMap SomeException) CombinedException
@@ -116,24 +119,12 @@ data JobTask r a =
   | forall b. PerformIO (IO b) (b → JobTask r a)
   | Return a
 -- @-node:gcross.20100604184944.1295:JobTask
--- @+node:gcross.20100604204549.1343:JobRequest
-data JobRequest result =
-    RegisterJob String (JobTask result result)
-  | FetchResult String
--- @-node:gcross.20100604204549.1343:JobRequest
--- @+node:gcross.20100604204549.1345:JobRegistry
-type JobRegistry result = Map String (JobStatus result)
--- @-node:gcross.20100604204549.1345:JobRegistry
--- @+node:gcross.20100604204549.1344:JobServer
-type JobServer result = Chan (JobRequest result)
--- @-node:gcross.20100604204549.1344:JobServer
 -- @+node:gcross.20100604204549.1380:PausedJob
-data PausedJob result = PausedJob
+data PausedJob result = forall cache. Binary cache => PausedJob
     {   pausedJobPendingRequests :: IntSet
     ,   pausedJobRequests :: [Int]
-    ,   pausedJobComputeTask :: [result] → JobTask result result
+    ,   pausedJobComputeTask :: [result] → JobTask result (result,cache)
     }
--- @nonl
 -- @-node:gcross.20100604204549.1380:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
 data JobServerState result = JobServerState
@@ -144,6 +135,7 @@ data JobServerState result = JobServerState
     ,   serverJobQueue_ :: Chan (Job result)
     ,   serverPausedJobs_ :: IntMap (PausedJob result)
     ,   serverIOTaskQueue_ :: Chan (IOTask (Job result))
+    ,   serverJobCache_ :: Map [String] ByteString
     }
 
 $( deriveAccessors ''JobServerState )
@@ -184,13 +176,16 @@ failJobWithExceptions job_id exceptions = do
         IntMap.insert job_id (Failed exceptions combined_exception)
     liftIO . IVar.write result_ivar . throw $ combined_exception
     notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
--- @nonl
+    Just names ← fmap (IntMap.lookup job_id) (get serverJobNames)
+    serverJobCache %:
+        (Map.delete names)
 -- @-node:gcross.20100604204549.7666:failJobWithExceptions
 -- @+node:gcross.20100604204549.1388:fetchResultsAndRunJobTask
 fetchResultsAndRunJobTask ::
+    Binary cache =>
     Int →
     [Int] →
-    ([result] → JobTask result result) →
+    ([result] → JobTask result (result,cache)) →
     StateT (JobServerState result) IO ()
 fetchResultsAndRunJobTask job_id requested_job_ids computeTask = do
     server_job_statuses ← get serverJobStatuses
@@ -249,9 +244,32 @@ notifyPausedJobsThatRequestedJobIsFinished job_id =
 -- @nonl
 -- @-node:gcross.20100604204549.7678:notifyPausedJobsThatRequestedJobIsFinished
 -- @+node:gcross.20100604204549.7668:startJobTask
-startJobTask :: Int → JobTask result result → StateT (JobServerState result) IO (IVar result)
-startJobTask job_id task = do
-    get serverJobQueue >>= liftIO . flip writeChan (JobTask job_id task)
+startJobTask ::
+    Binary cache =>
+    Int →
+    (Maybe cache -> JobTask result (result,cache)) →
+    StateT (JobServerState result) IO (IVar result)
+startJobTask job_id computeTaskFromCache = do
+    server_job_cache ← get serverJobCache
+    server_job_names ← get serverJobNames
+    server_job_queue ← get serverJobQueue
+    ((liftIO
+        .
+        writeChan server_job_queue
+        .
+        JobTask job_id
+      ) .|| rwhnf )(
+        computeTaskFromCache
+        .
+        fmap decode
+        .
+        flip Map.lookup server_job_cache
+        .
+        fromJust
+        .
+        flip IntMap.lookup server_job_names
+      ) $
+        job_id
     result_ivar ← liftIO IVar.new
     modify serverJobStatuses
         .
@@ -259,7 +277,6 @@ startJobTask job_id task = do
         $
         Running IntSet.empty [] result_ivar
     return result_ivar
--- @nonl
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100604204549.7659:processJob
 processJob ::
@@ -268,7 +285,7 @@ processJob ::
     StateT (JobServerState result) IO ()
 -- @+others
 -- @+node:gcross.20100604204549.7660:JobSubmission
-processJob (JobSubmission names task thread_id) = do
+processJob (JobSubmission names computeTaskFromCache thread_id) = do
     server_job_ids ← get serverJobIds
     case filter (flip Map.member server_job_ids) names of
         [] → do
@@ -282,7 +299,7 @@ processJob (JobSubmission names task thread_id) = do
             serverJobNames %:
                 IntMap.insert job_id names
             serverJobStatuses %:
-                IntMap.insert job_id (Pending task)
+                IntMap.insert job_id (Pending computeTaskFromCache)
         conflicting_names →
             liftIO
                 .
@@ -311,8 +328,8 @@ processJob (ExternalRequest name destination_ivar) = do
         Just job_id → do
             job_status ← fmap (fromJust . IntMap.lookup job_id) (get serverJobStatuses)
             case job_status of
-                Pending task →
-                    startJobTask job_id task
+                Pending computeTaskFromCache →
+                    startJobTask job_id computeTaskFromCache
                     >>=
                     liftIO
                         .
@@ -390,8 +407,8 @@ processJob (JobTask job_id task) =
                         filterM
                             (\requested_job_id →
                                 case fromJust (IntMap.lookup requested_job_id server_job_statuses) of
-                                    Pending requested_job_task → do
-                                        startJobTask requested_job_id requested_job_task
+                                    Pending computeTaskFromCache → do
+                                        startJobTask requested_job_id computeTaskFromCache
                                         return True
                                     Running _ _ _ → return True
                                     Succeeded _ → return False
@@ -493,7 +510,7 @@ processJob (JobTask job_id task) =
                                     -- @nl
         -- @-node:gcross.20100604204549.7667:Request
         -- @+node:gcross.20100604204549.1382:Return
-        Return result_ → do
+        Return (result_,cache_) → do
             result ← liftIO . evaluate . withStrategy rdeepseq $ result_
             Just (Running _ requesting_job_ids result_ivar) ←
                 fmap (IntMap.lookup job_id)
@@ -507,6 +524,11 @@ processJob (JobTask job_id task) =
                 result
             liftIO . IVar.write result_ivar $ result
             notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
+
+            cache ← liftIO . evaluate . withStrategy rwhnf . encode $ cache_
+            Just names ← fmap (IntMap.lookup job_id) (get serverJobNames)
+            serverJobCache %:
+                (Map.insert names cache)
         -- @-node:gcross.20100604204549.1382:Return
         -- @+node:gcross.20100604204549.7663:PerformIO
         PerformIO action computeTask →
