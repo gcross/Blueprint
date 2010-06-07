@@ -260,6 +260,17 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100604204549.7679:Blueprint.IOTask
+    -- @+node:gcross.20100607083309.1396:Blueprint.Jobs
+    ,testGroup "Blueprint.Jobs" $
+        -- @    @+others
+        -- @+node:gcross.20100607083309.1403:start job server
+        [testCase "start job server" $ do
+            job_server ← startJobServer 4 :: IO (JobServer ())
+            return ()
+        -- @-node:gcross.20100607083309.1403:start job server
+        -- @-others
+        ]
+    -- @-node:gcross.20100607083309.1396:Blueprint.Jobs
     -- @+node:gcross.20100604204549.1358:Blueprint.Options
     ,testGroup "Blueprint.Options" $
         -- @    @+others

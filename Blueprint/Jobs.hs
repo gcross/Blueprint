@@ -27,7 +27,7 @@ import Control.Exception
 import Control.Monad
 import qualified Control.Monad.CatchIO as M
 import Control.Monad.IO.Class
-import Control.Monad.Trans.State (StateT)
+import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Parallel.Strategies
 
 import Data.Accessor.Monad.Trans.State
@@ -46,6 +46,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
+
+import System.Mem.Weak
 
 import Blueprint.IOTask
 -- @-node:gcross.20100604184944.1292:<< Import needed modules >>
@@ -140,6 +142,9 @@ data JobServerState result = JobServerState
 
 $( deriveAccessors ''JobServerState )
 -- @-node:gcross.20100604204549.1375:JobServerState
+-- @+node:gcross.20100607083309.1398:JobServer
+data JobServer result = JobServer (Chan (Job result))
+-- @-node:gcross.20100607083309.1398:JobServer
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask
@@ -224,7 +229,6 @@ combineExceptions exceptions =
         IntMap.assocs
         $
         exceptions
--- @nonl
 -- @-node:gcross.20100604204549.1387:combineExceptions
 -- @+node:gcross.20100604204549.7678:notifyPausedJobsThatRequestedJobIsFinished
 notifyPausedJobsThatRequestedJobIsFinished :: Int → [Int] → StateT (JobServerState result) IO ()
@@ -551,6 +555,33 @@ processJob (JobTask job_id task) =
 -- @-others
 -- @nonl
 -- @-node:gcross.20100604204549.7659:processJob
+-- @+node:gcross.20100607083309.1397:startJobServer
+startJobServer :: NFData result => Int → IO (JobServer result)
+startJobServer number_of_io_slaves = do
+    job_queue ← newChan
+    io_task_queue ← newChan
+    io_slave_thread_ids ← replicateM number_of_io_slaves $ spawnIOTaskRunner io_task_queue job_queue
+    job_server_thread_id ←
+        forkIO . liftIO . evalStateT runJobServer $
+            JobServerState
+            {   serverNextJobId_ = 0
+            ,   serverJobIds_ = Map.empty
+            ,   serverJobNames_ = IntMap.empty
+            ,   serverJobStatuses_ = IntMap.empty
+            ,   serverJobQueue_ = job_queue
+            ,   serverPausedJobs_ = IntMap.empty
+            ,   serverIOTaskQueue_ = io_task_queue
+            ,   serverJobCache_ = Map.empty
+            }
+    let job_server = JobServer job_queue
+    addFinalizer job_server . mapM_ killThread . (job_server_thread_id:) $ io_slave_thread_ids
+    return job_server
+-- @-node:gcross.20100607083309.1397:startJobServer
+-- @+node:gcross.20100607083309.1402:runJobServer
+runJobServer :: NFData result => StateT (JobServerState result) IO ()
+runJobServer = forever $
+    get serverJobQueue >>= liftIO . readChan >>= processJob
+-- @-node:gcross.20100607083309.1402:runJobServer
 -- @-node:gcross.20100604204549.1359:Functions
 -- @-others
 -- @-node:gcross.20100604184944.1289:@thin Jobs.hs
