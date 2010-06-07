@@ -13,7 +13,10 @@
 import Prelude hiding (catch)
 
 import Control.Arrow
+import Control.Concurrent
+import Control.Concurrent.Chan
 import Control.Exception hiding (assert)
+import Control.Monad
 
 import Data.Either.Unwrap
 import Data.Map (Map)
@@ -27,6 +30,7 @@ import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
+import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
@@ -69,454 +73,496 @@ main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20100602152546.1870:<< Tests >>
     -- @+others
-    -- @+node:gcross.20100603132252.1293:findConflicts
-    [testGroup "findConflicts"
+    -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
+    [testGroup "Blueprint.IOTask"
         -- @    @+others
-        -- @+node:gcross.20100603132252.1300:lists with () values
-        [testGroup "lists with () values"
-            -- @    @+others
-            -- @+node:gcross.20100603132252.1294:empty list
-            [testCase "empty list" $
-                assert . Map.null . findConflicts (undefined :: Set ()) undefined undefined $ ([] :: [()])
-            -- @-node:gcross.20100603132252.1294:empty list
-            -- @+node:gcross.20100603132252.1296:singleton list
-            ,testCase "singleton list" $
-                assertEqual
-                    "Is the output set correct?"
-                    Map.empty
-                    .
-                    findConflicts Set.empty (const "") Set.singleton
-                    $
-                    [()]
-            -- @-node:gcross.20100603132252.1296:singleton list
-            -- @+node:gcross.20100603132252.1298:2-element list with conflicts
-            ,testCase "2-element list with conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    (Map.singleton () (Set.fromList ["A","B"]))
-                    .
-                    findConflicts Set.empty fst (Set.singleton . snd)
-                    $
-                    [("A",())
-                    ,("B",())
+        -- @+node:gcross.20100604204549.7689:single runner
+        [testGroup "single runner" $
+            let withSingleRunner :: Int -> [IOTask a] -> IO [a]
+                withSingleRunner number_of_responses requests = do
+                    task_queue <- newChan
+                    result_queue <- newChan
+                    runner_thread_id <- spawnIOTaskRunner task_queue result_queue
+                    writeList2Chan task_queue requests
+                    responses <- replicateM number_of_responses (readChan result_queue)
+                    killThread runner_thread_id
+                    return responses
+            in
+                -- @        @+others
+                -- @+node:gcross.20100604204549.7690:single job
+                [testGroup "single job"
+                    -- @    @+others
+                    -- @+node:gcross.20100604204549.7691:return ()
+                    [testCase "return ()" $
+                        withSingleRunner 1 [IOTask (return ()) (mapLeft (return ()))]
+                        >>=
+                        assertEqual
+                            "Was the correct result obtained?"
+                            [Right ()]
+                    -- @-node:gcross.20100604204549.7691:return ()
+                    -- @-others
                     ]
-            -- @-node:gcross.20100603132252.1298:2-element list with conflicts
-            -- @+node:gcross.20100603132252.1299:list with simple resolved conflicts
-            ,testCase "list with simple resolved conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    Map.empty
-                    .
-                    findConflicts (Set.singleton ()) fst (Set.singleton . snd)
-                    $
-                    [("A",())
-                    ,("B",())
-                    ,("C",())
-                    ]
-            -- @-node:gcross.20100603132252.1299:list with simple resolved conflicts
-            -- @-others
-            ]
-        -- @-node:gcross.20100603132252.1300:lists with () values
-        -- @+node:gcross.20100603132252.1306:lists with Int values
-        ,testGroup "lists with Int values"
-            -- @    @+others
-            -- @+node:gcross.20100603132252.1309:list with no conflicts
-            [testCase "list with no conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    Map.empty
-                    .
-                    findConflicts Set.empty fst (Set.fromList . snd)
-                    $
-                    [("A",[1,2])
-                    ,("B",[3,4])
-                    ,("C",[5,6,7,8])
-                    ]
-            -- @-node:gcross.20100603132252.1309:list with no conflicts
-            -- @+node:gcross.20100603132252.1310:list with unresolved conflicts
-            ,testCase "list with unresolved conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    (
-                        Map.fromList
-                        .
-                        map (second Set.fromList)
-                        $
-                        [(2,["A","B","D"])
-                        ,(3,["B","D"])
-                        ]
-                    )
-                    .
-                    findConflicts Set.empty fst (Set.fromList . snd)
-                    $
-                    [("A",[1,2])
-                    ,("B",[2,3])
-                    ,("C",[5,6,7,8])
-                    ,("D",[2,3,4])
-                    ]
-            -- @-node:gcross.20100603132252.1310:list with unresolved conflicts
-            -- @+node:gcross.20100603132252.1312:list with some resolved conflicts
-            ,testCase "list with some resolved conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    (
-                        Map.fromList
-                        .
-                        map (second Set.fromList)
-                        $
-                        [(3,["B","D"])
-                        ]
-                    )
-                    .
-                    findConflicts (Set.fromList [1,2]) fst (Set.fromList . snd)
-                    $
-                    [("A",[1,2])
-                    ,("B",[2,3])
-                    ,("C",[5,6,7,8])
-                    ,("D",[2,3,4])
-                    ,("E",[1])
-                    ]
-            -- @-node:gcross.20100603132252.1312:list with some resolved conflicts
-            -- @-others
-            ]
-        -- @-node:gcross.20100603132252.1306:lists with Int values
+                -- @-node:gcross.20100604204549.7690:single job
+                -- @-others
+                ]
+        -- @-node:gcross.20100604204549.7689:single runner
         -- @-others
         ]
-    -- @-node:gcross.20100603132252.1293:findConflicts
-    -- @+node:gcross.20100603132252.1314:filterConflictsAndConvertToList
-    ,testGroup "filterConflictsAndConvertToList"
+    -- @-node:gcross.20100604204549.7679:Blueprint.IOTask
+    -- @+node:gcross.20100604204549.1358:Blueprint.Options
+    ,testGroup "Blueprint.Options" $
         -- @    @+others
-        -- @+node:gcross.20100603132252.1316:lists with () values
-        [testGroup "lists with () values"
+        -- @+node:gcross.20100603132252.1293:findConflicts
+        [testGroup "findConflicts"
             -- @    @+others
-            -- @+node:gcross.20100603132252.1317:empty set
-            [testCase "empty set" $
-                assert . null . filterConflictsAndConvertToList undefined undefined $ (Set.empty :: Set ())
-            -- @-node:gcross.20100603132252.1317:empty set
-            -- @+node:gcross.20100603132252.1319:singleton set with no conflict
-            ,testCase "singleton set with no conflict" $
-                assertEqual
-                    "Is the output set correct?"
-                    [()]
-                    .
-                    filterConflictsAndConvertToList undefined Map.empty
-                    $
-                    Set.singleton ()
-            -- @-node:gcross.20100603132252.1319:singleton set with no conflict
-            -- @+node:gcross.20100603132252.1321:singleton set with conflict
-            ,testCase "singleton set with conflict" $
-                assertEqual
-                    "Is the output set correct?"
-                    []
-                    .
-                    filterConflictsAndConvertToList "A" (Map.singleton () "B")
-                    $
-                    Set.singleton ()
-            -- @-node:gcross.20100603132252.1321:singleton set with conflict
-            -- @+node:gcross.20100603132252.1323:singleton set with resolved conflict
-            ,testCase "singleton set with conflict" $
-                assertEqual
-                    "Is the output set correct?"
-                    [()]
-                    .
-                    filterConflictsAndConvertToList "A" (Map.singleton () "A")
-                    $
-                    Set.singleton ()
-            -- @-node:gcross.20100603132252.1323:singleton set with resolved conflict
-            -- @-others
-            ]
-        -- @-node:gcross.20100603132252.1316:lists with () values
-        -- @+node:gcross.20100603132252.1329:lists with Int values
-        ,testGroup "lists with Int values"
-            -- @    @+others
-            -- @+node:gcross.20100603132252.1331:set with no conflicts
-            [testCase "set with no conflict" $
-                assertEqual
-                    "Is the output set correct?"
-                    [1,2,3,4]
-                    .
-                    filterConflictsAndConvertToList undefined Map.empty
-                    .
-                    Set.fromList
-                    $
-                    [1,2,3,4]
-            -- @-node:gcross.20100603132252.1331:set with no conflicts
-            -- @+node:gcross.20100603132252.1335:set with some conflicts
-            ,testCase "set with some conflicts" $
-                assertEqual
-                    "Is the output set correct?"
-                    [1,2,4,6,7,8,10]
-                    .
-                    filterConflictsAndConvertToList "A"
-                        (Map.fromList
-                            [(1,"A")
-                            ,(3,"B")
-                            ,(5,"C")
-                            ,(8,"A")
-                            ,(9,"D")
+            -- @+node:gcross.20100603132252.1300:lists with () values
+            [testGroup "lists with () values"
+                -- @    @+others
+                -- @+node:gcross.20100603132252.1294:empty list
+                [testCase "empty list" $
+                    assert . Map.null . findConflicts (undefined :: Set ()) undefined undefined $ ([] :: [()])
+                -- @-node:gcross.20100603132252.1294:empty list
+                -- @+node:gcross.20100603132252.1296:singleton list
+                ,testCase "singleton list" $
+                    assertEqual
+                        "Is the output set correct?"
+                        Map.empty
+                        .
+                        findConflicts Set.empty (const "") Set.singleton
+                        $
+                        [()]
+                -- @-node:gcross.20100603132252.1296:singleton list
+                -- @+node:gcross.20100603132252.1298:2-element list with conflicts
+                ,testCase "2-element list with conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        (Map.singleton () (Set.fromList ["A","B"]))
+                        .
+                        findConflicts Set.empty fst (Set.singleton . snd)
+                        $
+                        [("A",())
+                        ,("B",())
+                        ]
+                -- @-node:gcross.20100603132252.1298:2-element list with conflicts
+                -- @+node:gcross.20100603132252.1299:list with simple resolved conflicts
+                ,testCase "list with simple resolved conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        Map.empty
+                        .
+                        findConflicts (Set.singleton ()) fst (Set.singleton . snd)
+                        $
+                        [("A",())
+                        ,("B",())
+                        ,("C",())
+                        ]
+                -- @-node:gcross.20100603132252.1299:list with simple resolved conflicts
+                -- @-others
+                ]
+            -- @-node:gcross.20100603132252.1300:lists with () values
+            -- @+node:gcross.20100603132252.1306:lists with Int values
+            ,testGroup "lists with Int values"
+                -- @    @+others
+                -- @+node:gcross.20100603132252.1309:list with no conflicts
+                [testCase "list with no conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        Map.empty
+                        .
+                        findConflicts Set.empty fst (Set.fromList . snd)
+                        $
+                        [("A",[1,2])
+                        ,("B",[3,4])
+                        ,("C",[5,6,7,8])
+                        ]
+                -- @-node:gcross.20100603132252.1309:list with no conflicts
+                -- @+node:gcross.20100603132252.1310:list with unresolved conflicts
+                ,testCase "list with unresolved conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        (
+                            Map.fromList
+                            .
+                            map (second Set.fromList)
+                            $
+                            [(2,["A","B","D"])
+                            ,(3,["B","D"])
                             ]
                         )
-                    .
-                    Set.fromList
-                    $
-                    [1..10]
-            -- @-node:gcross.20100603132252.1335:set with some conflicts
+                        .
+                        findConflicts Set.empty fst (Set.fromList . snd)
+                        $
+                        [("A",[1,2])
+                        ,("B",[2,3])
+                        ,("C",[5,6,7,8])
+                        ,("D",[2,3,4])
+                        ]
+                -- @-node:gcross.20100603132252.1310:list with unresolved conflicts
+                -- @+node:gcross.20100603132252.1312:list with some resolved conflicts
+                ,testCase "list with some resolved conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        (
+                            Map.fromList
+                            .
+                            map (second Set.fromList)
+                            $
+                            [(3,["B","D"])
+                            ]
+                        )
+                        .
+                        findConflicts (Set.fromList [1,2]) fst (Set.fromList . snd)
+                        $
+                        [("A",[1,2])
+                        ,("B",[2,3])
+                        ,("C",[5,6,7,8])
+                        ,("D",[2,3,4])
+                        ,("E",[1])
+                        ]
+                -- @-node:gcross.20100603132252.1312:list with some resolved conflicts
+                -- @-others
+                ]
+            -- @-node:gcross.20100603132252.1306:lists with Int values
             -- @-others
             ]
-        -- @-node:gcross.20100603132252.1329:lists with Int values
-        -- @-others
-        ]
-    -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
-    -- @+node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
-    ,testGroup "createOptionSpecificationWithResolvedConflicts"
-        -- @    @+others
-        -- @+node:gcross.20100603132252.1342:empty
-        [testCase "empty" $
-            let opts =
-                    options $
+        -- @-node:gcross.20100603132252.1293:findConflicts
+        -- @+node:gcross.20100603132252.1314:filterConflictsAndConvertToList
+        ,testGroup "filterConflictsAndConvertToList"
+            -- @    @+others
+            -- @+node:gcross.20100603132252.1316:lists with () values
+            [testGroup "lists with () values"
+                -- @    @+others
+                -- @+node:gcross.20100603132252.1317:empty set
+                [testCase "empty set" $
+                    assert . null . filterConflictsAndConvertToList undefined undefined $ (Set.empty :: Set ())
+                -- @-node:gcross.20100603132252.1317:empty set
+                -- @+node:gcross.20100603132252.1319:singleton set with no conflict
+                ,testCase "singleton set with no conflict" $
+                    assertEqual
+                        "Is the output set correct?"
+                        [()]
+                        .
+                        filterConflictsAndConvertToList undefined Map.empty
+                        $
+                        Set.singleton ()
+                -- @-node:gcross.20100603132252.1319:singleton set with no conflict
+                -- @+node:gcross.20100603132252.1321:singleton set with conflict
+                ,testCase "singleton set with conflict" $
+                    assertEqual
+                        "Is the output set correct?"
                         []
-            in assertEqual
-                "Is the computed specification correct?"
-                (OptionSpecification
-                    Map.empty
-                    Map.empty
-                    opts
-                )
-                $
-                createOptionSpecificationWithResolvedConflicts
-                    Map.empty
-                    Map.empty
-                    opts
-        -- @nonl
-        -- @-node:gcross.20100603132252.1342:empty
-        -- @+node:gcross.20100603132252.1344:some non-conflicting options
-        ,testCase "some non-conflicting options" $
-            let opts =
-                    options $
-                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                        ]
-            in assertEqual
-                "Is the computed specification correct?"
-                (OptionSpecification
-                    Map.empty
-                    Map.empty
-                    opts
-                )
-                $
-                createOptionSpecificationWithResolvedConflicts
-                    Map.empty
-                    Map.empty
-                    opts
-        -- @nonl
-        -- @-node:gcross.20100603132252.1344:some non-conflicting options
-        -- @+node:gcross.20100603132252.1346:some options with resolved conflicts
-        ,testCase "some options with resolved conflicts" $
-            let opts =
-                    options
-                        [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
-                        ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
-                        ]
-                short_form_resolutions =
-                    Map.fromList
-                        [('b',"A")
-                        ,('c',"C")
-                        ,('f',"B")
-                        ,('z',"A") -- '
-                        ]
-                long_form_resolutions =
-                    Map.fromList
-                        [("long-1","B")
-                        ,("long-2","C")
-                        ]
-            in assertEqual
-                "Is the computed specification correct?"
-                (OptionSpecification
-                    short_form_resolutions
-                    long_form_resolutions
-                    opts
-                )
-                $
-                createOptionSpecificationWithResolvedConflicts
-                    short_form_resolutions
-                    long_form_resolutions
-                    opts
-        -- @nonl
-        -- @-node:gcross.20100603132252.1346:some options with resolved conflicts
-        -- @+node:gcross.20100603132252.1348:some options with unresolved conflicts
-        ,testCase "some options with unresolved conflicts" $
-            let opts =
-                    options
-                        [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
-                        ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
-                        ]
-                short_form_resolutions =
-                    Map.fromList
-                        [('b',"A")
-                        ,('c',"C") -- '
-                        ]
-                long_form_resolutions =
-                    Map.fromList
-                        [("long-1","B")
-                        ]
-            in assertThrows
-                (ConflictingOptionFormsException
-                    (Map.fromList
-                        [('z',Set.fromList ["A","B","C"])
-                        ,('f',Set.fromList ["B","C"]) -- '
-                        ]
+                        .
+                        filterConflictsAndConvertToList "A" (Map.singleton () "B")
+                        $
+                        Set.singleton ()
+                -- @-node:gcross.20100603132252.1321:singleton set with conflict
+                -- @+node:gcross.20100603132252.1323:singleton set with resolved conflict
+                ,testCase "singleton set with conflict" $
+                    assertEqual
+                        "Is the output set correct?"
+                        [()]
+                        .
+                        filterConflictsAndConvertToList "A" (Map.singleton () "A")
+                        $
+                        Set.singleton ()
+                -- @-node:gcross.20100603132252.1323:singleton set with resolved conflict
+                -- @-others
+                ]
+            -- @-node:gcross.20100603132252.1316:lists with () values
+            -- @+node:gcross.20100603132252.1329:lists with Int values
+            ,testGroup "lists with Int values"
+                -- @    @+others
+                -- @+node:gcross.20100603132252.1331:set with no conflicts
+                [testCase "set with no conflict" $
+                    assertEqual
+                        "Is the output set correct?"
+                        [1,2,3,4]
+                        .
+                        filterConflictsAndConvertToList undefined Map.empty
+                        .
+                        Set.fromList
+                        $
+                        [1,2,3,4]
+                -- @-node:gcross.20100603132252.1331:set with no conflicts
+                -- @+node:gcross.20100603132252.1335:set with some conflicts
+                ,testCase "set with some conflicts" $
+                    assertEqual
+                        "Is the output set correct?"
+                        [1,2,4,6,7,8,10]
+                        .
+                        filterConflictsAndConvertToList "A"
+                            (Map.fromList
+                                [(1,"A")
+                                ,(3,"B")
+                                ,(5,"C")
+                                ,(8,"A")
+                                ,(9,"D")
+                                ]
+                            )
+                        .
+                        Set.fromList
+                        $
+                        [1..10]
+                -- @-node:gcross.20100603132252.1335:set with some conflicts
+                -- @-others
+                ]
+            -- @-node:gcross.20100603132252.1329:lists with Int values
+            -- @-others
+            ]
+        -- @-node:gcross.20100603132252.1314:filterConflictsAndConvertToList
+        -- @+node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
+        ,testGroup "createOptionSpecificationWithResolvedConflicts"
+            -- @    @+others
+            -- @+node:gcross.20100603132252.1342:empty
+            [testCase "empty" $
+                let opts =
+                        options $
+                            []
+                in assertEqual
+                    "Is the computed specification correct?"
+                    (OptionSpecification
+                        Map.empty
+                        Map.empty
+                        opts
                     )
-                    (Map.fromList
-                        [("long-2",Set.fromList ["A","C"])
-                        ]
+                    $
+                    createOptionSpecificationWithResolvedConflicts
+                        Map.empty
+                        Map.empty
+                        opts
+            -- @nonl
+            -- @-node:gcross.20100603132252.1342:empty
+            -- @+node:gcross.20100603132252.1344:some non-conflicting options
+            ,testCase "some non-conflicting options" $
+                let opts =
+                        options $
+                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            ]
+                in assertEqual
+                    "Is the computed specification correct?"
+                    (OptionSpecification
+                        Map.empty
+                        Map.empty
+                        opts
                     )
+                    $
+                    createOptionSpecificationWithResolvedConflicts
+                        Map.empty
+                        Map.empty
+                        opts
+            -- @nonl
+            -- @-node:gcross.20100603132252.1344:some non-conflicting options
+            -- @+node:gcross.20100603132252.1346:some options with resolved conflicts
+            ,testCase "some options with resolved conflicts" $
+                let opts =
+                        options
+                            [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
+                            ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                            ]
+                    short_form_resolutions =
+                        Map.fromList
+                            [('b',"A")
+                            ,('c',"C")
+                            ,('f',"B")
+                            ,('z',"A") -- '
+                            ]
+                    long_form_resolutions =
+                        Map.fromList
+                            [("long-1","B")
+                            ,("long-2","C")
+                            ]
+                in assertEqual
+                    "Is the computed specification correct?"
+                    (OptionSpecification
+                        short_form_resolutions
+                        long_form_resolutions
+                        opts
+                    )
+                    $
+                    createOptionSpecificationWithResolvedConflicts
+                        short_form_resolutions
+                        long_form_resolutions
+                        opts
+            -- @nonl
+            -- @-node:gcross.20100603132252.1346:some options with resolved conflicts
+            -- @+node:gcross.20100603132252.1348:some options with unresolved conflicts
+            ,testCase "some options with unresolved conflicts" $
+                let opts =
+                        options
+                            [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
+                            ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                            ]
+                    short_form_resolutions =
+                        Map.fromList
+                            [('b',"A")
+                            ,('c',"C") -- '
+                            ]
+                    long_form_resolutions =
+                        Map.fromList
+                            [("long-1","B")
+                            ]
+                in assertThrows
+                    (ConflictingOptionFormsException
+                        (Map.fromList
+                            [('z',Set.fromList ["A","B","C"])
+                            ,('f',Set.fromList ["B","C"]) -- '
+                            ]
+                        )
+                        (Map.fromList
+                            [("long-2",Set.fromList ["A","C"])
+                            ]
+                        )
+                    )
+                    .
+                    evaluate
+                    $
+                    createOptionSpecificationWithResolvedConflicts
+                        short_form_resolutions
+                        long_form_resolutions
+                        opts
+            -- @nonl
+            -- @-node:gcross.20100603132252.1348:some options with unresolved conflicts
+            -- @-others
+            ]
+        -- @nonl
+        -- @-node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
+        -- @+node:gcross.20100603132252.2064:processOptions
+        ,testGroup "processOptions"
+            -- @    @+others
+            -- @+node:gcross.20100603132252.2065:empty
+            [testCase "empty" $
+                assertEqual
+                    "Were the options parsed correctly?"
+                    (Right (Map.empty,[]))
+                $
+                processOptions
+                    (createOptionSpecificationWithResolvedConflicts
+                        Map.empty
+                        Map.empty
+                        Map.empty
+                    )
+                    []
+
+            -- @-node:gcross.20100603132252.2065:empty
+            -- @+node:gcross.20100603184437.1358:test case #1
+            ,testCase "test case #1" $
+                assertEqual
+                    "Were the options parsed correctly?"
+                    (Right
+                        (Map.fromList $
+                            [("A","1")
+                            ,("B","2")
+                            ]
+                        ,["foo","bar"]
+                        )
+                    )
+                $
+                processOptions
+                    (createOptionSpecificationWithResolvedConflicts
+                        Map.empty
+                        Map.empty
+                        (options
+                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            ]
+                        )
+                    )
+                    ["foo","-a","--long=2","bar"]
+            -- @-node:gcross.20100603184437.1358:test case #1
+            -- @+node:gcross.20100604110000.1360:test case #2
+            ,testCase "test case #2" $
+                assertEqual
+                    "Were the options parsed correctly?"
+                    (Right
+                        (Map.fromList $
+                            [("A","1")
+                            ,("B","")
+                            ,("C","1")
+                            ]
+                        ,["foo","bar"]
+                        )
+                    )
+                $
+                processOptions
+                    (createOptionSpecificationWithResolvedConflicts
+                        (Map.fromList
+                            [('d',"C") -- '
+                            ]
+                        )
+                        Map.empty
+                        (options
+                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                            ]
+                        )
+                    )
+                    ["foo","-a","bar","-d"]
+            -- @-node:gcross.20100604110000.1360:test case #2
+            -- @+node:gcross.20100604110000.1362:test case #2
+            ,testCase "test case #3" $
+                assertEqual
+                    "Were the options parsed correctly?"
+                    (Left 2)
+                .
+                mapLeft length
+                $
+                processOptions
+                    (createOptionSpecificationWithResolvedConflicts
+                        (Map.fromList
+                            [('d',"C") -- '
+                            ]
+                        )
+                        Map.empty
+                        (options
+                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                            ]
+                        )
+                    )
+                    ["-q","--long"]
+            -- @-node:gcross.20100604110000.1362:test case #2
+            -- @-others
+            ]
+        -- @nonl
+        -- @-node:gcross.20100603132252.2064:processOptions
+        -- @+node:gcross.20100603132252.1338:options
+        ,testCase "options" $
+            assertEqual
+                "Is the options map correct?"
+                (Map.fromList
+                    [("A"
+                     ,Option
+                        (Set.fromList "abc")
+                        (Set.fromList ["long-1","long-2"])
+                        "0"
+                        (NoArgument "1")
+                        "Option A"
+                     )
+                    ,("B"
+                     ,Option
+                        (Set.fromList "def")
+                        (Set.fromList ["long"])
+                        ""
+                        (RequiredArgument "TYPE")
+                        "Option B"
+                     )
+                    ]
                 )
                 .
-                evaluate
+                options
                 $
-                createOptionSpecificationWithResolvedConflicts
-                    short_form_resolutions
-                    long_form_resolutions
-                    opts
-        -- @nonl
-        -- @-node:gcross.20100603132252.1348:some options with unresolved conflicts
-        -- @-others
-        ]
-    -- @nonl
-    -- @-node:gcross.20100603132252.1341:createOptionSpecificationWithResolvedConflicts
-    -- @+node:gcross.20100603132252.2064:processOptions
-    ,testGroup "processOptions"
-        -- @    @+others
-        -- @+node:gcross.20100603132252.2065:empty
-        [testCase "empty" $
-            assertEqual
-                "Were the options parsed correctly?"
-                (Right (Map.empty,[]))
-            $
-            processOptions
-                (createOptionSpecificationWithResolvedConflicts
-                    Map.empty
-                    Map.empty
-                    Map.empty
-                )
-                []
-
-        -- @-node:gcross.20100603132252.2065:empty
-        -- @+node:gcross.20100603184437.1358:test case #1
-        ,testCase "test case #1" $
-            assertEqual
-                "Were the options parsed correctly?"
-                (Right
-                    (Map.fromList $
-                        [("A","1")
-                        ,("B","2")
-                        ]
-                    ,["foo","bar"]
-                    )
-                )
-            $
-            processOptions
-                (createOptionSpecificationWithResolvedConflicts
-                    Map.empty
-                    Map.empty
-                    (options
-                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                        ]
-                    )
-                )
-                ["foo","-a","--long=2","bar"]
-        -- @-node:gcross.20100603184437.1358:test case #1
-        -- @+node:gcross.20100604110000.1360:test case #2
-        ,testCase "test case #2" $
-            assertEqual
-                "Were the options parsed correctly?"
-                (Right
-                    (Map.fromList $
-                        [("A","1")
-                        ,("B","")
-                        ,("C","1")
-                        ]
-                    ,["foo","bar"]
-                    )
-                )
-            $
-            processOptions
-                (createOptionSpecificationWithResolvedConflicts
-                    (Map.fromList
-                        [('d',"C") -- '
-                        ]
-                    )
-                    Map.empty
-                    (options
-                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                        ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
-                        ]
-                    )
-                )
-                ["foo","-a","bar","-d"]
-        -- @-node:gcross.20100604110000.1360:test case #2
-        -- @+node:gcross.20100604110000.1362:test case #2
-        ,testCase "test case #3" $
-            assertEqual
-                "Were the options parsed correctly?"
-                (Left 2)
-            .
-            mapLeft length
-            $
-            processOptions
-                (createOptionSpecificationWithResolvedConflicts
-                    (Map.fromList
-                        [('d',"C") -- '
-                        ]
-                    )
-                    Map.empty
-                    (options
-                        [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                        ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                        ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
-                        ]
-                    )
-                )
-                ["-q","--long"]
-        -- @-node:gcross.20100604110000.1362:test case #2
-        -- @-others
-        ]
-    -- @nonl
-    -- @-node:gcross.20100603132252.2064:processOptions
-    -- @+node:gcross.20100603132252.1338:options
-    ,testCase "options" $
-        assertEqual
-            "Is the options map correct?"
-            (Map.fromList
-                [("A"
-                 ,Option
-                    (Set.fromList "abc")
-                    (Set.fromList ["long-1","long-2"])
-                    "0"
-                    (NoArgument "1")
-                    "Option A"
-                 )
-                ,("B"
-                 ,Option
-                    (Set.fromList "def")
-                    (Set.fromList ["long"])
-                    ""
-                    (RequiredArgument "TYPE")
-                    "Option B"
-                 )
+                [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
+                ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
                 ]
-            )
-            .
-            options
-            $
-            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-            ]
-    -- @-node:gcross.20100603132252.1338:options
+        -- @-node:gcross.20100603132252.1338:options
+        -- @-others
+        ]
+    -- @-node:gcross.20100604204549.1358:Blueprint.Options
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl

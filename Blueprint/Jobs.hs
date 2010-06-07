@@ -43,6 +43,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
+
+import Blueprint.IOTask
 -- @-node:gcross.20100604184944.1292:<< Import needed modules >>
 -- @nl
 
@@ -93,9 +95,6 @@ instance Exception JobHasCyclicDependency
 -- @-node:gcross.20100604204549.7672:JobHasCyclicDependency
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
--- @+node:gcross.20100604204549.1364:IOTask
-data IOTask a = forall r. IOTask (IO r) (Either SomeException r → a)
--- @-node:gcross.20100604204549.1364:IOTask
 -- @+node:gcross.20100604204549.1368:Job
 data Job result = 
     JobSubmission [String] (JobTask result result) ThreadId
@@ -171,14 +170,6 @@ instance MonadIO (JobTask r) where
 -- @-node:gcross.20100604184944.1306:MonadIO JobTask
 -- @-node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604204549.1359:Functions
--- @+node:gcross.20100604204549.1366:spawnIOTaskRunner
-spawnIOTaskRunner :: Chan (IOTask return) → Chan return → IO ThreadId
-spawnIOTaskRunner task_queue result_queue =
-    forkIO . forever $
-        readChan task_queue
-        >>=
-        \(IOTask task f) → (try task >>= writeChan result_queue . f)
--- @-node:gcross.20100604204549.1366:spawnIOTaskRunner
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions
 failJobWithExceptions :: Int -> IntMap SomeException -> StateT (JobServerState result) IO ()
 failJobWithExceptions job_id exceptions = do

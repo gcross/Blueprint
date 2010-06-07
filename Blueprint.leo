@@ -11,6 +11,7 @@
 <vnodes>
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
+<v t="gcross.20100604204549.7680"><vh>@thin IOTask.hs</vh></v>
 <v t="gcross.20100604184944.1289"><vh>@thin Jobs.hs</vh></v>
 <v t="gcross.20100602141408.1273"><vh>@thin Options.hs</vh></v>
 </v>
