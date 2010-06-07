@@ -18,6 +18,7 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Exception hiding (assert)
 import Control.Monad
+import Control.Monad.IO.Class
 
 import Data.Either.Unwrap
 import Data.IORef
@@ -64,13 +65,15 @@ instance Exception TestException
 -- @@c
 -- @-node:gcross.20100602195250.1299:findDuplicates
 -- @+node:gcross.20100603132252.2058:assertThrows
-assertThrows :: (Eq e, Exception e) => e → IO a → Assertion
+assertThrows :: (Exception e) => e → IO a → Assertion
 assertThrows exception thunk =
     catch
         (thunk >> assertFailure "No exception was thrown.")
         (assertEqual
             "Was the correct exception thrown?"
-            exception
+            (show exception)
+            .
+            (show :: SomeException → String)
         )
 -- @-node:gcross.20100603132252.2058:assertThrows
 -- @-node:gcross.20100602195250.1297:Functions
@@ -222,21 +225,36 @@ main = defaultMain
                     return responses
             in
                 -- @        @+others
-                -- @+node:gcross.20100607083309.1390:return ()
+                -- @+node:gcross.20100607083309.1411:return ()
                 [testCase "return ()" $
                     withMultipleRunners 4
                         [IOTask (return ()) (mapLeft (const ()))
-                        ,IOTask (throwIO TestException) (mapLeft (const ()))
+                        ,IOTask (return ()) (mapLeft (const ()))
                         ,IOTask (return ()) (mapLeft (const ()))
                         ]
                     >>=
                     assertEqual
                         "Was the correct result obtained?"
                         [Right ()
-                        ,Left ()
+                        ,Right ()
                         ,Right ()
                         ]
-                -- @-node:gcross.20100607083309.1390:return ()
+                -- @-node:gcross.20100607083309.1411:return ()
+                -- @+node:gcross.20100607083309.1390:throw TestException
+                ,testCase "throw TestException" $
+                    withMultipleRunners 4
+                        [IOTask (throwIO TestException) (mapLeft (const ()))
+                        ,IOTask (throwIO TestException) (mapLeft (const ()))
+                        ,IOTask (throwIO TestException) (mapLeft (const ()))
+                        ]
+                    >>=
+                    assertEqual
+                        "Was the correct result obtained?"
+                        [Left () :: Either () ()
+                        ,Left ()
+                        ,Left ()
+                        ]
+                -- @-node:gcross.20100607083309.1390:throw TestException
                 -- @+node:gcross.20100607083309.1392:3 parallel runners
                 ,testCase "3 parallel runners" $ do
                     v1 <- newEmptyMVar
@@ -265,9 +283,77 @@ main = defaultMain
         -- @    @+others
         -- @+node:gcross.20100607083309.1403:start job server
         [testCase "start job server" $ do
-            job_server ← startJobServer 4 :: IO (JobServer ())
+            job_server ← startJobServer 4 Map.empty :: IO (JobServer ())
             return ()
         -- @-node:gcross.20100607083309.1403:start job server
+        -- @+node:gcross.20100607083309.1407:single jobs
+        ,testGroup "single jobs" $
+            -- @    @+others
+            -- @+node:gcross.20100607083309.1408:return cached value (Nothing)
+            [testCase "return cached value (Nothing)" $ do
+                job_server ← startJobServer 1 Map.empty
+                submitJob job_server ["job"] $ \maybe_cached_value →
+                    returnWithoutCache maybe_cached_value
+                requestJobResult job_server "job"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        Nothing
+            -- @-node:gcross.20100607083309.1408:return cached value (Nothing)
+            -- @+node:gcross.20100607083309.1413:read/write IORef
+            ,testCase "read/write MVar" $ do
+                job_server ← startJobServer 1 Map.empty
+                in_var ← newEmptyMVar
+                out_var ← newEmptyMVar
+                submitJob job_server ["job"] . const $
+                    liftIO $ do
+                        value ← takeMVar in_var
+                        putMVar out_var (value+1)
+                        returnWithoutCache value
+                putMVar in_var 1
+                requestJobResult job_server "job" >>= (@=? (1 :: Int))
+                takeMVar out_var >>= (@=? (2 :: Int))
+            -- @-node:gcross.20100607083309.1413:read/write IORef
+            -- @+node:gcross.20100607083309.1415:bad requests
+            ,testGroup "bad requests" $
+                -- @    @+others
+                -- @+node:gcross.20100607083309.1416:self
+                [testCase "self" $ do
+                    job_server ← startJobServer 1 Map.empty
+                    submitJob job_server ["job"] . const $ do
+                        request ["non-existent job"]
+                        returnWithoutCache ()
+                    assertThrows
+                        (CombinedException [(["job"],toException . NoSuchJobsException $ ["non-existent job"])])
+                        (requestJobResult job_server "job")
+                -- @-node:gcross.20100607083309.1416:self
+                -- @+node:gcross.20100607083309.1420:cyclic dependency
+                ,testCase "cyclic dependency" $ do
+                    job_server ← startJobServer 1 Map.empty
+                    submitJob job_server ["job"] . const $ do
+                        request ["job"]
+                        returnWithoutCache ()
+                    assertThrows
+                        (CombinedException [(["job"],toException CyclicDependencyException)])
+                        (requestJobResult job_server "job")
+                -- @-node:gcross.20100607083309.1420:cyclic dependency
+                -- @-others
+                ]
+            -- @-node:gcross.20100607083309.1415:bad requests
+            -- @+node:gcross.20100607083309.1422:IO thrown exception
+            ,testCase "IO thrown exception" $ do
+                job_server ← startJobServer 1 Map.empty
+                submitJob job_server ["job"] . const $
+                    liftIO $ do
+                        throwIO TestException
+                        returnWithoutCache ()
+                assertThrows
+                    (CombinedException [(["job"],toException TestException)])
+                    (requestJobResult job_server "job")
+            -- @-node:gcross.20100607083309.1422:IO thrown exception
+            -- @-others
+            ]
+        -- @-node:gcross.20100607083309.1407:single jobs
         -- @-others
         ]
     -- @-node:gcross.20100607083309.1396:Blueprint.Jobs
