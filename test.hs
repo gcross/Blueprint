@@ -4,6 +4,7 @@
 
 -- @<< Language extensions >>
 -- @+node:gcross.20100602152546.1867:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100602152546.1867:<< Language extensions >>
 -- @nl
@@ -19,10 +20,12 @@ import Control.Exception hiding (assert)
 import Control.Monad
 
 import Data.Either.Unwrap
+import Data.IORef
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Typeable
 
 import Test.HUnit
 import Test.Framework
@@ -37,6 +40,12 @@ import Blueprint.Options
 -- @nl
 
 -- @+others
+-- @+node:gcross.20100607083309.1379:Exceptions
+-- @+node:gcross.20100607083309.1380:TestException
+data TestException = TestException deriving (Show,Eq,Typeable)
+instance Exception TestException
+-- @-node:gcross.20100607083309.1380:TestException
+-- @-node:gcross.20100607083309.1379:Exceptions
 -- @+node:gcross.20100602195250.1297:Functions
 -- @+node:gcross.20100602195250.1299:findDuplicates
 -- @+at
@@ -78,13 +87,13 @@ main = defaultMain
         -- @    @+others
         -- @+node:gcross.20100604204549.7689:single runner
         [testGroup "single runner" $
-            let withSingleRunner :: Int -> [IOTask a] -> IO [a]
-                withSingleRunner number_of_responses requests = do
-                    task_queue <- newChan
-                    result_queue <- newChan
-                    runner_thread_id <- spawnIOTaskRunner task_queue result_queue
+            let withSingleRunner :: [IOTask a] → IO [a]
+                withSingleRunner requests = do
+                    task_queue ← newChan
+                    result_queue ← newChan
+                    runner_thread_id ← spawnIOTaskRunner task_queue result_queue
                     writeList2Chan task_queue requests
-                    responses <- replicateM number_of_responses (readChan result_queue)
+                    responses ← replicateM (length requests) (readChan result_queue)
                     killThread runner_thread_id
                     return responses
             in
@@ -94,18 +103,160 @@ main = defaultMain
                     -- @    @+others
                     -- @+node:gcross.20100604204549.7691:return ()
                     [testCase "return ()" $
-                        withSingleRunner 1 [IOTask (return ()) (mapLeft (return ()))]
+                        withSingleRunner [IOTask (return ()) (mapLeft (const ()))]
                         >>=
                         assertEqual
                             "Was the correct result obtained?"
                             [Right ()]
                     -- @-node:gcross.20100604204549.7691:return ()
+                    -- @+node:gcross.20100607083309.1376:write to IORef
+                    ,testCase "write to IORef" $ do
+                        ref ← newIORef 0
+                        withSingleRunner [IOTask (writeIORef ref 1) (mapLeft (return ()))]
+                            >>=
+                            assertEqual
+                                "Was the correct result obtained?"
+                                [Right ()]
+                        readIORef ref
+                            >>=
+                            assertEqual
+                                "Was the correct result written to ref?"
+                                1
+                    -- @nonl
+                    -- @-node:gcross.20100607083309.1376:write to IORef
+                    -- @+node:gcross.20100607083309.1378:throw exception
+                    ,testCase "throw exception" $ do
+                        ref ← newIORef 0
+                        withSingleRunner [IOTask (throwIO TestException >> writeIORef ref 1) (mapLeft fromException)]
+                            >>=
+                            assertEqual
+                                "Was the correct result obtained?"
+                                [Left (Just TestException)]
+                        readIORef ref
+                            >>=
+                            assertEqual
+                                "Is ref unchanged?"
+                                0
+                    -- @nonl
+                    -- @-node:gcross.20100607083309.1378:throw exception
                     -- @-others
                     ]
                 -- @-node:gcross.20100604204549.7690:single job
+                -- @+node:gcross.20100607083309.1385:multiple jobs
+                ,testGroup "multiple jobs"
+                    -- @    @+others
+                    -- @+node:gcross.20100607083309.1386:return ()
+                    [testCase "return ()" $
+                        withSingleRunner
+                            [IOTask (return ()) (mapLeft (const ()))
+                            ,IOTask (throwIO TestException) (mapLeft (const ()))
+                            ,IOTask (return ()) (mapLeft (const ()))
+                            ]
+                        >>=
+                        assertEqual
+                            "Was the correct result obtained?"
+                            [Right ()
+                            ,Left ()
+                            ,Right ()
+                            ]
+                    -- @-node:gcross.20100607083309.1386:return ()
+                    -- @+node:gcross.20100607083309.1387:write to IORef
+                    ,testCase "write to IORef" $ do
+                        ref ← newIORef 0
+                        withSingleRunner
+                            [IOTask (readIORef ref >>= \old_value → writeIORef ref 1 >> return old_value) (mapLeft . const $ ())
+                            ,IOTask (readIORef ref >>= \old_value → writeIORef ref 2 >> return old_value) (mapLeft . const $ ())
+                            ,IOTask (readIORef ref >>= \old_value → writeIORef ref 4 >> return old_value) (mapLeft . const $ ())
+                            ]
+                            >>=
+                            assertEqual
+                                "Was the correct result obtained?"
+                                [Right 0
+                                ,Right 1
+                                ,Right 2
+                                ]
+                        readIORef ref
+                            >>=
+                            assertEqual
+                                "Was the correct result written to ref?"
+                                4
+                    -- @nonl
+                    -- @-node:gcross.20100607083309.1387:write to IORef
+                    -- @+node:gcross.20100607083309.1388:throw exception
+                    ,testCase "throw exception" $ do
+                        ref ← newIORef 0
+                        withSingleRunner
+                            [IOTask (throwIO TestException >> writeIORef ref 1) (mapLeft fromException)
+                            ,IOTask (modifyIORef ref (+2) >> throwIO TestException) (mapLeft fromException)
+                            ]
+                            >>=
+                            assertEqual
+                                "Was the correct result obtained?"
+                                [Left (Just TestException)
+                                ,Left (Just TestException)
+                                ]
+                        readIORef ref
+                            >>=
+                            assertEqual
+                                "Is ref correct?"
+                                2
+                    -- @nonl
+                    -- @-node:gcross.20100607083309.1388:throw exception
+                    -- @-others
+                    ]
+                -- @-node:gcross.20100607083309.1385:multiple jobs
                 -- @-others
                 ]
+        -- @nonl
         -- @-node:gcross.20100604204549.7689:single runner
+        -- @+node:gcross.20100607083309.1389:multiple runners
+        ,testGroup "multiple runners" $
+            let withMultipleRunners :: Int → [IOTask a] → IO [a]
+                withMultipleRunners number_of_runners requests = do
+                    task_queue ← newChan
+                    result_queue ← newChan
+                    runner_thread_ids ← replicateM number_of_runners (spawnIOTaskRunner task_queue result_queue)
+                    writeList2Chan task_queue requests
+                    responses ← replicateM (length requests) (readChan result_queue)
+                    mapM_ killThread runner_thread_ids
+                    return responses
+            in
+                -- @        @+others
+                -- @+node:gcross.20100607083309.1390:return ()
+                [testCase "return ()" $
+                    withMultipleRunners 4
+                        [IOTask (return ()) (mapLeft (const ()))
+                        ,IOTask (throwIO TestException) (mapLeft (const ()))
+                        ,IOTask (return ()) (mapLeft (const ()))
+                        ]
+                    >>=
+                    assertEqual
+                        "Was the correct result obtained?"
+                        [Right ()
+                        ,Left ()
+                        ,Right ()
+                        ]
+                -- @-node:gcross.20100607083309.1390:return ()
+                -- @+node:gcross.20100607083309.1392:3 parallel runners
+                ,testCase "3 parallel runners" $ do
+                    v1 <- newEmptyMVar
+                    v2 <- newEmptyMVar
+                    withMultipleRunners 3
+                        [IOTask (readMVar v1) (mapLeft (const ()))
+                        ,IOTask (do {value <- readMVar v2; putMVar v1 value; return value;}) (mapLeft (const ()))
+                        ,IOTask (putMVar v2 1 >> return 1) (mapLeft (const ()))
+                        ]
+                    >>=
+                    assertEqual
+                        "Was the correct result obtained?"
+                        [Right 1
+                        ,Right 1
+                        ,Right 1
+                        ]
+                -- @-node:gcross.20100607083309.1392:3 parallel runners
+                -- @-others
+                ]
+        -- @-node:gcross.20100607083309.1389:multiple runners
         -- @-others
         ]
     -- @-node:gcross.20100604204549.7679:Blueprint.IOTask
