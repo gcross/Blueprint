@@ -5,6 +5,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100602152546.1867:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100602152546.1867:<< Language extensions >>
 -- @nl
@@ -20,6 +21,8 @@ import Control.Exception hiding (assert)
 import Control.Monad
 import Control.Monad.IO.Class
 
+import Data.Binary
+import Data.ByteString (ByteString)
 import Data.Either.Unwrap
 import Data.IORef
 import Data.List
@@ -81,6 +84,23 @@ assertThrows exception thunk =
             (show :: SomeException → String)
         )
 -- @-node:gcross.20100603132252.2058:assertThrows
+-- @+node:gcross.20100607205618.1430:assertJobCacheEmpty
+assertJobCacheEmpty =
+    requestJobCache
+    >=>
+    assertBool
+        "Is the job cache empty?"
+    .
+    Map.null
+-- @-node:gcross.20100607205618.1430:assertJobCacheEmpty
+-- @+node:gcross.20100607205618.1434:assertJobCacheEqualTo
+assertJobCacheEqualTo job_server correct_cache =
+    requestJobCache job_server
+    >>=
+    assertEqual
+        "Is the job cache correct?"
+        correct_cache
+-- @-node:gcross.20100607205618.1434:assertJobCacheEqualTo
 -- @-node:gcross.20100602195250.1297:Functions
 -- @+node:gcross.20100602152546.1874:Values
 -- @-node:gcross.20100602152546.1874:Values
@@ -304,6 +324,7 @@ main = defaultMain
                     assertEqual
                         "Is the job's result correct?"
                         Nothing
+                assertJobCacheEmpty job_server
             -- @-node:gcross.20100607083309.1479:return cached value (Nothing)
             -- @+node:gcross.20100607083309.1480:read/write IORef
             ,testCase "read/write MVar" . withJobServer 1 Map.empty $ \job_server → do
@@ -317,6 +338,8 @@ main = defaultMain
                 putMVar in_var 1
                 requestJobResult job_server "job" >>= (@=? (1 :: Int))
                 takeMVar out_var >>= (@=? (2 :: Int))
+                assertJobCacheEmpty job_server
+            -- @nonl
             -- @-node:gcross.20100607083309.1480:read/write IORef
             -- @+node:gcross.20100607083309.1481:bad requests
             ,testGroup "bad requests" $
@@ -329,6 +352,8 @@ main = defaultMain
                     assertThrows
                         (CombinedException [(["job"],toException . NoSuchJobsException $ ["non-existent job"])])
                         (requestJobResult job_server "job")
+                    assertJobCacheEmpty job_server
+                -- @nonl
                 -- @-node:gcross.20100607083309.1482:self
                 -- @+node:gcross.20100607083309.1483:cyclic dependency
                 ,testCase "cyclic dependency" . withJobServer 1 Map.empty $ \job_server → do
@@ -338,6 +363,8 @@ main = defaultMain
                     assertThrows
                         (CombinedException [(["job"],toException CyclicDependencyException)])
                         (requestJobResult job_server "job")
+                    assertJobCacheEmpty job_server
+                -- @nonl
                 -- @-node:gcross.20100607083309.1483:cyclic dependency
                 -- @-others
                 ]
@@ -351,6 +378,8 @@ main = defaultMain
                 assertThrows
                     (CombinedException [(["job"],toException TestException)])
                     (requestJobResult job_server "job")
+                assertJobCacheEmpty job_server
+            -- @nonl
             -- @-node:gcross.20100607083309.1484:IO thrown exception
             -- @-others
             ]
@@ -369,6 +398,8 @@ main = defaultMain
                     assertEqual
                         "Is the job's result correct?"
                         (1 :: Int)
+                assertJobCacheEmpty job_server
+            -- @nonl
             -- @-node:gcross.20100607083309.1489:simple request
             -- @+node:gcross.20100607083309.1490:cyclic request
             ,testCase "cyclic request" . withJobServer 1 Map.empty $ \job_server → do
@@ -383,6 +414,8 @@ main = defaultMain
                 case result of
                     Right () → assertFailure "Failed to detect cyclic dependency."
                     Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
+                assertJobCacheEmpty job_server
+            -- @nonl
             -- @-node:gcross.20100607083309.1490:cyclic request
             -- @+node:gcross.20100607083309.1448:exception
             ,testCase "exception" . withJobServer 1 Map.empty $ \job_server → do
@@ -394,6 +427,7 @@ main = defaultMain
                 assertThrows
                     (CombinedException [(["job1"],toException TestException)])
                     (requestJobResult job_server "job2")
+                assertJobCacheEmpty job_server
             -- @-node:gcross.20100607083309.1448:exception
             -- @+node:gcross.20100607205618.1422:IO tasks run in parallel
             ,testCase "IO tasks run in parallel" . withJobServer 2 Map.empty $ \job_server → do
@@ -426,6 +460,7 @@ main = defaultMain
                     assertEqual
                         "Is job 2's result correct?"
                         (1 :: Int)
+                assertJobCacheEmpty job_server
             -- @-node:gcross.20100607205618.1422:IO tasks run in parallel
             -- @+node:gcross.20100607205618.1424:IO tasks limited to slaves
             ,testCase "IO tasks limited to slaves" . withJobServer 1 Map.empty $ \job_server → do
@@ -475,6 +510,7 @@ main = defaultMain
                     assertEqual
                         "Is the job's result correct?"
                         (2 :: Int)
+                assertJobCacheEmpty job_server
             -- @-node:gcross.20100607205618.1418:diamond dependency
             -- @+node:gcross.20100607205618.1420:cyclic diamond dependency
             ,testCase "cyclic diamond dependency" . withJobServer 1 Map.empty $ \job_server → do
@@ -494,10 +530,63 @@ main = defaultMain
                 case result of
                     Right _ → assertFailure "Failed to detect cyclic dependency."
                     Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
+                assertJobCacheEmpty job_server
             -- @-node:gcross.20100607205618.1420:cyclic diamond dependency
             -- @-others
             ]
         -- @-node:gcross.20100607205618.1416:several jobs
+        -- @+node:gcross.20100607205618.1431:job cache
+        ,testGroup "job cache" $
+            -- @    @+others
+            -- @+node:gcross.20100607205618.1432:return cached value
+            [testCase "return cached value" . withJobServer 1
+                (Map.fromList
+                    [(["job"],encode (1 :: Int))
+                    ]
+                )
+              $ \job_server → do
+                submitJob job_server ["job"] $ \maybe_cached_value →
+                    returnWithCache maybe_cached_value 2
+                requestJobResult job_server "job"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        (Just (1 :: Int))
+                assertJobCacheEqualTo job_server . Map.fromList $
+                    [(["job"],encode $ (2 :: Int))
+                    ]
+            -- @-node:gcross.20100607205618.1432:return cached value
+            -- @+node:gcross.20100607205618.1440:add cached value
+            ,testCase "add cached value" . withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server ["job"] $ \maybe_cached_value →
+                    returnWithCache maybe_cached_value (2 :: Int)
+                requestJobResult job_server "job"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        Nothing
+                assertJobCacheEqualTo job_server . Map.fromList $
+                    [(["job"],encode $ (2 :: Int))
+                    ]
+            -- @-node:gcross.20100607205618.1440:add cached value
+            -- @+node:gcross.20100607205618.1436:destroy cached value
+            ,testCase "destroy cached value" . withJobServer 1
+                (Map.fromList
+                    [(["job"],encode (1 :: Int))
+                    ]
+                )
+              $ \job_server → do
+                submitJob job_server ["job"] $ \maybe_cached_value → do
+                    throw TestException
+                    returnWithCache () (2 :: Int)
+                assertThrows
+                    (CombinedException [(["job"],toException TestException)])
+                    (requestJobResult job_server "job")
+                assertJobCacheEmpty job_server
+            -- @-node:gcross.20100607205618.1436:destroy cached value
+            -- @-others
+            ]
+        -- @-node:gcross.20100607205618.1431:job cache
         -- @-others
         ]
     -- @-node:gcross.20100607083309.1396:Blueprint.Jobs

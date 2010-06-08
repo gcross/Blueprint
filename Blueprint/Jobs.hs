@@ -109,6 +109,7 @@ data Job result =
     forall cache. Binary cache => JobSubmission [String] (Maybe cache → JobTask result (result,cache)) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest String (MVar (Either SomeException result))
+  | ExternalRequestForCache (MVar (Map [String] ByteString))
   | forall cache. Binary cache => JobTask Int (JobTask result (result,cache))
 -- @-node:gcross.20100604204549.1368:Job
 -- @+node:gcross.20100604184944.1294:JobStatus
@@ -250,9 +251,19 @@ requestJobResult (JobServer job_queue _) requested_job_name = do
         Left exception → throwIO exception
         Right value → return value
 -- @-node:gcross.20100607083309.1409:requestJobResult
--- @+node:gcross.20100607083309.1414:returnWithoutCache
+-- @+node:gcross.20100607205618.1429:requestJobResult
+requestJobCache :: JobServer result → IO (Map [String] ByteString)
+requestJobCache (JobServer job_queue _) = do
+    result_var ← newEmptyMVar
+    writeChan job_queue $ ExternalRequestForCache result_var
+    takeMVar result_var
+-- @-node:gcross.20100607205618.1429:requestJobResult
+-- @+node:gcross.20100607083309.1414:returnWithCache
+returnWithCache value cache = return (value,cache)
+-- @-node:gcross.20100607083309.1414:returnWithCache
+-- @+node:gcross.20100607205618.1427:returnWithoutCache
 returnWithoutCache value = return (value,())
--- @-node:gcross.20100607083309.1414:returnWithoutCache
+-- @-node:gcross.20100607205618.1427:returnWithoutCache
 -- @+node:gcross.20100607083309.1417:request
 request :: [String] → JobTask result [result]
 request = flip Request return
@@ -453,6 +464,10 @@ processJob (ExternalRequest name destination_var) = do
                     $
                     exception
 -- @-node:gcross.20100604204549.7661:ExternalRequest
+-- @+node:gcross.20100607205618.1425:ExternalRequestForCache
+processJob (ExternalRequestForCache destination_var) =
+    get serverJobCache >>= liftIO . putMVar destination_var
+-- @-node:gcross.20100607205618.1425:ExternalRequestForCache
 -- @+node:gcross.20100604204549.7665:JobFailure
 processJob (JobFailure job_id exceptions) =
     failJobWithExceptions job_id exceptions
@@ -597,8 +612,9 @@ processJob (JobTask job_id task) =
 
             cache ← liftIO . evaluate . withStrategy rwhnf . encode $ cache_
             Just names ← fmap (IntMap.lookup job_id) (get serverJobNames)
-            serverJobCache %:
-                (Map.insert names cache)
+            if L.null cache
+                then serverJobCache %: (Map.delete names)
+                else serverJobCache %: (Map.insert names cache)
         -- @-node:gcross.20100604204549.1382:Return
         -- @+node:gcross.20100604204549.7663:PerformIO
         PerformIO action computeTask →
