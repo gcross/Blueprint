@@ -29,6 +29,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
 
+import GHC.IO.Exception
+
 import Test.HUnit
 import Test.Framework
 import Test.Framework.Providers.HUnit
@@ -290,8 +292,8 @@ main = defaultMain
             killJobServer job_server
 
         -- @-node:gcross.20100607083309.1403:start job server
-        -- @+node:gcross.20100607083309.1478:single jobs
-        ,testGroup "single jobs" $
+        -- @+node:gcross.20100607083309.1478:single job
+        ,testGroup "single job" $
             -- @    @+others
             -- @+node:gcross.20100607083309.1479:return cached value (Nothing)
             [testCase "return cached value (Nothing)" . withJobServer 1 Map.empty $ \job_server → do
@@ -350,52 +352,152 @@ main = defaultMain
                     (CombinedException [(["job"],toException TestException)])
                     (requestJobResult job_server "job")
             -- @-node:gcross.20100607083309.1484:IO thrown exception
-            -- @+node:gcross.20100607083309.1488:two jobs
-            ,testGroup "single jobs" $
-                -- @    @+others
-                -- @+node:gcross.20100607083309.1489:simple request
-                [testCase "simple request" . withJobServer 1 Map.empty $ \job_server → do
-                    submitJob job_server ["job1"] . const $
-                        returnWithoutCache 1
-                    submitJob job_server ["job2"] . const $
-                        request ["job1"] >>= returnWithoutCache . head
-                    requestJobResult job_server "job2"
-                        >>=
-                        assertEqual
-                            "Is the job's result correct?"
-                            (1 :: Int)
-                -- @-node:gcross.20100607083309.1489:simple request
-                -- @+node:gcross.20100607083309.1490:cyclic request
-                ,testCase "cyclic request" . withJobServer 1 Map.empty $ \job_server → do
-                    dummy ← newEmptyMVar
-                    submitJob job_server ["job1"] . const $ do
-                        liftIO $ takeMVar dummy
-                        request ["job2"] >>= returnWithoutCache . head
-                    submitJob job_server ["job2"] . const $ do
-                        request ["job1"] >>= returnWithoutCache . head
-                    putMVar dummy ()
-                    result ← try (requestJobResult job_server "job2")
-                    case result of
-                        Right () → assertFailure "Failed to detect cyclic dependency."
-                        Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
-                -- @-node:gcross.20100607083309.1490:cyclic request
-                -- @+node:gcross.20100607083309.1448:exception
-                ,testCase "exception" . withJobServer 1 Map.empty $ \job_server → do
-                    submitJob job_server ["job1"] . const $ do
-                        throw TestException
-                        returnWithoutCache ()
-                    submitJob job_server ["job2"] . const $
-                        request ["job1"] >>= returnWithoutCache . head
-                    assertThrows
-                        (CombinedException [(["job1"],toException TestException)])
-                        (requestJobResult job_server "job2")
-                -- @-node:gcross.20100607083309.1448:exception
-                -- @-others
-                ]
-            -- @-node:gcross.20100607083309.1488:two jobs
             -- @-others
             ]
-        -- @-node:gcross.20100607083309.1478:single jobs
+        -- @-node:gcross.20100607083309.1478:single job
+        -- @+node:gcross.20100607083309.1488:two jobs
+        ,testGroup "two jobs" $
+            -- @    @+others
+            -- @+node:gcross.20100607083309.1489:simple request
+            [testCase "simple request" . withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server ["job1"] . const $
+                    returnWithoutCache 1
+                submitJob job_server ["job2"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                requestJobResult job_server "job2"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        (1 :: Int)
+            -- @-node:gcross.20100607083309.1489:simple request
+            -- @+node:gcross.20100607083309.1490:cyclic request
+            ,testCase "cyclic request" . withJobServer 1 Map.empty $ \job_server → do
+                dummy ← newEmptyMVar
+                submitJob job_server ["job1"] . const $ do
+                    liftIO $ takeMVar dummy
+                    request ["job2"] >>= returnWithoutCache . head
+                submitJob job_server ["job2"] . const $ do
+                    request ["job1"] >>= returnWithoutCache . head
+                putMVar dummy ()
+                result ← try (requestJobResult job_server "job2")
+                case result of
+                    Right () → assertFailure "Failed to detect cyclic dependency."
+                    Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
+            -- @-node:gcross.20100607083309.1490:cyclic request
+            -- @+node:gcross.20100607083309.1448:exception
+            ,testCase "exception" . withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server ["job1"] . const $ do
+                    throw TestException
+                    returnWithoutCache ()
+                submitJob job_server ["job2"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                assertThrows
+                    (CombinedException [(["job1"],toException TestException)])
+                    (requestJobResult job_server "job2")
+            -- @-node:gcross.20100607083309.1448:exception
+            -- @+node:gcross.20100607205618.1422:IO tasks run in parallel
+            ,testCase "IO tasks run in parallel" . withJobServer 2 Map.empty $ \job_server → do
+                chan1 ← newChan
+                chan2 ← newChan
+                submitJob job_server ["job1"] . const $
+                    liftIO $ (writeChan chan2 2 >> readChan chan1)
+                    >>=
+                    returnWithoutCache
+                submitJob job_server ["job2"] . const $ 
+                    liftIO $ (writeChan chan1 1 >> readChan chan2)
+                    >>=
+                    returnWithoutCache
+                submitJob job_server ["job3"] . const $ 
+                    request ["job1","job2"]
+                    >>=
+                    returnWithoutCache . sum
+                requestJobResult job_server "job3"
+                    >>=
+                    assertEqual
+                        "Is job 1's result correct?"
+                        (3 :: Int)
+                requestJobResult job_server "job2"
+                    >>=
+                    assertEqual
+                        "Is job 1's result correct?"
+                        (2 :: Int)
+                requestJobResult job_server "job1"
+                    >>=
+                    assertEqual
+                        "Is job 2's result correct?"
+                        (1 :: Int)
+            -- @-node:gcross.20100607205618.1422:IO tasks run in parallel
+            -- @+node:gcross.20100607205618.1424:IO tasks limited to slaves
+            ,testCase "IO tasks limited to slaves" . withJobServer 1 Map.empty $ \job_server → do
+                chan1 ← newChan
+                chan2 ← newChan
+                submitJob job_server ["job1"] . const $
+                    liftIO $ (writeChan chan2 (2 :: Int) >> readChan chan1)
+                    >>=
+                    returnWithoutCache
+                submitJob job_server ["job2"] . const $ 
+                    liftIO $ (writeChan chan1 1 >> readChan chan2)
+                    >>=
+                    returnWithoutCache
+                submitJob job_server ["job3"] . const $ 
+                    request ["job1","job2"]
+                    >>=
+                    returnWithoutCache . sum
+                hPutStrLn stderr "(Note that if this test succeeds, then you *should* see a JOB SERVER KILLED message soon.)"
+                assertThrows
+                    BlockedIndefinitelyOnMVar
+                    (requestJobResult job_server "job3")
+                assertThrows
+                    BlockedIndefinitelyOnMVar
+                    (requestJobResult job_server "job2")
+                assertThrows
+                    BlockedIndefinitelyOnMVar
+                    (requestJobResult job_server "job1")
+            -- @-node:gcross.20100607205618.1424:IO tasks limited to slaves
+            -- @-others
+            ]
+        -- @-node:gcross.20100607083309.1488:two jobs
+        -- @+node:gcross.20100607205618.1416:several jobs
+        ,testGroup "several jobs" $
+            -- @    @+others
+            -- @+node:gcross.20100607205618.1418:diamond dependency
+            [testCase "diamond dependency" . withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server ["job1"] . const $
+                    returnWithoutCache 1
+                submitJob job_server ["job2"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                submitJob job_server ["job3"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                submitJob job_server ["job4"] . const $
+                    request ["job2","job3"] >>= returnWithoutCache . sum
+                requestJobResult job_server "job4"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        (2 :: Int)
+            -- @-node:gcross.20100607205618.1418:diamond dependency
+            -- @+node:gcross.20100607205618.1420:cyclic diamond dependency
+            ,testCase "cyclic diamond dependency" . withJobServer 1 Map.empty $ \job_server → do
+                dummy ← newEmptyMVar
+                submitJob job_server ["job1"] . const $ do
+                    liftIO . takeMVar $ dummy
+                    request ["job4"]
+                    returnWithoutCache (1 :: Int)
+                submitJob job_server ["job2"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                submitJob job_server ["job3"] . const $
+                    request ["job1"] >>= returnWithoutCache . head
+                submitJob job_server ["job4"] . const $
+                    request ["job2","job3"] >>= returnWithoutCache . sum
+                putMVar dummy ()
+                result ← try (requestJobResult job_server "job4")
+                case result of
+                    Right _ → assertFailure "Failed to detect cyclic dependency."
+                    Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
+            -- @-node:gcross.20100607205618.1420:cyclic diamond dependency
+            -- @-others
+            ]
+        -- @-node:gcross.20100607205618.1416:several jobs
         -- @-others
         ]
     -- @-node:gcross.20100607083309.1396:Blueprint.Jobs
