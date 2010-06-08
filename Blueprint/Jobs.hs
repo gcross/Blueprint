@@ -35,6 +35,7 @@ import Data.Accessor.Monad.Trans.State
 import Data.Accessor.Template
 import Data.Binary (Binary,encode,decode)
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Either
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -45,6 +46,9 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
+
+import Debug.Trace
+import System.IO
 
 import System.Mem.Weak
 
@@ -142,7 +146,7 @@ data JobServerState result = JobServerState
 $( deriveAccessors ''JobServerState )
 -- @-node:gcross.20100604204549.1375:JobServerState
 -- @+node:gcross.20100607083309.1398:JobServer
-data JobServer result = JobServer (Chan (Job result))
+data JobServer result = JobServer (Chan (Job result)) [ThreadId]
 -- @-node:gcross.20100607083309.1398:JobServer
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
@@ -168,6 +172,22 @@ instance MonadIO (JobTask r) where
 -- @-node:gcross.20100604184944.1306:MonadIO JobTask
 -- @-node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604204549.1359:Functions
+-- @+node:gcross.20100607083309.1441:Debugging
+-- @+node:gcross.20100607083309.1442:traceStatus
+traceStatus x = trace (jobStatusAsString x) x
+-- @-node:gcross.20100607083309.1442:traceStatus
+-- @+node:gcross.20100607083309.1491:jobStatusAsString
+jobStatusAsString (Pending _) = "Pending"
+jobStatusAsString (Running _ _ _) = "Running"
+jobStatusAsString (Succeeded _) = "Succeeded"
+jobStatusAsString (Failed _ _) = "Failed"
+-- @-node:gcross.20100607083309.1491:jobStatusAsString
+-- @+node:gcross.20100607083309.1445:putStrLnStdErr
+putStrLnStdErr message = liftIO $ do
+    thread_id ← myThreadId
+    L.hPut stderr . L.pack $ "[" ++ show thread_id ++ "] " ++ message ++ "\n"
+-- @-node:gcross.20100607083309.1445:putStrLnStdErr
+-- @-node:gcross.20100607083309.1441:Debugging
 -- @+node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1397:startJobServer
 startJobServer ::
@@ -191,10 +211,25 @@ startJobServer number_of_io_slaves starting_cache = do
             ,   serverIOTaskQueue_ = io_task_queue
             ,   serverJobCache_ = starting_cache
             }
-    let job_server = JobServer job_queue
-    addFinalizer job_server . mapM_ killThread . (job_server_thread_id:) $ io_slave_thread_ids
-    return job_server
+    return $ JobServer job_queue (job_server_thread_id:io_slave_thread_ids)
 -- @-node:gcross.20100607083309.1397:startJobServer
+-- @+node:gcross.20100607083309.1469:killJobServer
+killJobServer :: JobServer result → IO ()
+killJobServer (JobServer _ threads) = mapM_ killThread threads
+-- @-node:gcross.20100607083309.1469:killJobServer
+-- @+node:gcross.20100607083309.1470:withJobServer
+withJobServer ::
+    NFData result =>
+    Int →
+    Map [String] ByteString →
+    (JobServer result → IO a) →
+    IO a
+withJobServer number_of_io_slaves starting_cache thunk =
+    bracket
+        (startJobServer number_of_io_slaves starting_cache)
+        killJobServer
+        thunk
+-- @-node:gcross.20100607083309.1470:withJobServer
 -- @+node:gcross.20100607083309.1406:submitJob
 submitJob ::
     Binary cache =>
@@ -202,12 +237,12 @@ submitJob ::
     [String] →
     (Maybe cache → JobTask result (result,cache)) →
     IO ()
-submitJob (JobServer job_queue) names job =
+submitJob (JobServer job_queue _) names job =
     myThreadId >>= writeChan job_queue . JobSubmission names job
 -- @-node:gcross.20100607083309.1406:submitJob
 -- @+node:gcross.20100607083309.1409:requestJobResult
 requestJobResult :: JobServer result → String → IO result
-requestJobResult (JobServer job_queue) requested_job_name = do
+requestJobResult (JobServer job_queue _) requested_job_name = do
     result_var ← newEmptyMVar
     writeChan job_queue $ ExternalRequest requested_job_name result_var
     result ← takeMVar result_var
@@ -335,7 +370,6 @@ startJobTask job_id computeTaskFromCache = do
         IntMap.insert job_id
         $
         Running IntSet.empty [] []
-
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100607083309.1418:addJobResultListener
 addJobResultListener :: Int → MVar (Either SomeException result) → StateT (JobServerState result) IO ()
@@ -462,9 +496,9 @@ processJob (JobTask job_id task) =
                 else do
                     -- @            << Look up statuses of the requested job ids. >>
                     -- @+node:gcross.20100604204549.7670:<< Look up statuses of the requested job ids. >>
-                    pending_job_ids ← get serverJobStatuses >>= \server_job_statuses ->
+                    pending_job_ids ← get serverJobStatuses >>= \server_job_statuses →
                         filterM
-                            (\requested_job_id →
+                            (\requested_job_id → do
                                 case fromJust (IntMap.lookup requested_job_id server_job_statuses) of
                                     Pending computeTaskFromCache → do
                                         startJobTask requested_job_id computeTaskFromCache
@@ -481,22 +515,21 @@ processJob (JobTask job_id task) =
                         else do
                             -- @                    << Compute all dependencies. >>
                             -- @+node:gcross.20100604204549.7669:<< Compute all dependencies. >>
-                            all_dependency_ids ← get serverJobStatuses >>= \server_job_statuses →
+                            all_dependency_ids ← get serverPausedJobs >>= \paused_jobs →
                                 let getDependencies accum (IntSet.minView → Nothing) = accum
                                     getDependencies accum (IntSet.minView → Just (dependency_job_id,rest_dependency_job_ids)) =
                                         getDependencies (IntSet.insert dependency_job_id accum)
-                                        .
-                                        (IntSet.union rest_dependency_job_ids)
-                                        .
-                                        (`IntSet.difference` accum)
-                                        .
-                                        (\(Running all_dependents_ids _ _) → all_dependents_ids)
-                                        .
-                                        fromJust
-                                        .
-                                        flip IntMap.lookup server_job_statuses
                                         $
-                                        dependency_job_id
+                                        case IntMap.lookup dependency_job_id paused_jobs of
+                                            Nothing → rest_dependency_job_ids
+                                            Just paused_job →
+                                                (IntSet.union rest_dependency_job_ids)
+                                                .
+                                                (`IntSet.difference` accum)
+                                                .
+                                                pausedJobPendingRequests
+                                                $
+                                                paused_job
                                 in
                                     return
                                     .
@@ -614,8 +647,14 @@ processJob (JobTask job_id task) =
 -- @-node:gcross.20100604204549.7659:processJob
 -- @+node:gcross.20100607083309.1402:runJobServer
 runJobServer :: NFData result => StateT (JobServerState result) IO ()
-runJobServer = forever $
-    get serverJobQueue >>= liftIO . readChan >>= processJob
+runJobServer =
+    (forever $
+        get serverJobQueue >>= liftIO . readChan >>= processJob
+    ) `M.catch` (
+        \e → unless (e == ThreadKilled) . liftIO . throwIO $ e
+    ) `M.catch` (
+        \e → putStrLnStdErr $ "JOB SERVER KILLED:  " ++ show (e :: SomeException)
+    )
 -- @-node:gcross.20100607083309.1402:runJobServer
 -- @-node:gcross.20100607083309.1405:Implementation
 -- @-node:gcross.20100604204549.1359:Functions
