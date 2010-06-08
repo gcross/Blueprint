@@ -102,21 +102,32 @@ instance Show CyclicDependencyException where
 
 instance Exception CyclicDependencyException
 -- @-node:gcross.20100604204549.7672:CyclicDependencyException
+-- @+node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
+data ReturnedWrongNumberOfResults = ReturnedWrongNumberOfResults Int Int
+  deriving (Typeable)
+
+instance Show ReturnedWrongNumberOfResults where
+    show (ReturnedWrongNumberOfResults actual_count expected_count) =
+        "Job returned " ++ show actual_count ++ " results, when it had promised to return " ++ show expected_count ++ " results."
+
+instance Exception ReturnedWrongNumberOfResults
+-- @-node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604204549.1368:Job
 data Job result = 
-    forall cache. Binary cache => JobSubmission [String] (Maybe cache → JobTask result (result,cache)) ThreadId
+    forall cache. Binary cache =>
+        JobSubmission [String] (Maybe cache → JobTask result ([result],cache)) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest String (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [String] ByteString))
-  | forall cache. Binary cache => JobTask Int (JobTask result (result,cache))
+  | forall cache. Binary cache => JobTask Int (JobTask result ([result],cache))
 -- @-node:gcross.20100604204549.1368:Job
 -- @+node:gcross.20100604184944.1294:JobStatus
 data JobStatus result =
-    forall cache. Binary cache => Pending (Maybe cache → JobTask result (result,cache))
-  | Running [Int] [MVar (Either SomeException result)]
-  | Succeeded result
+    forall cache. Binary cache => Pending (Maybe cache → JobTask result ([result],cache))
+  | Running [Int] [(Int,MVar (Either SomeException result))]
+  | Succeeded [result]
   | Failed (IntMap SomeException) CombinedException
 -- @-node:gcross.20100604184944.1294:JobStatus
 -- @+node:gcross.20100604184944.1295:JobTask
@@ -128,14 +139,14 @@ data JobTask r a =
 -- @+node:gcross.20100604204549.1380:PausedJob
 data PausedJob result = forall cache. Binary cache => PausedJob
     {   pausedJobPendingRequests :: IntSet
-    ,   pausedJobRequests :: [Int]
-    ,   pausedJobComputeTask :: [result] → JobTask result (result,cache)
+    ,   pausedJobRequests :: [(Int,Int)]
+    ,   pausedJobComputeTask :: [result] → JobTask result ([result],cache)
     }
 -- @-node:gcross.20100604204549.1380:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
 data JobServerState result = JobServerState
     {   serverNextJobId_ :: Int
-    ,   serverJobIds_ :: Map String Int
+    ,   serverJobIds_ :: Map String (Int,Int)
     ,   serverJobNames_ :: IntMap [String]
     ,   serverJobStatuses_ :: IntMap (JobStatus result)
     ,   serverJobQueue_ :: Chan (Job result)
@@ -236,7 +247,7 @@ submitJob ::
     Binary cache =>
     JobServer result →
     [String] →
-    (Maybe cache → JobTask result (result,cache)) →
+    (Maybe cache → JobTask result ([result],cache)) →
     IO ()
 submitJob (JobServer job_queue _) names job =
     myThreadId >>= writeChan job_queue . JobSubmission names job
@@ -251,19 +262,25 @@ requestJobResult (JobServer job_queue _) requested_job_name = do
         Left exception → throwIO exception
         Right value → return value
 -- @-node:gcross.20100607083309.1409:requestJobResult
--- @+node:gcross.20100607205618.1429:requestJobResult
+-- @+node:gcross.20100607205618.1429:requestJobCache
 requestJobCache :: JobServer result → IO (Map [String] ByteString)
 requestJobCache (JobServer job_queue _) = do
     result_var ← newEmptyMVar
     writeChan job_queue $ ExternalRequestForCache result_var
     takeMVar result_var
--- @-node:gcross.20100607205618.1429:requestJobResult
--- @+node:gcross.20100607083309.1414:returnWithCache
-returnWithCache value cache = return (value,cache)
--- @-node:gcross.20100607083309.1414:returnWithCache
--- @+node:gcross.20100607205618.1427:returnWithoutCache
-returnWithoutCache value = return (value,())
--- @-node:gcross.20100607205618.1427:returnWithoutCache
+-- @-node:gcross.20100607205618.1429:requestJobCache
+-- @+node:gcross.20100607083309.1414:returnValueAndCache
+returnValuesAndCache values cache = return (values,cache)
+-- @-node:gcross.20100607083309.1414:returnValueAndCache
+-- @+node:gcross.20100607205618.1443:returnValueAndCache
+returnValueAndCache value cache = return ([value],cache)
+-- @-node:gcross.20100607205618.1443:returnValueAndCache
+-- @+node:gcross.20100607205618.1427:returnValue
+returnValue value = return ([value],())
+-- @-node:gcross.20100607205618.1427:returnValue
+-- @+node:gcross.20100607205618.1441:returnValues
+returnValues values = return (values,())
+-- @-node:gcross.20100607205618.1441:returnValues
 -- @+node:gcross.20100607083309.1417:request
 request :: [String] → JobTask result [result]
 request = flip Request return
@@ -281,7 +298,7 @@ failJobWithExceptions job_id exceptions = do
         $
         IntMap.insert job_id (Failed exceptions combined_exception)
     let r = Left . toException $ combined_exception
-    liftIO . mapM (flip putMVar r) $ listeners
+    liftIO . mapM (flip putMVar r . snd) $ listeners
     notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
     Just names ← fmap (IntMap.lookup job_id) (get serverJobNames)
     serverJobCache %:
@@ -291,10 +308,10 @@ failJobWithExceptions job_id exceptions = do
 fetchResultsAndRunJobTask ::
     Binary cache =>
     Int →
-    [Int] →
-    ([result] → JobTask result (result,cache)) →
+    [(Int,Int)] →
+    ([result] → JobTask result ([result],cache)) →
     StateT (JobServerState result) IO ()
-fetchResultsAndRunJobTask job_id requested_job_ids computeTask = do
+fetchResultsAndRunJobTask job_id requests computeTask = do
     server_job_statuses ← get serverJobStatuses
     let (exceptions,results) =
             first IntMap.unions
@@ -302,13 +319,13 @@ fetchResultsAndRunJobTask job_id requested_job_ids computeTask = do
             partitionEithers
             .
             map (
-                \job_id →
+                \(job_id,result_number) →
                     case fromJust (IntMap.lookup job_id server_job_statuses) of
                         Failed exceptions _ → Left exceptions
-                        Succeeded result → Right result
+                        Succeeded result → Right (result !! result_number)
             )
             $
-            requested_job_ids
+            requests
     if (not . IntMap.null) exceptions
         then failJobWithExceptions job_id exceptions
         else do
@@ -353,7 +370,7 @@ notifyPausedJobsThatRequestedJobIsFinished job_id =
 startJobTask ::
     Binary cache =>
     Int →
-    (Maybe cache -> JobTask result (result,cache)) →
+    (Maybe cache -> JobTask result ([result],cache)) →
     StateT (JobServerState result) IO ()
 startJobTask job_id computeTaskFromCache = do
     server_job_cache ← get serverJobCache
@@ -383,10 +400,10 @@ startJobTask job_id computeTaskFromCache = do
         Running [] []
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100607083309.1418:addJobResultListener
-addJobResultListener :: Int → MVar (Either SomeException result) → StateT (JobServerState result) IO ()
-addJobResultListener job_id listener =
+addJobResultListener :: Int → Int → MVar (Either SomeException result) → StateT (JobServerState result) IO ()
+addJobResultListener job_id result_number destination_var =
     serverJobStatuses %:
-        (IntMap.adjust (\(Running dependent_job_ids listeners) → Running dependent_job_ids (listener:listeners)) job_id)
+        (IntMap.adjust (\(Running dependent_job_ids listeners) → Running dependent_job_ids ((result_number,destination_var):listeners)) job_id)
 -- @-node:gcross.20100607083309.1418:addJobResultListener
 -- @+node:gcross.20100604204549.7659:processJob
 processJob ::
@@ -403,9 +420,12 @@ processJob (JobSubmission names computeTaskFromCache thread_id) = do
             serverJobIds %:
                 \server_job_ids →
                     foldl' -- '
-                        (\job_ids name → Map.insert name job_id job_ids) 
+                        (\job_ids (result_number,name) → Map.insert name (job_id,result_number) job_ids) 
                         server_job_ids
-                        names
+                    .
+                    zip [0..]
+                    $
+                    names
             serverJobNames %:
                 IntMap.insert job_id names
             serverJobStatuses %:
@@ -421,8 +441,8 @@ processJob (JobSubmission names computeTaskFromCache thread_id) = do
 -- @-node:gcross.20100604204549.7660:JobSubmission
 -- @+node:gcross.20100604204549.7661:ExternalRequest
 processJob (ExternalRequest name destination_var) = do
-    maybe_job_id ← fmap (Map.lookup name) (get serverJobIds)
-    case maybe_job_id of
+    maybe_id ← fmap (Map.lookup name) (get serverJobIds)
+    case maybe_id of
         Nothing →
             liftIO
             .
@@ -437,20 +457,22 @@ processJob (ExternalRequest name destination_var) = do
             (:[])
             $
             name
-        Just job_id → do
+        Just (job_id,result_number) → do
             job_status ← fmap (fromJust . IntMap.lookup job_id) (get serverJobStatuses)
             case job_status of
                 Pending computeTaskFromCache → do
                     startJobTask job_id computeTaskFromCache
-                    addJobResultListener job_id destination_var
+                    addJobResultListener job_id result_number destination_var
                 Running _ _ → do
-                    addJobResultListener job_id destination_var
+                    addJobResultListener job_id result_number destination_var
                 Succeeded result → do
                     liftIO
                     .
                     putMVar destination_var
                     .
                     Right
+                    .
+                    (!! result_number)
                     $
                     result
                 Failed _ exception → do
@@ -482,7 +504,7 @@ processJob (JobTask job_id task) =
         Request requested_job_names computeTask → do
             -- @    << Fetch ids of the requested jobs. >>
             -- @+node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
-            (non_existing_jobs,requested_job_ids) ← get serverJobIds >>= \server_job_ids →
+            (non_existing_jobs,requests) ← get serverJobIds >>= \server_job_ids →
                 return
                 .
                 partitionEithers
@@ -495,6 +517,7 @@ processJob (JobTask job_id task) =
                 )
                 $
                 requested_job_names
+            let requested_job_ids = nub . map fst $ requests
             -- @-node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
             -- @nl
             if (not . null) non_existing_jobs
@@ -526,7 +549,7 @@ processJob (JobTask job_id task) =
                     -- @-node:gcross.20100604204549.7670:<< Look up statuses of the requested job ids. >>
                     -- @nl
                     if null pending_job_ids
-                        then fetchResultsAndRunJobTask job_id requested_job_ids computeTask
+                        then fetchResultsAndRunJobTask job_id requests computeTask
                         else do
                             -- @                    << Compute all dependencies. >>
                             -- @+node:gcross.20100604204549.7669:<< Compute all dependencies. >>
@@ -573,7 +596,7 @@ processJob (JobTask job_id task) =
                                         $
                                         PausedJob
                                         {   pausedJobPendingRequests = IntSet.fromList pending_job_ids
-                                        ,   pausedJobRequests = requested_job_ids
+                                        ,   pausedJobRequests = requests
                                         ,   pausedJobComputeTask = computeTask
                                         }
                                     (serverJobStatuses %:)
@@ -596,6 +619,20 @@ processJob (JobTask job_id task) =
         -- @+node:gcross.20100604204549.1382:Return
         Return (result_,cache_) → do
             result ← liftIO . evaluate . withStrategy rdeepseq $ result_
+            let number_of_returned_results = length result
+            number_of_expected_results ←
+                fmap (
+                    length
+                    .
+                    fromJust
+                    .
+                    IntMap.lookup job_id
+                )
+                $
+                get serverJobNames
+            when (number_of_returned_results /= number_of_expected_results) $
+                liftIO . throwIO $
+                    ReturnedWrongNumberOfResults number_of_returned_results number_of_expected_results
             Just (Running requesting_job_ids listeners) ←
                 fmap (IntMap.lookup job_id)
                 .
@@ -606,8 +643,8 @@ processJob (JobTask job_id task) =
                 Succeeded
                 $
                 result
-            let r = Right result
-            liftIO . mapM (flip putMVar r) $ listeners
+            liftIO . forM_ listeners $ \(result_number,destination_var) →
+                putMVar destination_var . Right . (!! result_number) $ result
             notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
 
             cache ← liftIO . evaluate . withStrategy rwhnf . encode $ cache_
