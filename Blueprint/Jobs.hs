@@ -114,7 +114,7 @@ data Job result =
 -- @+node:gcross.20100604184944.1294:JobStatus
 data JobStatus result =
     forall cache. Binary cache => Pending (Maybe cache → JobTask result (result,cache))
-  | Running IntSet [Int] [MVar (Either SomeException result)]
+  | Running [Int] [MVar (Either SomeException result)]
   | Succeeded result
   | Failed (IntMap SomeException) CombinedException
 -- @-node:gcross.20100604184944.1294:JobStatus
@@ -178,7 +178,7 @@ traceStatus x = trace (jobStatusAsString x) x
 -- @-node:gcross.20100607083309.1442:traceStatus
 -- @+node:gcross.20100607083309.1491:jobStatusAsString
 jobStatusAsString (Pending _) = "Pending"
-jobStatusAsString (Running _ _ _) = "Running"
+jobStatusAsString (Running _ _) = "Running"
 jobStatusAsString (Succeeded _) = "Succeeded"
 jobStatusAsString (Failed _ _) = "Failed"
 -- @-node:gcross.20100607083309.1491:jobStatusAsString
@@ -263,7 +263,7 @@ request = flip Request return
 failJobWithExceptions :: Int → IntMap SomeException → StateT (JobServerState result) IO ()
 failJobWithExceptions job_id exceptions = do
     combined_exception ← combineExceptions exceptions
-    Just (Running _ requesting_job_ids listeners) ←
+    Just (Running requesting_job_ids listeners) ←
         fmap (IntMap.lookup job_id)
         .
         getAndModify serverJobStatuses
@@ -369,13 +369,13 @@ startJobTask job_id computeTaskFromCache = do
         .
         IntMap.insert job_id
         $
-        Running IntSet.empty [] []
+        Running [] []
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100607083309.1418:addJobResultListener
 addJobResultListener :: Int → MVar (Either SomeException result) → StateT (JobServerState result) IO ()
 addJobResultListener job_id listener =
     serverJobStatuses %:
-        (IntMap.adjust (\(Running a b listeners) → Running a b (listener:listeners)) job_id)
+        (IntMap.adjust (\(Running dependent_job_ids listeners) → Running dependent_job_ids (listener:listeners)) job_id)
 -- @-node:gcross.20100607083309.1418:addJobResultListener
 -- @+node:gcross.20100604204549.7659:processJob
 processJob ::
@@ -432,7 +432,7 @@ processJob (ExternalRequest name destination_var) = do
                 Pending computeTaskFromCache → do
                     startJobTask job_id computeTaskFromCache
                     addJobResultListener job_id destination_var
-                Running _ _ _ → do
+                Running _ _ → do
                     addJobResultListener job_id destination_var
                 Succeeded result → do
                     liftIO
@@ -503,7 +503,7 @@ processJob (JobTask job_id task) =
                                     Pending computeTaskFromCache → do
                                         startJobTask requested_job_id computeTaskFromCache
                                         return True
-                                    Running _ _ _ → return True
+                                    Running _ _ → return True
                                     Succeeded _ → return False
                                     Failed exceptions _ → return False
                             )
@@ -567,45 +567,21 @@ processJob (JobTask job_id task) =
                                         foldl' -- '
                                             (\statuses requested_job_id →
                                                 IntMap.adjust
-                                                    (\(Running dependent_job_ids requesting_job_ids result_ivar) →
-                                                        Running
-                                                            dependent_job_ids
-                                                            (job_id:requesting_job_ids)
-                                                            result_ivar
+                                                    (\(Running requesting_job_ids result_ivar) →
+                                                       Running (job_id:requesting_job_ids) result_ivar
                                                     )
                                                     requested_job_id
                                                     statuses
                                             )
                                             statuses
                                             pending_job_ids
-                                    (serverJobStatuses %:)
-                                        $
-                                        \statuses →
-                                            foldl' -- '
-                                                (\statuses dependency_job_id →
-                                                    IntMap.adjust
-                                                        (\(Running dependent_job_ids requesting_job_ids result_ivar) →
-                                                            Running
-                                                                (IntSet.insert job_id dependent_job_ids)
-                                                                requesting_job_ids
-                                                                result_ivar
-                                                        )
-                                                        dependency_job_id
-                                                        statuses
-                                                )
-                                                statuses
-                                            .
-                                            IntSet.toList
-                                            $
-                                            all_dependency_ids
-                                    -- @nonl
                                     -- @-node:gcross.20100604204549.7671:<< Update the state of the job server. >>
                                     -- @nl
         -- @-node:gcross.20100604204549.7667:Request
         -- @+node:gcross.20100604204549.1382:Return
         Return (result_,cache_) → do
             result ← liftIO . evaluate . withStrategy rdeepseq $ result_
-            Just (Running _ requesting_job_ids listeners) ←
+            Just (Running requesting_job_ids listeners) ←
                 fmap (IntMap.lookup job_id)
                 .
                 getAndModify serverJobStatuses
