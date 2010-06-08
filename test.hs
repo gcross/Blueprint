@@ -382,6 +382,40 @@ main = defaultMain
                 assertJobCacheEmpty job_server
             -- @nonl
             -- @-node:gcross.20100607083309.1484:IO thrown exception
+            -- @+node:gcross.20100607205618.1445:multiple results
+            ,testCase "multiple results" . withJobServer 0 Map.empty $ \job_server → do
+                submitJob job_server ["job1","job2"] . const $
+                    returnValues [1,2]
+                requestJobResult job_server "job1"
+                    >>=
+                    assertEqual
+                        "Is the job's first result correct?"
+                        (1 :: Int)
+                requestJobResult job_server "job2"
+                    >>=
+                    assertEqual
+                        "Is the job's second result correct?"
+                        (2 :: Int)
+                assertJobCacheEmpty job_server
+            -- @-node:gcross.20100607205618.1445:multiple results
+            -- @+node:gcross.20100607205618.1447:too many results
+            ,testCase "too many results" . withJobServer 0 Map.empty $ \job_server → do
+                submitJob job_server ["job"] . const $
+                    returnValues [1,2::Int]
+                assertThrows
+                    (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 2 1)])
+                    (requestJobResult job_server "job")
+                assertJobCacheEmpty job_server
+            -- @-node:gcross.20100607205618.1447:too many results
+            -- @+node:gcross.20100607205618.1449:too few results
+            ,testCase "too few results" . withJobServer 0 Map.empty $ \job_server → do
+                submitJob job_server ["job"] . const $
+                    returnValues ([] :: [()])
+                assertThrows
+                    (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 0 1)])
+                    (requestJobResult job_server "job")
+                assertJobCacheEmpty job_server
+            -- @-node:gcross.20100607205618.1449:too few results
             -- @-others
             ]
         -- @-node:gcross.20100607083309.1478:single job
@@ -402,6 +436,19 @@ main = defaultMain
                 assertJobCacheEmpty job_server
             -- @nonl
             -- @-node:gcross.20100607083309.1489:simple request
+            -- @+node:gcross.20100607205618.1451:simple request, multiple results
+            ,testCase "simple request, multiple results" . withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server ["job1A","job1B"] . const $
+                    returnValues [1,2]
+                submitJob job_server ["job2"] . const $
+                    request ["job1B"] >>= returnValue . head
+                requestJobResult job_server "job2"
+                    >>=
+                    assertEqual
+                        "Is the job's result correct?"
+                        (2 :: Int)
+                assertJobCacheEmpty job_server
+            -- @-node:gcross.20100607205618.1451:simple request, multiple results
             -- @+node:gcross.20100607083309.1490:cyclic request
             ,testCase "cyclic request" . withJobServer 1 Map.empty $ \job_server → do
                 dummy ← newEmptyMVar
