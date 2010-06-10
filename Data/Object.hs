@@ -55,56 +55,66 @@ instance Exception TypeError
 -- @-node:gcross.20100609163522.1435:TypeError
 -- @-node:gcross.20100609163522.1434:Exceptions
 -- @+node:gcross.20100609163522.1438:Classes
--- @+node:gcross.20100609163522.1439:Castable
-class Castable a where
-    toObject :: a → Object
-    fromObject :: Object → Maybe a
--- @-node:gcross.20100609163522.1439:Castable
--- @+node:gcross.20100609163522.1440:FieldList
-class FieldList fields result where
-    type FieldListArgument fields result
-    fromObjectUsingFields :: fields → FieldListArgument fields result → Object → Maybe result
-    toObjectUsingFields :: fields → result → Object
-
-instance FieldList () result where
-    type FieldListArgument () result = result
-    fromObjectUsingFields _ result _ = Just result
-    toObjectUsingFields _ _ = Object (Map.empty)
-
-instance (Binary field_type, Typeable field_type, FieldList rest_fields value) => FieldList ((Field field_type,value → field_type) :. rest_fields) value where
-    type FieldListArgument ((Field field_type,value → field_type) :. rest_fields) value = field_type → FieldListArgument rest_fields value
-    fromObjectUsingFields ((field,_) :. rest_fields) f object =
-        case getField field object of
-            Nothing → Nothing
-            Just value → fromObjectUsingFields rest_fields (f value) object
-    toObjectUsingFields ((field,getter) :. rest_fields) x =
-        setField field (getter x) (toObjectUsingFields rest_fields x)
--- @nonl
--- @-node:gcross.20100609163522.1440:FieldList
--- @+node:gcross.20100609163522.1732:FieldsAndValues
-class FieldsAndValues field_and_values where
-    setFields :: field_and_values -> Object -> Object
-
-instance FieldsAndValues () where
-    setFields _ object = object
-
-instance (Binary a, Typeable a, FieldsAndValues rest_fields) => FieldsAndValues ((Field a,a) :. rest_fields) where
-    setFields ((field,value) :. rest_fields) object = setFields rest_fields (setField field value object)
-
--- @-node:gcross.20100609163522.1732:FieldsAndValues
 -- @+node:gcross.20100609163522.1734:Fields
-class Fields fields where
+class Fields entity fields where
     type FieldValues fields
-    getFields :: fields -> Object -> FieldValues fields
+    getFields :: fields -> Table entity -> FieldValues fields
 
-instance Fields () where
+instance Typeable entity => Fields entity () where
     type FieldValues () = ()
     getFields _ _ = ()
 
-instance (Binary a, Typeable a, Fields rest_fields) => Fields (Field a :. rest_fields) where
-    type FieldValues (Field a :. rest_fields) = Maybe a :. FieldValues rest_fields
-    getFields (field :. rest_fields) object = getField field object :. getFields rest_fields object
+instance (FieldValue entity value, Fields entity rest_fields) => Fields entity (Field value :. rest_fields) where
+    type FieldValues (Field value :. rest_fields) = Maybe value :. FieldValues rest_fields
+    getFields (field :. rest_fields) table = getField field table :. getFields rest_fields table
 -- @-node:gcross.20100609163522.1734:Fields
+-- @+node:gcross.20100609163522.1732:FieldsAndValues
+class Typeable entity => FieldsAndValues entity field_and_values where
+    setFields :: field_and_values -> Table entity -> Table entity
+
+instance Typeable entity => FieldsAndValues entity () where
+    setFields _ table = table
+
+instance (FieldValue entity value
+         ,FieldsAndValues entity rest_fields
+         ) => FieldsAndValues entity ((Field value,value) :. rest_fields)
+  where
+    setFields ((field,value) :. rest_fields) table = setFields rest_fields (setField field value table)
+-- @-node:gcross.20100609163522.1732:FieldsAndValues
+-- @+node:gcross.20100609223718.1500:FieldValue
+class (Typeable entity, Typeable value) => FieldValue entity value where
+    toEntity :: value -> entity
+    fromEntity :: entity -> Maybe value
+-- @-node:gcross.20100609223718.1500:FieldValue
+-- @+node:gcross.20100609163522.1439:Record
+class Typeable entity => Record entity cls where
+    toTable :: cls → Table entity
+    fromTable :: Table entity → Maybe cls
+-- @-node:gcross.20100609163522.1439:Record
+-- @+node:gcross.20100609163522.1440:RecordFields
+class RecordFields entity fields record where
+    type RecordBuilder fields record
+    fromTableUsingFields :: fields → RecordBuilder fields record → Table entity → Maybe record
+    toTableUsingFields :: fields → record → Table entity
+
+instance Typeable entity => RecordFields entity () record where
+    type RecordBuilder () record = record
+    fromTableUsingFields _ result _ = Just result
+    toTableUsingFields _ _ = Table (Map.empty)
+
+instance (FieldValue entity value
+         ,RecordFields entity rest_fields record
+         ) => RecordFields entity ((Field value,record → value) :. rest_fields) record
+  where
+    type RecordBuilder ((Field value,record → value) :. rest_fields) record =
+            value → RecordBuilder rest_fields record
+    fromTableUsingFields ((field,_) :. rest_fields) f table =
+        case getField field table of
+            Nothing → Nothing
+            Just value → fromTableUsingFields rest_fields (f value) table
+    toTableUsingFields ((field,getter) :. rest_fields) x =
+        setField field (getter x) (toTableUsingFields rest_fields x)
+-- @-node:gcross.20100609163522.1440:RecordFields
 -- @-node:gcross.20100609163522.1438:Classes
 -- @+node:gcross.20100609163522.1418:Types
 -- @+node:gcross.20100609163522.1419:Entity
@@ -116,90 +126,108 @@ data Entity =
   | SerializedEntity
     {   entityData :: ByteString
     ,   entityType :: String
-    }
+    } deriving (Typeable)
 -- @-node:gcross.20100609163522.1419:Entity
--- @+node:gcross.20100609163522.1433:Object
-newtype Object = Object (Map UUID Entity) deriving (Typeable)
--- @-node:gcross.20100609163522.1433:Object
 -- @+node:gcross.20100609163522.1422:Field
-data Field a = Field
+data Field value = Field
     {   fieldName :: String
     ,   fieldId :: UUID
     } deriving (Show,Eq)
 -- @-node:gcross.20100609163522.1422:Field
+-- @+node:gcross.20100609163522.1433:Table
+newtype Typeable entity => Table entity = Table (Map UUID entity) deriving (Typeable)
+-- @-node:gcross.20100609163522.1433:Table
+-- @+node:gcross.20100609223718.1504:Object/SerializableObject
+type Object = Table Dynamic
+type SerializableObject = Table Entity
+-- @-node:gcross.20100609223718.1504:Object/SerializableObject
 -- @-node:gcross.20100609163522.1418:Types
 -- @+node:gcross.20100609163522.1695:Instances
--- @+node:gcross.20100609163522.1696:Monoid Object
-instance Monoid Object where
-    mempty = Object mempty
-    Object x `mappend` Object y = Object (y `mappend` x)
--- @-node:gcross.20100609163522.1696:Monoid Object
--- @+node:gcross.20100609163522.1736:Binary Object
-instance Binary Object where
-    put (Object fields) = put . Map.toList $ fields
-    get = fmap (Object . Map.fromList) get
--- @nonl
--- @-node:gcross.20100609163522.1736:Binary Object
+-- @+node:gcross.20100609163522.1696:Monoid Table
+instance Typeable entity => Monoid (Table entity) where
+    mempty = Table mempty
+    Table x `mappend` Table y = Table (y `mappend` x)
+-- @-node:gcross.20100609163522.1696:Monoid Table
+-- @+node:gcross.20100609163522.1736:Binary Table
+instance (Binary entity, Typeable entity) => Binary (Table entity) where
+    put (Table fields) = put . Map.toList $ fields
+    get = fmap (Table . Map.fromList) get
+-- @-node:gcross.20100609163522.1736:Binary Table
 -- @+node:gcross.20100609163522.1738:Binary Entity
 instance Binary Entity where
     put (Entity{..}) = do
         put entitySerialized
         put . show . dynTypeRep $ entityValue
+    put (SerializedEntity x y) = put x >> put y
     get = liftM2 SerializedEntity get get
 -- @-node:gcross.20100609163522.1738:Binary Entity
+-- @+node:gcross.20100609223718.1501:FieldValue Dynamic
+instance Typeable value => FieldValue Dynamic value where
+    toEntity = toDyn
+    fromEntity = fromDynamic
+-- @-node:gcross.20100609223718.1501:FieldValue Dynamic
+-- @+node:gcross.20100609223718.1503:FieldValue Entity
+instance (Binary value, Typeable value) => FieldValue Entity value where
+    toEntity =
+        Entity
+            <$> toDyn
+            <*> encode
+
+    fromEntity (Entity { entityValue }) = fromDynamic entityValue
+    fromEntity (SerializedEntity {..}) =
+        let x = decode entityData
+        in if entityType == show (typeOf x)
+            then Just x
+            else Nothing
+-- @-node:gcross.20100609223718.1503:FieldValue Entity
 -- @-node:gcross.20100609163522.1695:Instances
 -- @+node:gcross.20100609163522.1425:Functions
--- @+node:gcross.20100609163522.1426:toEntity
-toEntity :: (Binary a, Typeable a) => a → Entity
-toEntity =
-    Entity
-        <$> toDyn
-        <*> encode
--- @-node:gcross.20100609163522.1426:toEntity
--- @+node:gcross.20100609163522.1427:fromEntity
-fromEntity :: (Binary a, Typeable a) => Entity → Maybe a
-fromEntity (Entity { entityValue }) = fromDynamic entityValue
-fromEntity (SerializedEntity {..}) =
-    let x = decode entityData
-    in if entityType == show (typeOf x)
-        then Just x
-        else Nothing
--- @-node:gcross.20100609163522.1427:fromEntity
 -- @+node:gcross.20100609163522.1430:getField
-getField :: (Binary a, Typeable a) => Field a → Object → Maybe a
-getField (field@Field {..}) (Object fields) =
+getField ::
+    (FieldValue entity value
+    ,Typeable entity
+    ) =>
+    Field value → Table entity →
+    Maybe value
+getField (field@Field {..}) (Table fields) =
     case Map.lookup fieldId fields of
         Nothing → Nothing
         Just entity →
             case fromEntity entity of
                 Nothing → throw (TypeError field)
                 Just value → Just value
--- @nonl
 -- @-node:gcross.20100609163522.1430:getField
 -- @+node:gcross.20100609163522.1432:setField
-setField :: (Binary a, Typeable a) => Field a → a → Object → Object
-setField (Field {..}) new_value (Object fields) =
-    Object (Map.insert fieldId (toEntity new_value) fields)
--- @nonl
+setField ::
+    (FieldValue entity value
+    ,Typeable entity
+    ) =>
+    Field value →
+    value →
+    Table entity →
+    Table entity
+setField (Field {..}) new_value (Table fields) =
+    Table (Map.insert fieldId (toEntity new_value) fields)
 -- @-node:gcross.20100609163522.1432:setField
 -- @+node:gcross.20100609163522.1693:field
-field :: String → String → Field a
+field :: String → String → Field value
 field name = Field name . fromJust . UUID.fromString
 -- @nonl
 -- @-node:gcross.20100609163522.1693:field
--- @+node:gcross.20100609163522.1694:updateObjectWith
-updateObjectWith :: Castable a => a → Object → Object
-updateObjectWith x = (`mappend` toObject x)
--- @-node:gcross.20100609163522.1694:updateObjectWith
+-- @+node:gcross.20100609163522.1694:updateTableWith
+updateTableWith :: (Typeable entity, Record entity record) => record → Table entity → Table entity
+updateTableWith x = (`mappend` toTable x)
+-- @-node:gcross.20100609163522.1694:updateTableWith
 -- @+node:gcross.20100609203325.1472:withFields
-withFields :: FieldsAndValues fields => fields -> Object
-withFields fields = setFields fields emptyObject
+withFields :: FieldsAndValues entity fields => fields -> Table entity
+withFields fields = setFields fields mempty
 -- @-node:gcross.20100609203325.1472:withFields
 -- @-node:gcross.20100609163522.1425:Functions
 -- @+node:gcross.20100609163522.1698:Values
--- @+node:gcross.20100609163522.1700:emptyObject
-emptyObject = mempty :: Object
--- @-node:gcross.20100609163522.1700:emptyObject
+-- @+node:gcross.20100609163522.1700:emptyTable
+emptyTable :: Typeable entity => Table entity
+emptyTable = mempty
+-- @-node:gcross.20100609163522.1700:emptyTable
 -- @-node:gcross.20100609163522.1698:Values
 -- @-others
 -- @-node:gcross.20100609163522.1415:@thin Object.hs
