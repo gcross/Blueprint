@@ -133,7 +133,7 @@ data Field a = Field
 -- @+node:gcross.20100609163522.1696:Monoid Object
 instance Monoid Object where
     mempty = Object (Trie.empty)
-    (Object x) `mappend` (Object y) = Object (Trie.unionR x y)
+    Object x `mappend` Object y = Object (Trie.unionR x y)
 -- @-node:gcross.20100609163522.1696:Monoid Object
 -- @+node:gcross.20100609163522.1736:Binary Object
 instance Binary Object where
@@ -188,8 +188,11 @@ field name = Field name . S.concat . L.toChunks . UUID.toByteString . fromJust .
 -- @+node:gcross.20100609163522.1694:updateObjectWith
 updateObjectWith :: Castable a => a → Object → Object
 updateObjectWith x = (`mappend` toObject x)
--- @nonl
 -- @-node:gcross.20100609163522.1694:updateObjectWith
+-- @+node:gcross.20100609203325.1472:withFields
+withFields :: FieldsAndValues fields => fields -> Object
+withFields fields = setFields fields emptyObject
+-- @-node:gcross.20100609203325.1472:withFields
 -- @-node:gcross.20100609163522.1425:Functions
 -- @+node:gcross.20100609163522.1698:Values
 -- @+node:gcross.20100609163522.1700:emptyObject

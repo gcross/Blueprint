@@ -27,6 +27,7 @@ import Data.IORef
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
@@ -203,6 +204,76 @@ main = defaultMain
         ,testProperty "decode . encode" $
             \a b -> let record = TestRecord a b in Just record == (fromObject . decode . encode . toObject) record
         -- @-node:gcross.20100609163522.1735:decode . encode
+        -- @+node:gcross.20100609203325.1470:Monoid Object
+        ,testGroup "Monoid Object"
+            -- @    @+others
+            -- @+node:gcross.20100609203325.1471:a + a
+            [testProperty "a + a" $
+                \a1 a2 -> Just a2 == getField _a ((withFields ((_a,a1::Int):.())) `mappend` (withFields ((_a,a2):.())))
+            -- @-node:gcross.20100609203325.1471:a + a
+            -- @+node:gcross.20100609203325.1475:a + b
+            ,testProperty "a + b" $
+                \a b -> (Just a :. Just b :. ()) == getFields (_a :. _b :. ()) ((withFields ((_a,a):.())) `mappend` (withFields ((_b,b::Char):.())))
+            -- @-node:gcross.20100609203325.1475:a + b
+            -- @+node:gcross.20100609203325.1477:(a,b) + (b,c)
+            ,testProperty "(a,b) + (b,c)" $
+                \a b1 b2 c ->
+                    (Just a :. Just b2 :. Just c :. ()) ==
+                        getFields (_a :. _b :. _c :. ())
+                            ((withFields ((_a,a):.(_b,b1::Char):.())) `mappend` (withFields ((_b,b2):.(_c,c):.())))
+            -- @-node:gcross.20100609203325.1477:(a,b) + (b,c)
+            -- @+node:gcross.20100609203325.1479:(a,b) + (a,c)
+            ,testProperty "(a,b) + (a,c)" $
+                \a1 a2 b c ->
+                    (Just a2 :. Just b :. Just c :. ()) ==
+                        getFields (_a :. _b :. _c :. ())
+                            ((withFields ((_a,a1::Int):.(_b,b):.())) `mappend` (withFields ((_a,a2::Int):.(_c,c):.())))
+            -- @-node:gcross.20100609203325.1479:(a,b) + (a,c)
+            -- @+node:gcross.20100609203325.1481:(a,b) + (a,c)
+            ,testProperty "(a,c) + (a,b)" $
+                \a1 a2 b c ->
+                    (Just a1 :. Just b :. Just c :. ()) ==
+                        getFields (_a :. _b :. _c :. ())
+                            ((withFields ((_a,a2::Int):.(_c,c):.())) `mappend` (withFields ((_a,a1::Int):.(_b,b):.())))
+
+            -- @-node:gcross.20100609203325.1481:(a,b) + (a,c)
+            -- @+node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
+            ,testProperty "(a,c) `mappend` (TestRecord)" $
+                \a b c a_ ->
+                    (Just a :. Just b :. Just c :. ()) ==
+                        getFields (_a :. _b :. _c :. ())
+                        ((withFields ((_a,(a_::Int)) :. (_c,c) :. ())) `mappend` (toObject (TestRecord a b)))
+            -- @-node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
+            -- @-others
+            ]
+        -- @-node:gcross.20100609203325.1470:Monoid Object
+        -- @+node:gcross.20100609203325.1465:updateObjectWith
+        ,testGroup "updateObjectWith"
+            -- @    @+others
+            -- @+node:gcross.20100609203325.1466:update empty object
+            [testProperty "update empty object" $
+                \a b -> let record = TestRecord a b in Just record == (fromObject . updateObjectWith record) emptyObject
+            -- @-node:gcross.20100609203325.1466:update empty object
+            -- @+node:gcross.20100609203325.1468:completely overwrite object
+            ,testProperty "completely overwrite object" $
+                \a b c d ->
+                    let record1 = TestRecord a b
+                        record2 = TestRecord c d
+                    in Just record2 == (fromObject . updateObjectWith record2 . toObject) record1
+            -- @-node:gcross.20100609203325.1468:completely overwrite object
+            -- @+node:gcross.20100609203325.1469:set a, set c, updateObjectWith (TestRecord a b)
+            ,testProperty "set a, set c, updateObjectWith (TestRecord a b)" $
+                \a b c a_ ->
+                    (Just a :. Just b :. Just c :. ()) ==
+                      (
+                        getFields (_a :. _b :. _c :. ())
+                        .
+                        updateObjectWith (TestRecord a b)
+                      ) (withFields ((_a,(a_::Int)) :. (_c,c) :. ()))
+            -- @-node:gcross.20100609203325.1469:set a, set c, updateObjectWith (TestRecord a b)
+            -- @-others
+            ]
+        -- @-node:gcross.20100609203325.1465:updateObjectWith
         -- @-others
         ]
     -- @-node:gcross.20100609163522.1702:Data.Object
