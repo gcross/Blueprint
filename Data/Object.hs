@@ -26,19 +26,17 @@ import Control.Exception
 import Control.Monad
 
 import Data.Binary
-import qualified Data.ByteString as S
-import qualified Data.ByteString.Lazy as L
+import Data.ByteString.Lazy (ByteString)
 import Data.Data
 import Data.Dynamic
 import Data.Maybe
 import Data.Monoid
-import Data.Trie (Trie)
-import qualified Data.Trie as Trie
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Typeable
+import Data.UUID (UUID)
 import qualified Data.UUID as UUID
 import Data.Vec ((:.)(..))
-
-import Debug.Trace
 -- @-node:gcross.20100609163522.1417:<< Import needed modules >>
 -- @nl
 
@@ -71,7 +69,7 @@ class FieldList fields result where
 instance FieldList () result where
     type FieldListArgument () result = result
     fromObjectUsingFields _ result _ = Just result
-    toObjectUsingFields _ _ = Object (Trie.empty)
+    toObjectUsingFields _ _ = Object (Map.empty)
 
 instance (Binary field_type, Typeable field_type, FieldList rest_fields value) => FieldList ((Field field_type,value → field_type) :. rest_fields) value where
     type FieldListArgument ((Field field_type,value → field_type) :. rest_fields) value = field_type → FieldListArgument rest_fields value
@@ -81,6 +79,7 @@ instance (Binary field_type, Typeable field_type, FieldList rest_fields value) =
             Just value → fromObjectUsingFields rest_fields (f value) object
     toObjectUsingFields ((field,getter) :. rest_fields) x =
         setField field (getter x) (toObjectUsingFields rest_fields x)
+-- @nonl
 -- @-node:gcross.20100609163522.1440:FieldList
 -- @+node:gcross.20100609163522.1732:FieldsAndValues
 class FieldsAndValues field_and_values where
@@ -112,33 +111,34 @@ instance (Binary a, Typeable a, Fields rest_fields) => Fields (Field a :. rest_f
 data Entity =
     Entity
     {   entityValue :: Dynamic
-    ,   entitySerialized :: L.ByteString
+    ,   entitySerialized :: ByteString
     }
   | SerializedEntity
-    {   entityData :: L.ByteString
+    {   entityData :: ByteString
     ,   entityType :: String
     }
 -- @-node:gcross.20100609163522.1419:Entity
 -- @+node:gcross.20100609163522.1433:Object
-newtype Object = Object (Trie Entity) deriving (Typeable)
+newtype Object = Object (Map UUID Entity) deriving (Typeable)
 -- @-node:gcross.20100609163522.1433:Object
 -- @+node:gcross.20100609163522.1422:Field
 data Field a = Field
     {   fieldName :: String
-    ,   fieldId :: S.ByteString
+    ,   fieldId :: UUID
     } deriving (Show,Eq)
 -- @-node:gcross.20100609163522.1422:Field
 -- @-node:gcross.20100609163522.1418:Types
 -- @+node:gcross.20100609163522.1695:Instances
 -- @+node:gcross.20100609163522.1696:Monoid Object
 instance Monoid Object where
-    mempty = Object (Trie.empty)
-    Object x `mappend` Object y = Object (Trie.unionR x y)
+    mempty = Object mempty
+    Object x `mappend` Object y = Object (y `mappend` x)
 -- @-node:gcross.20100609163522.1696:Monoid Object
 -- @+node:gcross.20100609163522.1736:Binary Object
 instance Binary Object where
-    put (Object fields) = put fields
-    get = fmap Object get
+    put (Object fields) = put . Map.toList $ fields
+    get = fmap (Object . Map.fromList) get
+-- @nonl
 -- @-node:gcross.20100609163522.1736:Binary Object
 -- @+node:gcross.20100609163522.1738:Binary Entity
 instance Binary Entity where
@@ -168,21 +168,23 @@ fromEntity (SerializedEntity {..}) =
 -- @+node:gcross.20100609163522.1430:getField
 getField :: (Binary a, Typeable a) => Field a → Object → Maybe a
 getField (field@Field {..}) (Object fields) =
-    case Trie.lookup fieldId fields of
+    case Map.lookup fieldId fields of
         Nothing → Nothing
         Just entity →
             case fromEntity entity of
                 Nothing → throw (TypeError field)
                 Just value → Just value
+-- @nonl
 -- @-node:gcross.20100609163522.1430:getField
 -- @+node:gcross.20100609163522.1432:setField
 setField :: (Binary a, Typeable a) => Field a → a → Object → Object
 setField (Field {..}) new_value (Object fields) =
-    Object (Trie.insert fieldId (toEntity new_value) fields)
+    Object (Map.insert fieldId (toEntity new_value) fields)
+-- @nonl
 -- @-node:gcross.20100609163522.1432:setField
 -- @+node:gcross.20100609163522.1693:field
 field :: String → String → Field a
-field name = Field name . S.concat . L.toChunks . UUID.toByteString . fromJust . UUID.fromString
+field name = Field name . fromJust . UUID.fromString
 -- @nonl
 -- @-node:gcross.20100609163522.1693:field
 -- @+node:gcross.20100609163522.1694:updateObjectWith
