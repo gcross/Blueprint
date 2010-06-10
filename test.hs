@@ -260,11 +260,11 @@ main = defaultMain
                 -- @-node:gcross.20100607083309.1390:throw TestException
                 -- @+node:gcross.20100607083309.1392:3 parallel runners
                 ,testCase "3 parallel runners" $ do
-                    v1 <- newEmptyMVar
-                    v2 <- newEmptyMVar
+                    v1 ← newEmptyMVar
+                    v2 ← newEmptyMVar
                     withMultipleRunners 3
                         [IOTask (readMVar v1) (mapLeft (const ()))
-                        ,IOTask (do {value <- readMVar v2; putMVar v1 value; return value;}) (mapLeft (const ()))
+                        ,IOTask (do {value ← readMVar v2; putMVar v1 value; return value;}) (mapLeft (const ()))
                         ,IOTask (putMVar v2 1 >> return 1) (mapLeft (const ()))
                         ]
                     >>=

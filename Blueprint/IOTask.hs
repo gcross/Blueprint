@@ -23,7 +23,8 @@ import Control.Monad
 -- @+others
 -- @+node:gcross.20100604204549.7683:Types
 -- @+node:gcross.20100604204549.7685:IOTask
-data IOTask a = forall r. IOTask (IO r) (Either SomeException r → a)
+data IOTask a = ∀ r. IOTask (IO r) (Either SomeException r → a)
+-- @nonl
 -- @-node:gcross.20100604204549.7685:IOTask
 -- @-node:gcross.20100604204549.7683:Types
 -- @+node:gcross.20100604204549.7686:Functions
