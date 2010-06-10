@@ -116,32 +116,35 @@ instance Exception ReturnedWrongNumberOfResults
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604204549.1368:Job
 data Job result = 
-    forall cache. Binary cache =>
+    ∀ cache. Binary cache =>
         JobSubmission [String] (Maybe cache → JobTask result ([result],cache)) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest String (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [String] ByteString))
-  | forall cache. Binary cache => JobTask Int (JobTask result ([result],cache))
+  | ∀ cache. Binary cache => JobTask Int (JobTask result ([result],cache))
 -- @-node:gcross.20100604204549.1368:Job
 -- @+node:gcross.20100604184944.1294:JobStatus
 data JobStatus result =
-    forall cache. Binary cache => Pending (Maybe cache → JobTask result ([result],cache))
+    ∀ cache. Binary cache => Pending (Maybe cache → JobTask result ([result],cache))
   | Running [Int] [(Int,MVar (Either SomeException result))]
   | Succeeded [result]
   | Failed (IntMap SomeException) CombinedException
+-- @nonl
 -- @-node:gcross.20100604184944.1294:JobStatus
 -- @+node:gcross.20100604184944.1295:JobTask
 data JobTask r a =
     Request [String] ([r] → JobTask r a)
-  | forall b. PerformIO (IO b) (b → JobTask r a)
+  | ∀ b. PerformIO (IO b) (b → JobTask r a)
   | Return a
+-- @nonl
 -- @-node:gcross.20100604184944.1295:JobTask
 -- @+node:gcross.20100604204549.1380:PausedJob
-data PausedJob result = forall cache. Binary cache => PausedJob
+data PausedJob result = ∀ cache. Binary cache => PausedJob
     {   pausedJobPendingRequests :: IntSet
     ,   pausedJobRequests :: [(Int,Int)]
     ,   pausedJobComputeTask :: [result] → JobTask result ([result],cache)
     }
+-- @nonl
 -- @-node:gcross.20100604204549.1380:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
 data JobServerState result = JobServerState
@@ -398,6 +401,7 @@ startJobTask job_id computeTaskFromCache = do
         IntMap.insert job_id
         $
         Running [] []
+-- @nonl
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100607083309.1418:addJobResultListener
 addJobResultListener :: Int → Int → MVar (Either SomeException result) → StateT (JobServerState result) IO ()
