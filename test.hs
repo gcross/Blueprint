@@ -5,6 +5,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100602152546.1867:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100602152546.1867:<< Language extensions >>
 -- @nl
@@ -28,6 +29,9 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
+import Data.Vec ((:.)(..))
+
+import Debug.Trace
 
 import Test.HUnit
 import Test.Framework
@@ -36,6 +40,8 @@ import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
 import System.IO
+
+import Data.Object
 
 import Blueprint.IOTask
 import Blueprint.Jobs
@@ -68,7 +74,7 @@ instance Exception TestException
 -- @@c
 -- @-node:gcross.20100602195250.1299:findDuplicates
 -- @+node:gcross.20100603132252.2058:assertThrows
-assertThrows :: (Exception e) => e → IO a → Assertion
+assertThrows :: Exception e => e → IO a → Assertion
 assertThrows exception thunk =
     catch
         (thunk >> assertFailure "No exception was thrown.")
@@ -81,15 +87,122 @@ assertThrows exception thunk =
 -- @-node:gcross.20100603132252.2058:assertThrows
 -- @-node:gcross.20100602195250.1297:Functions
 -- @+node:gcross.20100602152546.1874:Values
+-- @+node:gcross.20100609163522.1701:Test fields
+_a = field "a" "e75eb3a0-5986-4772-9e3c-2926ded9239c" :: Field Int
+_b = field "b" "52a37070-f576-4f44-b6f5-b6825f5d756f" :: Field Char
+_c = field "c" "acc11d70-deae-4745-ba97-112350d5930f" :: Field Bool
+_a_as_char = field "a" "e75eb3a0-5986-4772-9e3c-2926ded9239c" :: Field Char
+-- @-node:gcross.20100609163522.1701:Test fields
 -- @-node:gcross.20100602152546.1874:Values
+-- @+node:gcross.20100609163522.1717:Types
+-- @+node:gcross.20100609163522.1718:TestRecord
+data TestRecord = TestRecord
+    {   t_a :: Int
+    ,   t_b :: Char
+    } deriving (Eq,Show)
+
+fields = (_a,t_a) :. (_b,t_b) :. ()
+
+instance Castable TestRecord where
+    toObject = toObjectUsingFields fields
+    fromObject = fromObjectUsingFields fields TestRecord
+-- @-node:gcross.20100609163522.1718:TestRecord
+-- @-node:gcross.20100609163522.1717:Types
 -- @-others
 
 main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20100602152546.1870:<< Tests >>
     -- @+others
+    -- @+node:gcross.20100609163522.1702:Data.Object
+    [testGroup "Data.Object"
+        -- @    @+others
+        -- @+node:gcross.20100609163522.1703:fromEntity . toEntity
+        [testProperty "fromEntity . toEntity" $
+            \(x :: Int) -> Just x == (fromEntity . toEntity) x
+        -- @-node:gcross.20100609163522.1703:fromEntity . toEntity
+        -- @+node:gcross.20100609163522.1705:getField/setField
+        ,testGroup "getField/setField"
+            -- @    @+others
+            -- @+node:gcross.20100609163522.1706:set a, get a
+            [testProperty "set a, get a" $
+                \x -> Just x == (getField _a . setField _a x) emptyObject
+            -- @-node:gcross.20100609163522.1706:set a, get a
+            -- @+node:gcross.20100609163522.1728:set a (as char), get a
+            ,testCase "set a (as char), get a" $
+                assertThrows
+                    (TypeError _a)
+                    $
+                    evaluate ((getField _a . setField _a_as_char 'Q') emptyObject)
+            -- @-node:gcross.20100609163522.1728:set a (as char), get a
+            -- @+node:gcross.20100609163522.1708:set b, get b
+            ,testProperty "set a, get b" $
+                \x -> Just x == (getField _b . setField _b x) emptyObject
+            -- @-node:gcross.20100609163522.1708:set b, get b
+            -- @+node:gcross.20100609163522.1710:set a, get b
+            ,testProperty "set a, get b" $
+                \x -> Nothing == (getField _b . setField _a x) emptyObject
+            -- @-node:gcross.20100609163522.1710:set a, get b
+            -- @+node:gcross.20100609163522.1712:set b, get a
+            ,testProperty "set b, get a" $
+                \x -> Nothing == (getField _a . setField _b x) emptyObject
+            -- @-node:gcross.20100609163522.1712:set b, get a
+            -- @+node:gcross.20100609163522.1714:set a, set b, get a
+            ,testProperty "set a, set b, get a" $
+                \a b -> Just a == (getField _a . setField _b b . setField _a a) emptyObject
+            -- @-node:gcross.20100609163522.1714:set a, set b, get a
+            -- @+node:gcross.20100609163522.1716:set a, set b, get b
+            ,testProperty "set a, set b, get a" $
+                \a b -> Just b == (getField _b . setField _b b . setField _a a) emptyObject
+            -- @-node:gcross.20100609163522.1716:set a, set b, get b
+            -- @-others
+            ]
+        -- @-node:gcross.20100609163522.1705:getField/setField
+        -- @+node:gcross.20100609163522.1733:getFields . setFields
+        ,testProperty "getFields . setFields" $
+            \a c ->
+                (Just a :. Nothing :. Just c :. ()) == 
+                    (getFields (_a :. _b :. _c :. ())
+                     .
+                     setFields ((_a,a) :. (_c,c) :. ())
+                    ) emptyObject
+
+        -- @-node:gcross.20100609163522.1733:getFields . setFields
+        -- @+node:gcross.20100609163522.1719:field lists
+        ,testGroup "field lists"
+            -- @    @+others
+            -- @+node:gcross.20100609163522.1720:cast of empty object
+            [testCase "cast of empty object" $
+                assertEqual
+                    "Did the object fail to cast?"
+                    (Nothing :: Maybe TestRecord)
+                    (fromObject emptyObject)
+            -- @-node:gcross.20100609163522.1720:cast of empty object
+            -- @+node:gcross.20100609163522.1722:fromObject . toObject
+            ,testProperty "fromObject . toObject" $
+                \a b -> let record = TestRecord a b in Just record == (fromObject . toObject) record
+            -- @-node:gcross.20100609163522.1722:fromObject . toObject
+            -- @+node:gcross.20100609163522.1723:set a, set b, fromObject
+            ,testProperty "set a, set b, fromObject" $
+                \a b -> let record = TestRecord a b in Just record == (fromObject . setField _a a . setField _b b) emptyObject
+
+            -- @-node:gcross.20100609163522.1723:set a, set b, fromObject
+            -- @+node:gcross.20100609163522.1730:set a, set b, set c, fromObject
+            ,testProperty "set a, set b, set c, fromObject" $
+                \a b c -> let record = TestRecord a b in Just record == (fromObject . setField _c c . setField _a a . setField _b b) emptyObject
+            -- @-node:gcross.20100609163522.1730:set a, set b, set c, fromObject
+            -- @+node:gcross.20100609163522.1725:set a, fromObject
+            ,testProperty "set a, fromObject" $
+                \a -> (Nothing :: Maybe TestRecord) == (fromObject . setField _a a) emptyObject
+            -- @-node:gcross.20100609163522.1725:set a, fromObject
+            -- @-others
+            ]
+        -- @-node:gcross.20100609163522.1719:field lists
+        -- @-others
+        ]
+    -- @-node:gcross.20100609163522.1702:Data.Object
     -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
-    [testGroup "Blueprint.IOTask"
+    ,testGroup "Blueprint.IOTask"
         -- @    @+others
         -- @+node:gcross.20100604204549.7689:single runner
         [testGroup "single runner" $
@@ -274,6 +387,7 @@ main = defaultMain
                         ,Right 1
                         ,Right 1
                         ]
+                -- @nonl
                 -- @-node:gcross.20100607083309.1392:3 parallel runners
                 -- @-others
                 ]
