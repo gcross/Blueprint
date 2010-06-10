@@ -21,6 +21,7 @@ import Control.Exception hiding (assert)
 import Control.Monad
 import Control.Monad.IO.Class
 
+import Data.Binary
 import Data.Either.Unwrap
 import Data.IORef
 import Data.List
@@ -198,6 +199,10 @@ main = defaultMain
             -- @-others
             ]
         -- @-node:gcross.20100609163522.1719:field lists
+        -- @+node:gcross.20100609163522.1735:decode . encode
+        ,testProperty "decode . encode" $
+            \a b -> let record = TestRecord a b in Just record == (fromObject . decode . encode . toObject) record
+        -- @-node:gcross.20100609163522.1735:decode . encode
         -- @-others
         ]
     -- @-node:gcross.20100609163522.1702:Data.Object

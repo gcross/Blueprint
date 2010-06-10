@@ -23,6 +23,7 @@ module Data.Object where
 -- @+node:gcross.20100609163522.1417:<< Import needed modules >>
 import Control.Applicative
 import Control.Exception
+import Control.Monad
 
 import Data.Binary
 import qualified Data.ByteString as S
@@ -111,7 +112,7 @@ instance (Binary a, Typeable a, Fields rest_fields) => Fields (Field a :. rest_f
 data Entity =
     Entity
     {   entityValue :: Dynamic
-    ,   entitySerialized :: Put
+    ,   entitySerialized :: L.ByteString
     }
   | SerializedEntity
     {   entityData :: L.ByteString
@@ -134,6 +135,18 @@ instance Monoid Object where
     mempty = Object (Trie.empty)
     (Object x) `mappend` (Object y) = Object (Trie.unionR x y)
 -- @-node:gcross.20100609163522.1696:Monoid Object
+-- @+node:gcross.20100609163522.1736:Binary Object
+instance Binary Object where
+    put (Object fields) = put fields
+    get = fmap Object get
+-- @-node:gcross.20100609163522.1736:Binary Object
+-- @+node:gcross.20100609163522.1738:Binary Entity
+instance Binary Entity where
+    put (Entity{..}) = do
+        put entitySerialized
+        put . show . dynTypeRep $ entityValue
+    get = liftM2 SerializedEntity get get
+-- @-node:gcross.20100609163522.1738:Binary Entity
 -- @-node:gcross.20100609163522.1695:Instances
 -- @+node:gcross.20100609163522.1425:Functions
 -- @+node:gcross.20100609163522.1426:toEntity
@@ -141,7 +154,7 @@ toEntity :: (Binary a, Typeable a) => a → Entity
 toEntity =
     Entity
         <$> toDyn
-        <*> put
+        <*> encode
 -- @-node:gcross.20100609163522.1426:toEntity
 -- @+node:gcross.20100609163522.1427:fromEntity
 fromEntity :: (Binary a, Typeable a) => Entity → Maybe a
