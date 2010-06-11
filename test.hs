@@ -45,6 +45,7 @@ import System.IO
 
 import Data.Object
 
+import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
