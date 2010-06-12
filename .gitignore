@@ -9,3 +9,4 @@ haskell-interfaces
 objects
 libraries
 dist
+test
