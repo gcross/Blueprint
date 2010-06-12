@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100602152546.1867:<< Language extensions >>
@@ -26,6 +27,7 @@ import Control.Monad.IO.Class
 
 import Data.Binary
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Dynamic
 import Data.Either.Unwrap
 import Data.IORef
@@ -37,6 +39,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
 import Data.Vec ((:.)(..))
+import Data.Version
 
 import Debug.Trace
 
@@ -52,6 +55,8 @@ import System.IO
 
 import Data.Object
 
+import Blueprint.Configuration.Tools
+import Blueprint.Configuration.Tools.Compilers.GCC
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.IOTask
 import Blueprint.Jobs
@@ -338,6 +343,48 @@ main = defaultMain
                             record
             ]
     -- @-node:gcross.20100609163522.1702:Data.Object
+    -- @+node:gcross.20100611224425.1552:Blueprint.Configuration.Tools.Compilers.GCC
+    ,testGroup "Blueprint.Configuration.Tools.Compilers.GCC"
+        -- @    @+others
+        -- @+node:gcross.20100611224425.1553:version parser
+        [testGroup "version parser" $
+            case gcc_probe of
+                Probe { probeVersionRegEx = regex } →
+                    [testCase ("test #" ++ show test_number)
+                        .
+                        assertEqual
+                            "Is the parsed version correct?"
+                            (Just correct_version)
+                        .
+                        extractVersion regex
+                        .
+                        L.pack
+                        .
+                        unlines
+                        $
+                        test_string
+                    | test_number ← [1..]
+                    | (correct_version,test_string) ←
+                        [(Version [4,2,1] []
+                         ,["i686-apple-darwin10-gcc-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5659)"
+                          ,"Copyright (C) 2007 Free Software Foundation, Inc."
+                          ,"This is free software; see the source for copying conditions.  There is NO"
+                          ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+                          ]
+                         )
+                        ,(Version [4,4,2] []
+                         ,["gcc (Gentoo 4.4.2 p1.0) 4.4.2"
+                          ,"Copyright (C) 2009 Free Software Foundation, Inc."
+                          ,"This is free software; see the source for copying conditions.  There is NO"
+                          ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+                          ]
+                         )
+                        ]
+                    ]
+        -- @-node:gcross.20100611224425.1553:version parser
+        -- @-others
+        ]
+    -- @-node:gcross.20100611224425.1552:Blueprint.Configuration.Tools.Compilers.GCC
     -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
     ,testGroup "Blueprint.IOTask"
         -- @    @+others
