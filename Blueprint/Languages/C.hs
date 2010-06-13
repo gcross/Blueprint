@@ -12,6 +12,7 @@ module Blueprint.Languages.C where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1590:<< Import needed modules >>
+import Data.Object
 import Blueprint.Languages
 -- @-node:gcross.20100611224425.1590:<< Import needed modules >>
 -- @nl
@@ -26,7 +27,9 @@ data C
 -- @+node:gcross.20100611224425.1627:Instances
 -- @+node:gcross.20100611224425.1628:Language C
 instance Language C where
-    languageExtensions _ = ["c"]
+    languageUUID _ = uuid "853ec165-56e3-431f-99dc-c7ff8b043202"
+    languageName _ = "C"
+    languageFileExtensions _ = ["c"]
 -- @-node:gcross.20100611224425.1628:Language C
 -- @-node:gcross.20100611224425.1627:Instances
 -- @+node:gcross.20100611224425.1653:Values

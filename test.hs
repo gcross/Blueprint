@@ -61,6 +61,7 @@ import Blueprint.Languages
 import Blueprint.Languages.C
 import Blueprint.Languages.CPP
 import Blueprint.Languages.Haskell
+import Blueprint.Tools.Compilers
 import Blueprint.Tools.Compilers.GCC
 import Blueprint.Tools.Compilers.GHC
 import Blueprint.IOTask

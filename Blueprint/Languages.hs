@@ -12,9 +12,10 @@ module Blueprint.Languages where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1636:<< Import needed modules >>
 import Data.ByteString.Lazy as L
+import Data.Maybe
+import Data.UUID (UUID)
 
 import System.FilePath
--- @nonl
 -- @-node:gcross.20100611224425.1636:<< Import needed modules >>
 -- @nl
 
@@ -22,7 +23,9 @@ import System.FilePath
 -- @+node:gcross.20100611224425.1637:Classes
 -- @+node:gcross.20100611224425.1638:Language
 class Language language where
-    languageExtensions :: language → [String]
+    languageUUID :: language → UUID
+    languageName :: language → String
+    languageFileExtensions :: language → [String]
     languageDependencyExtractor :: language → L.ByteString → [Dependency]
 
     languageDependencyExtractor _ = const []

@@ -20,6 +20,7 @@ import Text.Regex.Base
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
+import Data.Object
 import Blueprint.Languages
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
@@ -33,7 +34,9 @@ data Haskell
 -- @+node:gcross.20100611224425.1687:Instances
 -- @+node:gcross.20100611224425.1688:Language Haskell
 instance Language Haskell where
-    languageExtensions _ = ["hs"]
+    languageUUID _ = uuid "5fb30321-bfcd-488e-b798-6c000a22b47f"
+    languageName _ = "Haskell"
+    languageFileExtensions _ = ["hs"]
     languageDependencyExtractor _ =
         map (
             Dependency Nothing

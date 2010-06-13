@@ -27,6 +27,7 @@ import Control.Monad
 
 import Data.Binary
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as L
 import Data.Data
 import Data.Dynamic
 import Data.Maybe
@@ -36,6 +37,7 @@ import qualified Data.Map as Map
 import Data.Typeable
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
+import Data.UUID.V5 (generateNamed)
 import Data.Vec ((:.)(..))
 -- @-node:gcross.20100609163522.1417:<< Import needed modules >>
 -- @nl
@@ -211,8 +213,7 @@ setField (Field {..}) new_value (Table fields) =
 -- @-node:gcross.20100609163522.1432:setField
 -- @+node:gcross.20100609163522.1693:field
 field :: String → String → Field value
-field name = Field name . fromJust . UUID.fromString
--- @nonl
+field name = Field name . uuid
 -- @-node:gcross.20100609163522.1693:field
 -- @+node:gcross.20100609163522.1694:updateTableWith
 updateTableWith :: (Typeable entity, Record entity record) => record → Table entity → Table entity
@@ -222,6 +223,14 @@ updateTableWith x = (`mappend` toTable x)
 withFields :: FieldsAndValues entity fields => fields -> Table entity
 withFields fields = setFields fields mempty
 -- @-node:gcross.20100609203325.1472:withFields
+-- @+node:gcross.20100611224425.1724:uuid
+uuid :: String → UUID
+uuid = fromJust . UUID.fromString
+-- @-node:gcross.20100611224425.1724:uuid
+-- @+node:gcross.20100611224425.1717:uuidInNamespace
+uuidInNamespace :: UUID → UUID → UUID
+uuidInNamespace namespace = generateNamed namespace . L.unpack . UUID.toByteString
+-- @-node:gcross.20100611224425.1717:uuidInNamespace
 -- @-node:gcross.20100609163522.1425:Functions
 -- @+node:gcross.20100609163522.1698:Values
 -- @+node:gcross.20100609163522.1700:emptyTable

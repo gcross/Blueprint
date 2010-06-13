@@ -12,6 +12,7 @@ module Blueprint.Languages.CPP where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1666:<< Import needed modules >>
+import Data.Object
 import Blueprint.Languages
 -- @-node:gcross.20100611224425.1666:<< Import needed modules >>
 -- @nl
@@ -26,7 +27,9 @@ data CPP
 -- @+node:gcross.20100611224425.1669:Instances
 -- @+node:gcross.20100611224425.1670:Language CPP
 instance Language CPP where
-    languageExtensions _ = ["cc","cpp","cxx"]
+    languageUUID _ = uuid "654515f6-e5ff-4888-9c58-dd1eae1e022e"
+    languageName _ = "CPP"
+    languageFileExtensions _ = ["cc","cpp","cxx"]
 -- @-node:gcross.20100611224425.1670:Language CPP
 -- @-node:gcross.20100611224425.1669:Instances
 -- @+node:gcross.20100611224425.1671:Values
