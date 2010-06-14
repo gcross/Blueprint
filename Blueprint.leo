@@ -30,6 +30,10 @@
 <v t="gcross.20100604204549.7680"><vh>@thin IOTask.hs</vh></v>
 <v t="gcross.20100604184944.1289"><vh>@thin Jobs.hs</vh></v>
 <v t="gcross.20100602141408.1273"><vh>@thin Options.hs</vh></v>
+<v t="gcross.20100613184558.1624"><vh>@path Phases</vh>
+<v t="gcross.20100613184558.1629"><vh>@thin Configuration.hs</vh></v>
+</v>
+<v t="gcross.20100613184558.1617"><vh>@thin Phases.hs</vh></v>
 <v t="gcross.20100611224425.1603"><vh>@path Tools</vh>
 <v t="gcross.20100611224425.1700"><vh>@thin Compilers.hs</vh></v>
 <v t="gcross.20100611224425.1604"><vh>@path Compilers</vh>
@@ -65,5 +69,6 @@ module Blueprint.Module where
 <t tx="gcross.20100611224425.1694">{-# LANGUAGE UnicodeSyntax #-}
 </t>
 <t tx="gcross.20100611224425.1696"></t>
+<t tx="gcross.20100613184558.1624"></t>
 </tnodes>
 </leo_file>

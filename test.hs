@@ -67,6 +67,8 @@ import Blueprint.Tools.Compilers.GHC
 import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
+import Blueprint.Phases
+import qualified Blueprint.Phases.Configuration as Configuration
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
 -- @nl
 
