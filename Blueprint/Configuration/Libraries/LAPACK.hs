@@ -15,13 +15,15 @@ module Blueprint.Configuration.Libraries.LAPACK where
 import Distribution.Version
 
 import Blueprint.Configuration
+import Blueprint.Tools.Compilers
+import Blueprint.Language.Fortran.F77
 -- @-node:gcross.20100610134550.1485:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20100610134550.1479:Values
 -- @+node:gcross.20100610134550.1480:fortran_test_program
-lapack_version_fortran_program :: Script Fortran
+lapack_version_fortran_program :: Script Fortran77
 lapack_version_fortran_program = scriptFromLines $
     ["program lapack_version                          "
     ,"  implicit none                                 "

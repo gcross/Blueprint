@@ -8,8 +8,7 @@
 -- @-node:gcross.20100611224425.1683:<< Language extensions >>
 -- @nl
 
-module Blueprint.Languages.Haskell
- where
+module Blueprint.Language.Haskell where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1684:<< Import needed modules >>
@@ -21,7 +20,7 @@ import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
 import Data.Object
-import Blueprint.Languages
+import Blueprint.Language
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
 

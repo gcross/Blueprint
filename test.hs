@@ -27,6 +27,7 @@ import Control.Monad.IO.Class
 
 import Data.Binary
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Dynamic
 import Data.Either.Unwrap
@@ -51,16 +52,19 @@ import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
+import Text.StringTemplate
+
 import System.IO
 
 import Data.Object
 
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.Configuration.Tools
-import Blueprint.Languages
-import Blueprint.Languages.C
-import Blueprint.Languages.CPP
-import Blueprint.Languages.Haskell
+import Blueprint.Language
+import Blueprint.Language.C
+import Blueprint.Language.CPP
+import Blueprint.Language.Haskell
+import Blueprint.Miscellaneous
 import Blueprint.Tools.Compilers
 import Blueprint.Tools.Compilers.GCC
 import Blueprint.Tools.Compilers.GHC
@@ -351,108 +355,6 @@ main = defaultMain
                             record
             ]
     -- @-node:gcross.20100609163522.1702:Data.Object
-    -- @+node:gcross.20100611224425.1713:Blueprint.Languages.Haskell
-    ,testGroup "Blueprint.Languages.Haskell"
-        -- @    @+others
-        -- @+node:gcross.20100611224425.1714:version parser
-        [testCase "dependency extractor" $
-            assertEqual
-                "Were the dependencies extracted correctly?"
-                [Dependency Nothing ["A/B/C.hi"]
-                ,Dependency Nothing ["X/Y.hi"]
-                ,Dependency Nothing ["P/Q.hi"]
-                ,Dependency Nothing ["U.hi"]
-                ]
-            .
-            languageDependencyExtractor languageHaskell
-            .
-            L.pack
-            .
-            unlines
-            $
-            ["import A.B.C"
-            ,"import  qualified  X.Y as Z"
-            ,"import P.Q (a,b,c)"
-            ,"     import    U    "
-            ]
-        -- @-node:gcross.20100611224425.1714:version parser
-        -- @-others
-        ]
-    -- @-node:gcross.20100611224425.1713:Blueprint.Languages.Haskell
-    -- @+node:gcross.20100611224425.1552:Blueprint.Tools.Compilers.GCC
-    ,testGroup "Blueprint.Tools.Compilers.GCC"
-        -- @    @+others
-        -- @+node:gcross.20100611224425.1553:version parser
-        [testGroup "version parser" $
-            case gcc_probe of
-                Probe { probeVersionRegEx = regex } →
-                    [testCase ("test #" ++ show test_number)
-                        .
-                        assertEqual
-                            "Is the parsed version correct?"
-                            (Just correct_version)
-                        .
-                        extractVersion regex
-                        .
-                        L.pack
-                        .
-                        unlines
-                        $
-                        test_string
-                    | test_number ← [1..]
-                    | (correct_version,test_string) ←
-                        [(Version [4,2,1] []
-                         ,["i686-apple-darwin10-gcc-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5659)"
-                          ,"Copyright (C) 2007 Free Software Foundation, Inc."
-                          ,"This is free software; see the source for copying conditions.  There is NO"
-                          ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
-                          ]
-                         )
-                        ,(Version [4,4,2] []
-                         ,["gcc (Gentoo 4.4.2 p1.0) 4.4.2"
-                          ,"Copyright (C) 2009 Free Software Foundation, Inc."
-                          ,"This is free software; see the source for copying conditions.  There is NO"
-                          ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
-                          ]
-                         )
-                        ]
-                    ]
-        -- @-node:gcross.20100611224425.1553:version parser
-        -- @-others
-        ]
-    -- @-node:gcross.20100611224425.1552:Blueprint.Tools.Compilers.GCC
-    -- @+node:gcross.20100611224425.1568:Blueprint.Tools.Compilers.GHC
-    ,testGroup "Blueprint.Configuration.Tools.Compilers.GHC"
-        -- @    @+others
-        -- @+node:gcross.20100611224425.1569:version parser
-        [testGroup "version parser" $
-            case ghc_probe of
-                Probe { probeVersionRegEx = regex } →
-                    [testCase ("test #" ++ show test_number)
-                        .
-                        assertEqual
-                            "Is the parsed version correct?"
-                            (Just correct_version)
-                        .
-                        extractVersion regex
-                        .
-                        L.pack
-                        .
-                        unlines
-                        $
-                        test_string
-                    | test_number ← [1..]
-                    | (correct_version,test_string) ←
-                        [(Version [6,12,1] []
-                         ,["The Glorious Glasgow Haskell Compilation System, version 6.12.1"
-                          ]
-                         )
-                        ]
-                    ]
-        -- @-node:gcross.20100611224425.1569:version parser
-        -- @-others
-        ]
-    -- @-node:gcross.20100611224425.1568:Blueprint.Tools.Compilers.GHC
     -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
     ,testGroup "Blueprint.IOTask"
         -- @    @+others
@@ -990,6 +892,34 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100607083309.1396:Blueprint.Jobs
+    -- @+node:gcross.20100611224425.1713:Blueprint.Languages.Haskell
+    ,testGroup "Blueprint.Languages.Haskell"
+        -- @    @+others
+        -- @+node:gcross.20100611224425.1714:version parser
+        [testCase "dependency extractor" $
+            assertEqual
+                "Were the dependencies extracted correctly?"
+                [Dependency Nothing ["A/B/C.hi"]
+                ,Dependency Nothing ["X/Y.hi"]
+                ,Dependency Nothing ["P/Q.hi"]
+                ,Dependency Nothing ["U.hi"]
+                ]
+            .
+            languageDependencyExtractor languageHaskell
+            .
+            L.pack
+            .
+            unlines
+            $
+            ["import A.B.C"
+            ,"import  qualified  X.Y as Z"
+            ,"import P.Q (a,b,c)"
+            ,"     import    U    "
+            ]
+        -- @-node:gcross.20100611224425.1714:version parser
+        -- @-others
+        ]
+    -- @-node:gcross.20100611224425.1713:Blueprint.Languages.Haskell
     -- @+node:gcross.20100604204549.1358:Blueprint.Options
     ,testGroup "Blueprint.Options" $
         -- @    @+others
@@ -1444,6 +1374,112 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100604204549.1358:Blueprint.Options
+    -- @+node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
+    ,testGroup "Blueprint.Tools.Compilers" $
+        -- @    @+others
+        -- @+node:gcross.20100614121927.1730:computeCompileToProgramCommand
+        [testCase "computeCompileToProgramCommand" $
+            assertEqual
+                "Is the computed program command correct?"
+                ("compile",["source.file.1","and","source.file.2","and","source.file.3","to","program"])
+                $
+                let compiler = 
+                        Compiler
+                        {   compilerProgram = undefined
+                        ,   compilerInvocationToCompileObject = undefined
+                        ,   compilerInvocationToCompileProgram =
+                                newAngleSTMP $
+                                    "compile <sources; separator=\" and \"> to <program>"
+                        ,   compilationLibraryDependencies = undefined
+                        } :: Compiler NullLanguage
+                    sources = ["source.file." ++ show i | i ← [1..3::Int]]
+                    program = "program"
+                in computeCompileToProgramCommand compiler (map SourceCodeFile sources) program
+        -- @-node:gcross.20100614121927.1730:computeCompileToProgramCommand
+        -- @-others
+        ]
+    -- @-node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
+    -- @+node:gcross.20100614121927.2365:Blueprint.Tools.Compilers.GCC
+    ,testGroup "Blueprint.Tools.Compilers.GCC"
+        -- @    @+others
+        -- @+node:gcross.20100614121927.2366:version parser
+        [testGroup "version parser" $
+                [testCase ("test #" ++ show test_number)
+                    .
+                    assertEqual
+                        "Is the parsed version correct?"
+                        correct_value
+                    .
+                    extractVersion gcc_version_regex
+                    .
+                    S.pack
+                    .
+                    unlines
+                    $
+                    test_string
+                | test_number ← [1..]
+                | (correct_value,test_string) ←
+                    [(Just (Version [4,2,1] [])
+                     ,["i686-apple-darwin10-gcc-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5659)"
+                      ,"Copyright (C) 2007 Free Software Foundation, Inc."
+                      ,"This is free software; see the source for copying conditions.  There is NO"
+                      ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+                      ]
+                     )
+                    ,(Just (Version [4,4,2] [])
+                     ,["gcc (Gentoo 4.4.2 p1.0) 4.4.2"
+                      ,"Copyright (C) 2009 Free Software Foundation, Inc."
+                      ,"This is free software; see the source for copying conditions.  There is NO"
+                      ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+                      ]
+                     )
+                    ,(Nothing
+                     ,["The Glorious Glasgow Haskell Compilation System, version 6.12.1"
+                      ]
+                     )
+                    ]
+                ]
+        -- @-node:gcross.20100614121927.2366:version parser
+        -- @-others
+        ]
+    -- @-node:gcross.20100614121927.2365:Blueprint.Tools.Compilers.GCC
+    -- @+node:gcross.20100614121927.2369:Blueprint.Tools.Compilers.GHC
+    ,testGroup "Blueprint.Configuration.Tools.Compilers.GHC"
+        -- @    @+others
+        -- @+node:gcross.20100614121927.2370:version parser
+        [testGroup "version parser" $
+                [testCase ("test #" ++ show test_number)
+                    .
+                    assertEqual
+                        "Is the parsed version correct?"
+                        correct_value
+                    .
+                    extractVersion ghc_version_regex
+                    .
+                    S.pack
+                    .
+                    unlines
+                    $
+                    test_string
+                | test_number ← [1..]
+                | (correct_value,test_string) ←
+                    [(Just (Version [6,12,1] [])
+                     ,["The Glorious Glasgow Haskell Compilation System, version 6.12.1"
+                      ]
+                     )
+                    ,(Nothing
+                     ,["gcc (Gentoo 4.4.2 p1.0) 4.4.2"
+                      ,"Copyright (C) 2009 Free Software Foundation, Inc."
+                      ,"This is free software; see the source for copying conditions.  There is NO"
+                      ,"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+                      ]
+                     )
+                    ]
+                ]
+        -- @-node:gcross.20100614121927.2370:version parser
+        -- @-others
+        ]
+    -- @-node:gcross.20100614121927.2369:Blueprint.Tools.Compilers.GHC
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl

@@ -24,13 +24,7 @@ import Blueprint.Configuration.Tools
 -- @+others
 -- @+node:gcross.20100611224425.1613:Values
 -- @+node:gcross.20100611224425.1614:ghc_probe
-ghc_probe :: Probe
-ghc_probe =
-    Probe
-    {   probePrograms = ["ghc"]
-    ,   probeArguments = ["--version"]
-    ,   probeVersionRegEx = (makeRegex "version ([0-9.]*)" :: Regex)
-    }
+ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
 -- @-node:gcross.20100611224425.1614:ghc_probe
 -- @-node:gcross.20100611224425.1613:Values
 -- @-others

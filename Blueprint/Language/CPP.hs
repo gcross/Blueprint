@@ -8,12 +8,12 @@
 -- @-node:gcross.20100611224425.1665:<< Language extensions >>
 -- @nl
 
-module Blueprint.Languages.CPP where
+module Blueprint.Language.CPP where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1666:<< Import needed modules >>
 import Data.Object
-import Blueprint.Languages
+import Blueprint.Language
 -- @-node:gcross.20100611224425.1666:<< Import needed modules >>
 -- @nl
 

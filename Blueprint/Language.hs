@@ -1,18 +1,21 @@
 -- @+leo-ver=4-thin
--- @+node:gcross.20100611224425.1634:@thin Languages.hs
+-- @+node:gcross.20100611224425.1634:@thin Language.hs
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1635:<< Language extensions >>
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1635:<< Language extensions >>
 -- @nl
 
-module Blueprint.Languages where
+module Blueprint.Language where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1636:<< Import needed modules >>
-import Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy as L
 import Data.Maybe
+import Data.Object
 import Data.UUID (UUID)
 
 import System.FilePath
@@ -25,10 +28,13 @@ import System.FilePath
 class Language language where
     languageUUID :: language → UUID
     languageName :: language → String
+    languageFileExtension :: language → String
     languageFileExtensions :: language → [String]
     languageDependencyExtractor :: language → L.ByteString → [Dependency]
 
     languageDependencyExtractor _ = const []
+    languageFileExtension = head . languageFileExtensions
+    languageFileExtensions = (:[]) . languageFileExtension
 -- @-node:gcross.20100611224425.1638:Language
 -- @-node:gcross.20100611224425.1637:Classes
 -- @+node:gcross.20100611224425.1706:Types
@@ -41,6 +47,16 @@ data Dependency =
 
 -- @-node:gcross.20100611224425.1707:Dependency
 -- @-node:gcross.20100611224425.1706:Types
+-- @+node:gcross.20100614121927.1732:Languages
+-- @+node:gcross.20100614121927.1734:NullLanguage
+data NullLanguage
+
+instance Language NullLanguage where 
+    languageUUID _ = uuid "2b47a276-77f8-11df-b74e-001aa0c5d320"
+    languageName _ = ""
+    languageFileExtension _ = ""
+-- @-node:gcross.20100614121927.1734:NullLanguage
+-- @-node:gcross.20100614121927.1732:Languages
 -- @+node:gcross.20100611224425.1709:Functions
 -- @+node:gcross.20100611224425.1710:dotsToPath
 dotsToPath :: String → String
@@ -48,7 +64,11 @@ dotsToPath [] = []
 dotsToPath ('.':rest) = pathSeparator:dotsToPath rest
 dotsToPath (c:rest) = c:dotsToPath rest
 -- @-node:gcross.20100611224425.1710:dotsToPath
+-- @+node:gcross.20100614121927.1764:languageOf
+languageOf :: Language language ⇒ t language → language
+languageOf = undefined
+-- @-node:gcross.20100614121927.1764:languageOf
 -- @-node:gcross.20100611224425.1709:Functions
 -- @-others
--- @-node:gcross.20100611224425.1634:@thin Languages.hs
+-- @-node:gcross.20100611224425.1634:@thin Language.hs
 -- @-leo
