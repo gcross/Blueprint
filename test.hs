@@ -652,7 +652,7 @@ main = defaultMain
         -- @    @+others
         -- @+node:gcross.20100607083309.1403:start job server
         [testCase "start job server" $ do
-            job_server ← startJobServer 4 Map.empty :: IO (JobServer ())
+            job_server ← startJobServer 4 Map.empty :: IO (JobServer String ())
             killJobServer job_server
 
         -- @-node:gcross.20100607083309.1403:start job server
