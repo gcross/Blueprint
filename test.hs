@@ -1520,6 +1520,17 @@ main = defaultMain
                   ]
                  )
                 -- @-node:gcross.20100614172544.1717:gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld
+                -- @+node:gcross.20100614185504.1696:gcc -c helloworld.cc -o helloworld.o
+                ,("gcc -c helloworld.c -o helloworld.o"
+                 ,[("command","gcc")
+                  ,("source","helloworld.c")
+                  ,("object","helloworld.o")
+                  ]
+                 ,[Library "lapack" Nothing Nothing
+                  ,Library "foo" (Just "/usr/lib/foo.a") Nothing
+                  ]
+                 )
+                -- @-node:gcross.20100614185504.1696:gcc -c helloworld.cc -o helloworld.o
                 -- @-others
                 ]
             ]

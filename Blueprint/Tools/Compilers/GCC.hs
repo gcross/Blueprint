@@ -58,7 +58,7 @@ gcc_invocation_template = newAngleSTMP
     \<else>\
         \ <source; separator=\" \">\
     \<endif>\
-    \<if(libraries)>\
+    \<if(program)>\
         \<libraries:{\
             \<if(it.libraryLocation)>\
                 \ <it.libraryLocation>\
