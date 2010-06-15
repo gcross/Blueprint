@@ -54,9 +54,10 @@ gcc_invocation_template = newAngleSTMP
         \ -x <language>\
     \<endif>\
     \<if(object)>\
-        \ -c\
+        \ -c <source>\
+    \<else>\
+        \ <source; separator=\" \">\
     \<endif>\
-    \ <sources; separator=\" \">\
     \<if(libraries)>\
         \<libraries:{\
             \<if(it.libraryLocation)>\
@@ -66,7 +67,7 @@ gcc_invocation_template = newAngleSTMP
             \<endif>\
         \}>\
     \<endif>\
-    \ -o <target>"
+    \ -o <object><program>"
 -- @-node:gcross.20100614172544.1686:gcc_invocation_template
 -- @-node:gcross.20100611224425.1608:Values
 -- @-others

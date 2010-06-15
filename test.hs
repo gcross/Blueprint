@@ -1464,8 +1464,8 @@ main = defaultMain
                 -- @+node:gcross.20100614172544.1688:gcc helloworld.c -o helloworld
                 [("gcc helloworld.c -o helloworld"
                  ,[("command","gcc")
-                  ,("sources","helloworld.c")
-                  ,("target","helloworld")
+                  ,("source","helloworld.c")
+                  ,("program","helloworld")
                   ]
                  ,[]
                  )
@@ -1473,9 +1473,9 @@ main = defaultMain
                 -- @+node:gcross.20100614172544.1714:gfortran a.f b.f -o helloworld
                 ,("gfortran a.f b.f -o helloworld"
                  ,[("command","gfortran")
-                  ,("sources","b.f")
-                  ,("sources","a.f")
-                  ,("target","helloworld")
+                  ,("source","b.f")
+                  ,("source","a.f")
+                  ,("program","helloworld")
                   ]
                  ,[]
                  )
@@ -1484,8 +1484,8 @@ main = defaultMain
                 ,("gcc -x f77 helloworld.f -o helloworld"
                  ,[("command","gcc")
                   ,("language","f77")
-                  ,("sources","helloworld.f")
-                  ,("target","helloworld")
+                  ,("source","helloworld.f")
+                  ,("program","helloworld")
                   ]
                  ,[]
                  )
@@ -1493,18 +1493,27 @@ main = defaultMain
                 -- @+node:gcross.20100614172544.1716:g++ -c helloworld.cc -o helloworld.o
                 ,("g++ -c helloworld.cc -o helloworld.o"
                  ,[("command","g++")
-                  ,("object","true")
-                  ,("sources","helloworld.cc")
-                  ,("target","helloworld.o")
+                  ,("source","helloworld.cc")
+                  ,("object","helloworld.o")
                   ]
                  ,[]
                  )
                 -- @-node:gcross.20100614172544.1716:g++ -c helloworld.cc -o helloworld.o
+                -- @+node:gcross.20100614185504.1694:g++ -c hello-world.cc -o helloworld.o
+                ,("g++ -c hello-world.cc -o helloworld.o"
+                 ,[("command","g++")
+                  ,("source","world.cc")
+                  ,("source","hello-")
+                  ,("object","helloworld.o")
+                  ]
+                 ,[]
+                 )
+                -- @-node:gcross.20100614185504.1694:g++ -c hello-world.cc -o helloworld.o
                 -- @+node:gcross.20100614172544.1717:gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld
                 ,("gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld"
                  ,[("command","gcc")
-                  ,("sources","helloworld.c")
-                  ,("target","helloworld")
+                  ,("source","helloworld.c")
+                  ,("program","helloworld")
                   ]
                  ,[Library "lapack" Nothing Nothing
                   ,Library "foo" (Just "/usr/lib/foo.a") Nothing
