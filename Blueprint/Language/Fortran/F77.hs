@@ -28,10 +28,13 @@ instance Language Fortran77 where
     languageUUID _ = uuid "38e69eb4-ecd7-41d1-992b-dade07f27a4e"
     languageName _ = "Fortran 77"
     languageFileExtension _ = "f"
+    languageHelloWorld _ = scriptFromLines $
+        ["      PROGRAM HELLOWORLD"
+        ,"      PRINT *, 'Hello, world!'"
+        ,"      END"
+        ]
 
 instance Fortran Fortran77
-
-languageFortran77 = undefined :: Fortran77
 -- @-node:gcross.20100614121927.1760:Fortran77
 -- @-node:gcross.20100614121927.1759:Languages
 -- @-others

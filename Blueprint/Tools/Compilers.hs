@@ -57,9 +57,6 @@ data Library = Library
     ,   libraryDescription :: Maybe String
     } deriving (Typeable,Data)
 -- @-node:gcross.20100614121927.1637:Library
--- @+node:gcross.20100614121927.1644:Script
-newtype Script language = Script S.ByteString deriving Typeable
--- @-node:gcross.20100614121927.1644:Script
 -- @+node:gcross.20100614121927.1653:SourceCodeFile
 newtype SourceCodeFile language = SourceCodeFile { unwrapSourceCodeFile ::  FilePath }
 -- @-node:gcross.20100614121927.1653:SourceCodeFile
@@ -115,10 +112,6 @@ runScript compiler script =
                 Just errors → throwIO $ CompilationException errors
                 Nothing → readProcess program [] ""
 -- @-node:gcross.20100614121927.1651:runScript
--- @+node:gcross.20100614121927.1650:scriptFromLines
-scriptFromLines :: [String] -> Script language
-scriptFromLines = Script . pack . unlines
--- @-node:gcross.20100614121927.1650:scriptFromLines
 -- @+node:gcross.20100614121927.1654:withScriptAsFile
 withScriptAsFile :: Language language ⇒ Script language → (SourceCodeFile language → IO a) → IO a
 withScriptAsFile script@(Script script_data) thunk =
@@ -127,6 +120,19 @@ withScriptAsFile script@(Script script_data) thunk =
         >>
         thunk (SourceCodeFile filepath)
 -- @-node:gcross.20100614121927.1654:withScriptAsFile
+-- @+node:gcross.20100615082419.1709:verifyCompileToProgram
+verifyCompileToProgram :: Language language ⇒ Compiler language → IO Bool
+verifyCompileToProgram compiler =
+    fmap verifyHelloWorld
+    .
+    runScript compiler
+    .
+    languageHelloWorld
+    .
+    languageOf
+    $
+    compiler
+-- @-node:gcross.20100615082419.1709:verifyCompileToProgram
 -- @-node:gcross.20100611224425.1715:Functions
 -- @+node:gcross.20100611224425.1718:Values
 -- @+node:gcross.20100611224425.1719:compiler_namespace

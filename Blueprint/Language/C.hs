@@ -18,26 +18,20 @@ import Blueprint.Language
 -- @nl
 
 -- @+others
--- @+node:gcross.20100611224425.1625:Types
--- @+node:gcross.20100611224425.1626:C
+-- @+node:gcross.20100615082419.1699:Languages
+-- @+node:gcross.20100615082419.1702:C
 data C
--- @nonl
--- @-node:gcross.20100611224425.1626:C
--- @-node:gcross.20100611224425.1625:Types
--- @+node:gcross.20100611224425.1627:Instances
--- @+node:gcross.20100611224425.1628:Language C
+
 instance Language C where
     languageUUID _ = uuid "853ec165-56e3-431f-99dc-c7ff8b043202"
     languageName _ = "C"
     languageFileExtensions _ = ["c"]
--- @-node:gcross.20100611224425.1628:Language C
--- @-node:gcross.20100611224425.1627:Instances
--- @+node:gcross.20100611224425.1653:Values
--- @+node:gcross.20100611224425.1654:languageC
-languageC = undefined :: C
-
--- @-node:gcross.20100611224425.1654:languageC
--- @-node:gcross.20100611224425.1653:Values
+    languageHelloWorld _ = scriptFromLines $
+        ["#include <stdio.h>"
+        ,"int main() { printf(\"Hello, world!\"; }"
+        ]
+-- @-node:gcross.20100615082419.1702:C
+-- @-node:gcross.20100615082419.1699:Languages
 -- @-others
 -- @-node:gcross.20100611224425.1588:@thin C.hs
 -- @-leo

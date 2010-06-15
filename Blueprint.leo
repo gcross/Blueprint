@@ -32,10 +32,6 @@
 <v t="gcross.20100614172544.1694"><vh>@thin F90.hs</vh></v>
 <v t="gcross.20100614172544.1704"><vh>@thin F95.hs</vh></v>
 </v>
-<v t="gcross.20100614121927.1740"><vh>thin template.hs</vh>
-<v t="gcross.20100614121927.1741"><vh>&lt;&lt; Language extensions &gt;&gt;</vh></v>
-<v t="gcross.20100614121927.1742"><vh>&lt;&lt; Import needed modules &gt;&gt;</vh></v>
-</v>
 <v t="gcross.20100611224425.1682"><vh>@thin Haskell.hs</vh></v>
 </v>
 <v t="gcross.20100604184944.1289"><vh>@thin Jobs.hs</vh></v>
@@ -81,21 +77,6 @@ module Blueprint.Module where
 </t>
 <t tx="gcross.20100611224425.1696"></t>
 <t tx="gcross.20100613184558.1624"></t>
-<t tx="gcross.20100614121927.1638"></t>
-<t tx="gcross.20100614121927.1639"></t>
-<t tx="gcross.20100614121927.1640"></t>
 <t tx="gcross.20100614121927.1735"></t>
-<t tx="gcross.20100614121927.1740">@language Haskell
-&lt;&lt; Language extensions &gt;&gt;
-
-module Blueprint.Module where
-
-&lt;&lt; Import needed modules &gt;&gt;
-
-@others
-</t>
-<t tx="gcross.20100614121927.1741">{-# LANGUAGE UnicodeSyntax #-}
-</t>
-<t tx="gcross.20100614121927.1742"></t>
 </tnodes>
 </leo_file>

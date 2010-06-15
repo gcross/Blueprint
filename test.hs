@@ -906,7 +906,7 @@ main = defaultMain
                 ,Dependency Nothing ["U.hi"]
                 ]
             .
-            languageDependencyExtractor languageHaskell
+            languageDependencyExtractor (language :: Haskell)
             .
             L.pack
             .

@@ -28,10 +28,13 @@ instance Language Fortran95 where
     languageUUID _ = uuid "d898165f-7671-4036-9476-422d44256248"
     languageName _ = "Fortran 95"
     languageFileExtension _ = "f95"
+    languageHelloWorld _ = scriptFromLines $
+        ["program helloworld"
+        ,"  print \"(A13)\", \"Hello, world!\""
+        ,"end program"
+        ]
 
 instance Fortran Fortran95
-
-languageFortran95 = undefined :: Fortran95
 -- @-node:gcross.20100614172544.1708:Fortran95
 -- @-node:gcross.20100614172544.1707:Languages
 -- @-others

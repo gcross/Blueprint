@@ -3,8 +3,8 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1635:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1635:<< Language extensions >>
 -- @nl
@@ -13,9 +13,12 @@ module Blueprint.Language where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1636:<< Import needed modules >>
+import Data.ByteString.Char8 (pack)
+import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe
 import Data.Object
+import Data.Typeable
 import Data.UUID (UUID)
 
 import System.FilePath
@@ -26,12 +29,15 @@ import System.FilePath
 -- @+node:gcross.20100611224425.1637:Classes
 -- @+node:gcross.20100611224425.1638:Language
 class Language language where
+    language :: language
     languageUUID :: language → UUID
     languageName :: language → String
     languageFileExtension :: language → String
     languageFileExtensions :: language → [String]
     languageDependencyExtractor :: language → L.ByteString → [Dependency]
+    languageHelloWorld :: language → Script language
 
+    language = undefined
     languageDependencyExtractor _ = const []
     languageFileExtension = head . languageFileExtensions
     languageFileExtensions = (:[]) . languageFileExtension
@@ -46,6 +52,9 @@ data Dependency =
     } deriving (Eq, Show)
 
 -- @-node:gcross.20100611224425.1707:Dependency
+-- @+node:gcross.20100615082419.1696:Script
+newtype Script language = Script S.ByteString deriving Typeable
+-- @-node:gcross.20100615082419.1696:Script
 -- @-node:gcross.20100611224425.1706:Types
 -- @+node:gcross.20100614121927.1732:Languages
 -- @+node:gcross.20100614121927.1734:NullLanguage
@@ -55,6 +64,7 @@ instance Language NullLanguage where
     languageUUID _ = uuid "2b47a276-77f8-11df-b74e-001aa0c5d320"
     languageName _ = ""
     languageFileExtension _ = ""
+    languageHelloWorld _ = undefined
 -- @-node:gcross.20100614121927.1734:NullLanguage
 -- @-node:gcross.20100614121927.1732:Languages
 -- @+node:gcross.20100611224425.1709:Functions
@@ -68,6 +78,14 @@ dotsToPath (c:rest) = c:dotsToPath rest
 languageOf :: Language language ⇒ t language → language
 languageOf = undefined
 -- @-node:gcross.20100614121927.1764:languageOf
+-- @+node:gcross.20100615082419.1698:scriptFromLines
+scriptFromLines :: [String] -> Script language
+scriptFromLines = Script . pack . unlines
+-- @-node:gcross.20100615082419.1698:scriptFromLines
+-- @+node:gcross.20100615082419.1708:verifyHelloWorld
+verifyHelloWorld :: String → Bool
+verifyHelloWorld = (== ["Hello,","world!"]) . words
+-- @-node:gcross.20100615082419.1708:verifyHelloWorld
 -- @-node:gcross.20100611224425.1709:Functions
 -- @-others
 -- @-node:gcross.20100611224425.1634:@thin Language.hs

@@ -25,45 +25,45 @@ import Blueprint.Language
 -- @nl
 
 -- @+others
--- @+node:gcross.20100611224425.1685:Types
--- @+node:gcross.20100611224425.1686:Haskell
+-- @+node:gcross.20100615082419.1704:Languages
+-- @+node:gcross.20100615082419.1707:Haskell
 data Haskell
--- @-node:gcross.20100611224425.1686:Haskell
--- @-node:gcross.20100611224425.1685:Types
--- @+node:gcross.20100611224425.1687:Instances
--- @+node:gcross.20100611224425.1688:Language Haskell
+
 instance Language Haskell where
     languageUUID _ = uuid "5fb30321-bfcd-488e-b798-6c000a22b47f"
     languageName _ = "Haskell"
     languageFileExtensions _ = ["hs"]
-    languageDependencyExtractor _ =
-        map (
-            Dependency Nothing
-            .
-            (:[])
-            .
-            (++ ".hi")
-            .
-            dotsToPath
-            .
-            unpack
-            .
-            fst
-            .
-            (! 1)
-        )
+    languageDependencyExtractor _ = extractDependencies
+    languageHelloWorld _ = scriptFromLines $ ["main = putStrLn \"Hello, world!\""]
+-- @-node:gcross.20100615082419.1707:Haskell
+-- @-node:gcross.20100615082419.1704:Languages
+-- @+node:gcross.20100615082419.1705:Functions
+-- @+node:gcross.20100615082419.1706:extractDependencies
+extractDependencies =
+    map (
+        Dependency Nothing
         .
-        matchAllText import_regex
--- @-node:gcross.20100611224425.1688:Language Haskell
--- @-node:gcross.20100611224425.1687:Instances
+        (:[])
+        .
+        (++ ".hi")
+        .
+        dotsToPath
+        .
+        unpack
+        .
+        fst
+        .
+        (! 1)
+    )
+    .
+    matchAllText import_regex
+-- @-node:gcross.20100615082419.1706:extractDependencies
+-- @-node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100611224425.1689:Values
 -- @+node:gcross.20100611224425.1708:regular expression
 import_regex :: Regex
 import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)"
 -- @-node:gcross.20100611224425.1708:regular expression
--- @+node:gcross.20100611224425.1690:languageHaskell
-languageHaskell = undefined :: Haskell
--- @-node:gcross.20100611224425.1690:languageHaskell
 -- @-node:gcross.20100611224425.1689:Values
 -- @-others
 -- @-node:gcross.20100611224425.1682:@thin Haskell.hs
