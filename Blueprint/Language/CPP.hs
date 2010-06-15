@@ -18,26 +18,18 @@ import Blueprint.Language
 -- @nl
 
 -- @+others
--- @+node:gcross.20100611224425.1667:Types
--- @+node:gcross.20100611224425.1668:CPP
+-- @+node:gcross.20100614172544.1709:Languages
+-- @+node:gcross.20100614172544.1710:CPP
 data CPP
--- @nonl
--- @-node:gcross.20100611224425.1668:CPP
--- @-node:gcross.20100611224425.1667:Types
--- @+node:gcross.20100611224425.1669:Instances
--- @+node:gcross.20100611224425.1670:Language CPP
+
 instance Language CPP where
-    languageUUID _ = uuid "654515f6-e5ff-4888-9c58-dd1eae1e022e"
+    languageUUID _ = uuid "ecbcc465-3c29-4fd4-a4a5-0aa71868b337"
     languageName _ = "CPP"
     languageFileExtensions _ = ["cc","cpp","cxx"]
--- @-node:gcross.20100611224425.1670:Language CPP
--- @-node:gcross.20100611224425.1669:Instances
--- @+node:gcross.20100611224425.1671:Values
--- @+node:gcross.20100611224425.1672:languageCPP
-languageCPP = undefined :: CPP
 
--- @-node:gcross.20100611224425.1672:languageCPP
--- @-node:gcross.20100611224425.1671:Values
+languageCPP = undefined :: CPP
+-- @-node:gcross.20100614172544.1710:CPP
+-- @-node:gcross.20100614172544.1709:Languages
 -- @-others
 -- @-node:gcross.20100611224425.1664:@thin CPP.hs
 -- @-leo

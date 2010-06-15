@@ -29,6 +29,8 @@
 <v t="gcross.20100614121927.1746"><vh>@thin Fortran.hs</vh></v>
 <v t="gcross.20100614121927.1735"><vh>@path Fortran</vh>
 <v t="gcross.20100614121927.1756"><vh>@thin F77.hs</vh></v>
+<v t="gcross.20100614172544.1694"><vh>@thin F90.hs</vh></v>
+<v t="gcross.20100614172544.1704"><vh>@thin F95.hs</vh></v>
 </v>
 <v t="gcross.20100614121927.1740"><vh>thin template.hs</vh>
 <v t="gcross.20100614121927.1741"><vh>&lt;&lt; Language extensions &gt;&gt;</vh></v>

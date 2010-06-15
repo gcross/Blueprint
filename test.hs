@@ -53,6 +53,7 @@ import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
 import Text.StringTemplate
+import Text.StringTemplate.GenericStandard
 
 import System.IO
 
@@ -1440,6 +1441,80 @@ main = defaultMain
                     ]
                 ]
         -- @-node:gcross.20100614121927.2366:version parser
+        -- @+node:gcross.20100614172544.1687:invocation template
+        ,testGroup "invocation template" $
+            [testCase correct_value $
+                assertEqual
+                    "Is the computed program command correct?"
+                    (unwords . words $ correct_value)
+                .
+                unwords
+                .
+                words
+                .
+                toString
+                .
+                setAttribute "libraries" libraries
+                .
+                setManyAttrib attributes
+                $
+                gcc_invocation_template
+            | (correct_value,attributes,libraries) ←
+                -- @        @+others
+                -- @+node:gcross.20100614172544.1688:gcc helloworld.c -o helloworld
+                [("gcc helloworld.c -o helloworld"
+                 ,[("command","gcc")
+                  ,("sources","helloworld.c")
+                  ,("target","helloworld")
+                  ]
+                 ,[]
+                 )
+                -- @-node:gcross.20100614172544.1688:gcc helloworld.c -o helloworld
+                -- @+node:gcross.20100614172544.1714:gfortran a.f b.f -o helloworld
+                ,("gfortran a.f b.f -o helloworld"
+                 ,[("command","gfortran")
+                  ,("sources","b.f")
+                  ,("sources","a.f")
+                  ,("target","helloworld")
+                  ]
+                 ,[]
+                 )
+                -- @-node:gcross.20100614172544.1714:gfortran a.f b.f -o helloworld
+                -- @+node:gcross.20100614172544.1712:gcc -x f77 helloworld.c -o helloworld
+                ,("gcc -x f77 helloworld.f -o helloworld"
+                 ,[("command","gcc")
+                  ,("language","f77")
+                  ,("sources","helloworld.f")
+                  ,("target","helloworld")
+                  ]
+                 ,[]
+                 )
+                -- @-node:gcross.20100614172544.1712:gcc -x f77 helloworld.c -o helloworld
+                -- @+node:gcross.20100614172544.1716:g++ -c helloworld.cc -o helloworld.o
+                ,("g++ -c helloworld.cc -o helloworld.o"
+                 ,[("command","g++")
+                  ,("object","true")
+                  ,("sources","helloworld.cc")
+                  ,("target","helloworld.o")
+                  ]
+                 ,[]
+                 )
+                -- @-node:gcross.20100614172544.1716:g++ -c helloworld.cc -o helloworld.o
+                -- @+node:gcross.20100614172544.1717:gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld
+                ,("gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld"
+                 ,[("command","gcc")
+                  ,("sources","helloworld.c")
+                  ,("target","helloworld")
+                  ]
+                 ,[Library "lapack" Nothing Nothing
+                  ,Library "foo" (Just "/usr/lib/foo.a") Nothing
+                  ]
+                 )
+                -- @-node:gcross.20100614172544.1717:gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld
+                -- @-others
+                ]
+            ]
+        -- @-node:gcross.20100614172544.1687:invocation template
         -- @-others
         ]
     -- @-node:gcross.20100614121927.2365:Blueprint.Tools.Compilers.GCC

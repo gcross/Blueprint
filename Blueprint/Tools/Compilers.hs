@@ -19,6 +19,7 @@ import Control.Exception
 
 import Data.ByteString.Char8 (pack)
 import qualified Data.ByteString.Char8 as S
+import Data.Data
 import Data.Object
 import Data.Typeable
 
@@ -52,9 +53,9 @@ data Compiler language = Compiler
 -- @+node:gcross.20100614121927.1637:Library
 data Library = Library
     {   libraryName :: String
-    ,   libraryPath :: Maybe String
+    ,   libraryLocation :: Maybe FilePath
     ,   libraryDescription :: Maybe String
-    }
+    } deriving (Typeable,Data)
 -- @-node:gcross.20100614121927.1637:Library
 -- @+node:gcross.20100614121927.1644:Script
 newtype Script language = Script S.ByteString deriving Typeable

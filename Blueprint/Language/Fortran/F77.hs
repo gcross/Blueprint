@@ -25,7 +25,7 @@ import Blueprint.Language.Fortran
 data Fortran77
 
 instance Language Fortran77 where
-    languageUUID _ = uuid "bef483d0-77f9-11df-8438-001aa0c5d320"
+    languageUUID _ = uuid "38e69eb4-ecd7-41d1-992b-dade07f27a4e"
     languageName _ = "Fortran 77"
     languageFileExtension _ = "f"
 
