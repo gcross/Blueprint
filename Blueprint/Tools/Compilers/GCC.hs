@@ -14,7 +14,6 @@ module Blueprint.Tools.Compilers.GCC where
 import Data.Either.Unwrap
 import Data.Version
 
-import Text.Regex.Base
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 import Text.StringTemplate

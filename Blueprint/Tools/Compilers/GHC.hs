@@ -13,7 +13,6 @@ module Blueprint.Tools.Compilers.GHC where
 -- @+node:gcross.20100611224425.1612:<< Import needed modules >>
 import Data.Either.Unwrap
 
-import Text.Regex.Base
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 

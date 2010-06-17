@@ -15,7 +15,6 @@ module Blueprint.Language.Programming.Haskell where
 import Data.Array ((!))
 import Data.ByteString.Lazy.Char8 (unpack)
 
-import Text.Regex.Base
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 

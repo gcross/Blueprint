@@ -44,7 +44,7 @@ readVersion s =
 -- @-node:gcross.20100611224425.1551:readVersion
 -- @+node:gcross.20100611224425.1555:extractVersion
 extractVersion ::
-    RegexContext regex S.ByteString S.ByteString ⇒
+    RegexLike regex S.ByteString ⇒
     regex →
     S.ByteString →
     Maybe Version
