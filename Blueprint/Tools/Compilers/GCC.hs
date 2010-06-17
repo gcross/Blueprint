@@ -19,11 +19,11 @@ import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 import Text.StringTemplate
 
-import Blueprint.Language.C
-import Blueprint.Language.CPP
-import Blueprint.Language.Fortran.F77
-import Blueprint.Language.Fortran.F90
-import Blueprint.Language.Fortran.F95
+import Blueprint.Language.Programming.C
+import Blueprint.Language.Programming.CPP
+import Blueprint.Language.Programming.Fortran.F77
+import Blueprint.Language.Programming.Fortran.F90
+import Blueprint.Language.Programming.Fortran.F95
 import Blueprint.Miscellaneous
 import Blueprint.Tools.Compilers
 -- @-node:gcross.20100611224425.1607:<< Import needed modules >>

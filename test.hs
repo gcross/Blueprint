@@ -62,9 +62,10 @@ import Data.Object
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.Configuration.Tools
 import Blueprint.Language
-import Blueprint.Language.C
-import Blueprint.Language.CPP
-import Blueprint.Language.Haskell
+import Blueprint.Language.Programming
+import Blueprint.Language.Programming.C
+import Blueprint.Language.Programming.CPP
+import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.Tools.Compilers
 import Blueprint.Tools.Compilers.GCC

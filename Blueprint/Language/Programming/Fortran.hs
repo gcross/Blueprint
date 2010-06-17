@@ -7,19 +7,19 @@
 -- @-node:gcross.20100614121927.1747:<< Language extensions >>
 -- @nl
 
-module Blueprint.Language.Fortran where
+module Blueprint.Language.Programming.Fortran where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100614121927.1748:<< Import needed modules >>
 import Blueprint.Language
--- @nonl
+import Blueprint.Language.Programming
 -- @-node:gcross.20100614121927.1748:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20100614121927.1749:Classes
 -- @+node:gcross.20100614121927.1750:Fortran
-class Language language ⇒ Fortran language
+class ProgrammingLanguage language ⇒ Fortran language
 -- @-node:gcross.20100614121927.1750:Fortran
 -- @-node:gcross.20100614121927.1749:Classes
 -- @-others

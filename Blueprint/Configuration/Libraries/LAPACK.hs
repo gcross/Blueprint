@@ -15,8 +15,8 @@ module Blueprint.Configuration.Libraries.LAPACK where
 import Distribution.Version
 
 import Blueprint.Configuration
-import Blueprint.Language
-import Blueprint.Language.Fortran.F77
+import Blueprint.Language.Programming
+import Blueprint.Language.Programming.Fortran.F77
 -- @-node:gcross.20100610134550.1485:<< Import needed modules >>
 -- @nl
 

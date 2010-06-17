@@ -31,6 +31,7 @@ import System.Process
 import Text.StringTemplate
 
 import Blueprint.Language
+import Blueprint.Language.Programming
 import Blueprint.Miscellaneous
 -- @-node:gcross.20100611224425.1702:<< Import needed modules >>
 -- @nl
@@ -121,13 +122,13 @@ withScriptAsFile script@(Script script_data) thunk =
         thunk (SourceCodeFile filepath)
 -- @-node:gcross.20100614121927.1654:withScriptAsFile
 -- @+node:gcross.20100615082419.1709:verifyCompileToProgram
-verifyCompileToProgram :: Language language ⇒ Compiler language → IO Bool
+verifyCompileToProgram :: ProgrammingLanguage language ⇒ Compiler language → IO Bool
 verifyCompileToProgram compiler =
     fmap verifyHelloWorld
     .
     runScript compiler
     .
-    languageHelloWorld
+    languageHelloWorldScript
     .
     languageOf
     $

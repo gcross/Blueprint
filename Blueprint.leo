@@ -24,6 +24,8 @@
 <v t="gcross.20100604204549.7680"><vh>@thin IOTask.hs</vh></v>
 <v t="gcross.20100611224425.1634"><vh>@thin Language.hs</vh></v>
 <v t="gcross.20100611224425.1587"><vh>@path Language</vh>
+<v t="gcross.20100616175443.1689"><vh>@thin Programming.hs</vh></v>
+<v t="gcross.20100616175443.1685"><vh>@path Programming</vh>
 <v t="gcross.20100611224425.1588"><vh>@thin C.hs</vh></v>
 <v t="gcross.20100611224425.1664"><vh>@thin CPP.hs</vh></v>
 <v t="gcross.20100614121927.1746"><vh>@thin Fortran.hs</vh></v>
@@ -33,6 +35,7 @@
 <v t="gcross.20100614172544.1704"><vh>@thin F95.hs</vh></v>
 </v>
 <v t="gcross.20100611224425.1682"><vh>@thin Haskell.hs</vh></v>
+</v>
 </v>
 <v t="gcross.20100604184944.1289"><vh>@thin Jobs.hs</vh></v>
 <v t="gcross.20100614121927.1659"><vh>@thin Miscellaneous.hs</vh></v>
@@ -78,5 +81,6 @@ module Blueprint.Module where
 <t tx="gcross.20100611224425.1696"></t>
 <t tx="gcross.20100613184558.1624"></t>
 <t tx="gcross.20100614121927.1735"></t>
+<t tx="gcross.20100616175443.1685"></t>
 </tnodes>
 </leo_file>

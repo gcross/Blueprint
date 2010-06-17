@@ -8,7 +8,7 @@
 -- @-node:gcross.20100611224425.1683:<< Language extensions >>
 -- @nl
 
-module Blueprint.Language.Haskell where
+module Blueprint.Language.Programming.Haskell where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1684:<< Import needed modules >>
@@ -21,6 +21,7 @@ import Text.Regex.PCRE.String
 
 import Data.Object
 import Blueprint.Language
+import Blueprint.Language.Programming
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
 
@@ -34,7 +35,10 @@ instance Language Haskell where
     languageName _ = "Haskell"
     languageFileExtensions _ = ["hs"]
     languageDependencyExtractor _ = extractDependencies
-    languageHelloWorld _ = scriptFromLines $ ["main = putStrLn \"Hello, world!\""]
+
+instance ProgrammingLanguage Haskell where
+    languageHelloWorldScript _ = scriptFromLines $ ["main = putStrLn \"Hello, world!\""]
+-- @nonl
 -- @-node:gcross.20100615082419.1707:Haskell
 -- @-node:gcross.20100615082419.1704:Languages
 -- @+node:gcross.20100615082419.1705:Functions

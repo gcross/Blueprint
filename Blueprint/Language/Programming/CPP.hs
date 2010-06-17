@@ -8,12 +8,13 @@
 -- @-node:gcross.20100611224425.1665:<< Language extensions >>
 -- @nl
 
-module Blueprint.Language.CPP where
+module Blueprint.Language.Programming.CPP where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1666:<< Import needed modules >>
 import Data.Object
 import Blueprint.Language
+import Blueprint.Language.Programming
 -- @-node:gcross.20100611224425.1666:<< Import needed modules >>
 -- @nl
 
@@ -26,10 +27,13 @@ instance Language CPP where
     languageUUID _ = uuid "ecbcc465-3c29-4fd4-a4a5-0aa71868b337"
     languageName _ = "CPP"
     languageFileExtensions _ = ["cc","cpp","cxx"]
-    languageHelloWorld _ = scriptFromLines $
+
+instance ProgrammingLanguage CPP where
+    languageHelloWorldScript _ = scriptFromLines $
         ["#include <iostream>"
         ,"int main() { std::cout << \"Hello, world!\"; }"
         ]
+-- @nonl
 -- @-node:gcross.20100614172544.1710:CPP
 -- @-node:gcross.20100614172544.1709:Languages
 -- @-others
