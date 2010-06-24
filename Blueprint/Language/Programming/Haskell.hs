@@ -18,9 +18,10 @@ import Data.ByteString.Lazy.Char8 (unpack)
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
-import Data.Object
+import Data.Record
 import Blueprint.Language
 import Blueprint.Language.Programming
+-- @nonl
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
 

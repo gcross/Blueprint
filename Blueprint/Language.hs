@@ -15,11 +15,12 @@ module Blueprint.Language where
 -- @+node:gcross.20100611224425.1636:<< Import needed modules >>
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe
-import Data.Object
+import Data.Record
 import Data.Typeable
 import Data.UUID (UUID)
 
 import System.FilePath
+-- @nonl
 -- @-node:gcross.20100611224425.1636:<< Import needed modules >>
 -- @nl
 

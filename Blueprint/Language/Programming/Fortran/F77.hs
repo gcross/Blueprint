@@ -12,11 +12,12 @@ module Blueprint.Language.Programming.Fortran.F77 where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100614121927.1758:<< Import needed modules >>
-import Data.Object
+import Data.Record
 
 import Blueprint.Language
 import Blueprint.Language.Programming
 import Blueprint.Language.Programming.Fortran
+-- @nonl
 -- @-node:gcross.20100614121927.1758:<< Import needed modules >>
 -- @nl
 

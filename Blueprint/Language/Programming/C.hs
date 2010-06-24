@@ -12,9 +12,10 @@ module Blueprint.Language.Programming.C where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1590:<< Import needed modules >>
-import Data.Object
+import Data.Record
 import Blueprint.Language
 import Blueprint.Language.Programming
+-- @nonl
 -- @-node:gcross.20100611224425.1590:<< Import needed modules >>
 -- @nl
 

@@ -1,5 +1,5 @@
 -- @+leo-ver=4-thin
--- @+node:gcross.20100609163522.1415:@thin Object.hs
+-- @+node:gcross.20100609163522.1415:@thin Record.hs
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100609163522.1416:<< Language extensions >>
@@ -17,7 +17,7 @@
 -- @-node:gcross.20100609163522.1416:<< Language extensions >>
 -- @nl
 
-module Data.Object where
+module Data.Record where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100609163522.1417:<< Import needed modules >>
@@ -88,21 +88,21 @@ class (Typeable entity, Typeable value) => FieldValue entity value where
     toEntity :: value -> entity
     fromEntity :: entity -> Maybe value
 -- @-node:gcross.20100609223718.1500:FieldValue
--- @+node:gcross.20100609163522.1439:Record
-class Typeable entity => Record entity cls where
-    toTable :: cls → Table entity
-    fromTable :: Table entity → Maybe cls
--- @-node:gcross.20100609163522.1439:Record
+-- @+node:gcross.20100609163522.1439:Castable
+class Typeable entity => Castable entity cls where
+    toRecord :: cls → Table entity
+    fromRecord :: Table entity → Maybe cls
+-- @-node:gcross.20100609163522.1439:Castable
 -- @+node:gcross.20100609163522.1440:RecordFields
 class RecordFields entity fields record where
     type RecordBuilder fields record
-    fromTableUsingFields :: fields → RecordBuilder fields record → Table entity → Maybe record
-    toTableUsingFields :: fields → record → Table entity
+    fromRecordUsingFields :: fields → RecordBuilder fields record → Table entity → Maybe record
+    toRecordUsingFields :: fields → record → Table entity
 
 instance Typeable entity => RecordFields entity () record where
     type RecordBuilder () record = record
-    fromTableUsingFields _ result _ = Just result
-    toTableUsingFields _ _ = Table (Map.empty)
+    fromRecordUsingFields _ result _ = Just result
+    toRecordUsingFields _ _ = Table (Map.empty)
 
 instance (FieldValue entity value
          ,RecordFields entity rest_fields record
@@ -110,12 +110,13 @@ instance (FieldValue entity value
   where
     type RecordBuilder ((Field value,record → value) :. rest_fields) record =
             value → RecordBuilder rest_fields record
-    fromTableUsingFields ((field,_) :. rest_fields) f table =
+    fromRecordUsingFields ((field,_) :. rest_fields) f table =
         case getField field table of
             Nothing → Nothing
-            Just value → fromTableUsingFields rest_fields (f value) table
-    toTableUsingFields ((field,getter) :. rest_fields) x =
-        setField field (getter x) (toTableUsingFields rest_fields x)
+            Just value → fromRecordUsingFields rest_fields (f value) table
+    toRecordUsingFields ((field,getter) :. rest_fields) x =
+        setField field (getter x) (toRecordUsingFields rest_fields x)
+-- @nonl
 -- @-node:gcross.20100609163522.1440:RecordFields
 -- @-node:gcross.20100609163522.1438:Classes
 -- @+node:gcross.20100609163522.1418:Types
@@ -139,10 +140,11 @@ data Field value = Field
 -- @+node:gcross.20100609163522.1433:Table
 newtype Typeable entity => Table entity = Table (Map UUID entity) deriving (Typeable)
 -- @-node:gcross.20100609163522.1433:Table
--- @+node:gcross.20100609223718.1504:Object/SerializableObject
-type Object = Table Dynamic
-type SerializableObject = Table Entity
--- @-node:gcross.20100609223718.1504:Object/SerializableObject
+-- @+node:gcross.20100609223718.1504:Record/SerializableRecord
+type Record = Table Dynamic
+type SerializableRecord = Table Entity
+-- @nonl
+-- @-node:gcross.20100609223718.1504:Record/SerializableRecord
 -- @-node:gcross.20100609163522.1418:Types
 -- @+node:gcross.20100609163522.1695:Instances
 -- @+node:gcross.20100609163522.1696:Monoid Table
@@ -215,10 +217,10 @@ setField (Field {..}) new_value (Table fields) =
 field :: String → String → Field value
 field name = Field name . uuid
 -- @-node:gcross.20100609163522.1693:field
--- @+node:gcross.20100609163522.1694:updateTableWith
-updateTableWith :: (Typeable entity, Record entity record) => record → Table entity → Table entity
-updateTableWith x = (`mappend` toTable x)
--- @-node:gcross.20100609163522.1694:updateTableWith
+-- @+node:gcross.20100609163522.1694:updateRecordWith
+updateRecordWith :: (Typeable entity, Castable entity record) => record → Table entity → Table entity
+updateRecordWith x = (`mappend` toRecord x)
+-- @-node:gcross.20100609163522.1694:updateRecordWith
 -- @+node:gcross.20100609203325.1472:withFields
 withFields :: FieldsAndValues entity fields => fields -> Table entity
 withFields fields = setFields fields mempty
@@ -239,5 +241,5 @@ emptyTable = mempty
 -- @-node:gcross.20100609163522.1700:emptyTable
 -- @-node:gcross.20100609163522.1698:Values
 -- @-others
--- @-node:gcross.20100609163522.1415:@thin Object.hs
+-- @-node:gcross.20100609163522.1415:@thin Record.hs
 -- @-leo

@@ -11,7 +11,7 @@
 <vnodes>
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
 <v t="gcross.20100609163522.1414"><vh>@path Data</vh>
-<v t="gcross.20100609163522.1415"><vh>@thin Object.hs</vh></v>
+<v t="gcross.20100609163522.1415"><vh>@thin Record.hs</vh></v>
 </v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
 <v t="gcross.20100611224425.1646"><vh>@thin Configuration.hs</vh></v>

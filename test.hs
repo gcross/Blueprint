@@ -57,7 +57,7 @@ import Text.StringTemplate.GenericStandard
 
 import System.IO
 
-import Data.Object
+import Data.Record
 
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.Configuration.Tools
@@ -75,6 +75,7 @@ import Blueprint.Jobs
 import Blueprint.Options
 import Blueprint.Phases
 import qualified Blueprint.Phases.Configuration as Configuration
+-- @nonl
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
 -- @nl
 
@@ -149,13 +150,14 @@ data TestRecord = TestRecord
 
 fields = (_a,t_a) :. (_b,t_b) :. ()
 
-instance Record Dynamic TestRecord where
-    toTable = toTableUsingFields fields
-    fromTable = fromTableUsingFields fields TestRecord
+instance Castable Dynamic TestRecord where
+    toRecord = toRecordUsingFields fields
+    fromRecord = fromRecordUsingFields fields TestRecord
 
-instance Record Entity TestRecord where
-    toTable = toTableUsingFields fields
-    fromTable = fromTableUsingFields fields TestRecord
+instance Castable Entity TestRecord where
+    toRecord = toRecordUsingFields fields
+    fromRecord = fromRecordUsingFields fields TestRecord
+-- @nonl
 -- @-node:gcross.20100609163522.1718:TestRecord
 -- @-node:gcross.20100609163522.1717:Types
 -- @-others
@@ -164,10 +166,10 @@ main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20100602152546.1870:<< Tests >>
     -- @+others
-    -- @+node:gcross.20100609163522.1702:Data.Object
-    [testGroup "Data.Object" $
+    -- @+node:gcross.20100609163522.1702:Data.Record
+    [testGroup "Data.Record" $
         let 
-            makeTests name emptyObject toEntity_ =
+            makeTests name emptyRecord toEntity_ =
                 testGroup name
                     -- @                @+others
                     -- @+node:gcross.20100609223718.1567:fromEntity . toEntity
@@ -179,34 +181,41 @@ main = defaultMain
                         -- @    @+others
                         -- @+node:gcross.20100609163522.1706:set a, get a
                         [testProperty "set a, get a" $
-                            \x -> Just x == (getField _a . setField _a x) emptyObject
+                            \x -> Just x == (getField _a . setField _a x) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1706:set a, get a
                         -- @+node:gcross.20100609163522.1728:set a (as char), get a
                         ,testCase "set a (as char), get a" $
                             assertThrows
                                 (TypeError _a)
                                 $
-                                evaluate ((getField _a . setField _a_as_char 'Q') emptyObject)
+                                evaluate ((getField _a . setField _a_as_char 'Q') emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1728:set a (as char), get a
                         -- @+node:gcross.20100609163522.1708:set b, get b
                         ,testProperty "set a, get b" $
-                            \x -> Just x == (getField _b . setField _b x) emptyObject
+                            \x -> Just x == (getField _b . setField _b x) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1708:set b, get b
                         -- @+node:gcross.20100609163522.1710:set a, get b
                         ,testProperty "set a, get b" $
-                            \x -> Nothing == (getField _b . setField _a x) emptyObject
+                            \x -> Nothing == (getField _b . setField _a x) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1710:set a, get b
                         -- @+node:gcross.20100609163522.1712:set b, get a
                         ,testProperty "set b, get a" $
-                            \x -> Nothing == (getField _a . setField _b x) emptyObject
+                            \x -> Nothing == (getField _a . setField _b x) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1712:set b, get a
                         -- @+node:gcross.20100609163522.1714:set a, set b, get a
                         ,testProperty "set a, set b, get a" $
-                            \a b -> Just a == (getField _a . setField _b b . setField _a a) emptyObject
+                            \a b -> Just a == (getField _a . setField _b b . setField _a a) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1714:set a, set b, get a
                         -- @+node:gcross.20100609163522.1716:set a, set b, get b
                         ,testProperty "set a, set b, get a" $
-                            \a b -> Just b == (getField _b . setField _b b . setField _a a) emptyObject
+                            \a b -> Just b == (getField _b . setField _b b . setField _a a) emptyRecord
+                        -- @nonl
                         -- @-node:gcross.20100609163522.1716:set a, set b, get b
                         -- @-others
                         ]
@@ -218,145 +227,154 @@ main = defaultMain
                                 (getFields (_a :. _b :. _c :. ())
                                  .
                                  setFields ((_a,a) :. (_c,c) :. ())
-                                ) emptyObject
-
+                                ) emptyRecord
                     -- @-node:gcross.20100609163522.1733:getFields . setFields
                     -- @+node:gcross.20100609163522.1719:field lists
                     ,testGroup "field lists"
                         -- @    @+others
-                        -- @+node:gcross.20100609163522.1720:cast of empty object
-                        [testCase "cast of empty object" $
+                        -- @+node:gcross.20100609163522.1720:cast of empty Record
+                        [testCase "cast of empty Record" $
                             assertEqual
-                                "Did the object fail to cast?"
+                                "Did the Record fail to cast?"
                                 (Nothing :: Maybe TestRecord)
-                                (fromTable emptyObject)
+                                (fromRecord emptyRecord)
                         -- @nonl
-                        -- @-node:gcross.20100609163522.1720:cast of empty object
-                        -- @+node:gcross.20100609163522.1722:fromTable . toTable
-                        ,testProperty "fromTable . toTable" $
-                            \a b -> let record = TestRecord a b in Just record == (fromTable . mappend emptyObject . toTable) record
+                        -- @-node:gcross.20100609163522.1720:cast of empty Record
+                        -- @+node:gcross.20100609163522.1722:fromRecord . toRecord
+                        ,testProperty "fromRecord . toRecord" $
+                            \a b -> let record = TestRecord a b in Just record == (fromRecord . mappend emptyRecord . toRecord) record
                         -- @nonl
-                        -- @-node:gcross.20100609163522.1722:fromTable . toTable
-                        -- @+node:gcross.20100609163522.1723:set a, set b, fromTable
-                        ,testProperty "set a, set b, fromTable" $
-                            \a b -> let record = TestRecord a b in Just record == (fromTable . setField _a a . setField _b b) emptyObject
-                        -- @-node:gcross.20100609163522.1723:set a, set b, fromTable
-                        -- @+node:gcross.20100609163522.1730:set a, set b, set c, fromTable
-                        ,testProperty "set a, set b, set c, fromTable" $
-                            \a b c -> let record = TestRecord a b in Just record == (fromTable . setField _c c . setField _a a . setField _b b) emptyObject
+                        -- @-node:gcross.20100609163522.1722:fromRecord . toRecord
+                        -- @+node:gcross.20100609163522.1723:set a, set b, fromRecord
+                        ,testProperty "set a, set b, fromRecord" $
+                            \a b -> let record = TestRecord a b in Just record == (fromRecord . setField _a a . setField _b b) emptyRecord
                         -- @nonl
-                        -- @-node:gcross.20100609163522.1730:set a, set b, set c, fromTable
-                        -- @+node:gcross.20100609163522.1725:set a, fromTable
-                        ,testProperty "set a, fromTable" $
-                            \a -> (Nothing :: Maybe TestRecord) == (fromTable . setField _a a) emptyObject
+                        -- @-node:gcross.20100609163522.1723:set a, set b, fromRecord
+                        -- @+node:gcross.20100609163522.1730:set a, set b, set c, fromRecord
+                        ,testProperty "set a, set b, set c, fromRecord" $
+                            \a b c -> let record = TestRecord a b in Just record == (fromRecord . setField _c c . setField _a a . setField _b b) emptyRecord
                         -- @nonl
-                        -- @-node:gcross.20100609163522.1725:set a, fromTable
+                        -- @-node:gcross.20100609163522.1730:set a, set b, set c, fromRecord
+                        -- @+node:gcross.20100609163522.1725:set a, fromRecord
+                        ,testProperty "set a, fromRecord" $
+                            \a -> (Nothing :: Maybe TestRecord) == (fromRecord . setField _a a) emptyRecord
+                        -- @nonl
+                        -- @-node:gcross.20100609163522.1725:set a, fromRecord
                         -- @-others
                         ]
                     -- @-node:gcross.20100609163522.1719:field lists
-                    -- @+node:gcross.20100609203325.1470:Monoid Object
-                    ,testGroup "Monoid Object"
+                    -- @+node:gcross.20100609203325.1470:Monoid Record
+                    ,testGroup "Monoid Record"
                         -- @    @+others
                         -- @+node:gcross.20100609203325.1471:a + a
                         [testProperty "a + a" $
-                            \a1 a2 -> Just a2 == getField _a ((withFields ((_a,a1::Int):.())) `mappend` (withFields ((_a,a2):.())) `mappend` emptyObject)
+                            \a1 a2 -> Just a2 == getField _a ((withFields ((_a,a1::Int):.())) `mappend` (withFields ((_a,a2):.())) `mappend` emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609203325.1471:a + a
                         -- @+node:gcross.20100609203325.1475:a + b
                         ,testProperty "a + b" $
-                            \a b -> (Just a :. Just b :. ()) == getFields (_a :. _b :. ()) ((withFields ((_a,a):.())) `mappend` (withFields ((_b,b::Char):.())) `mappend` emptyObject)
+                            \a b -> (Just a :. Just b :. ()) == getFields (_a :. _b :. ()) ((withFields ((_a,a):.())) `mappend` (withFields ((_b,b::Char):.())) `mappend` emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609203325.1475:a + b
                         -- @+node:gcross.20100609203325.1477:(a,b) + (b,c)
                         ,testProperty "(a,b) + (b,c)" $
                             \a b1 b2 c ->
                                 (Just a :. Just b2 :. Just c :. ()) ==
                                     getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a):.(_b,b1::Char):.())) `mappend` (withFields ((_b,b2):.(_c,c):.())) `mappend` emptyObject)
+                                        ((withFields ((_a,a):.(_b,b1::Char):.())) `mappend` (withFields ((_b,b2):.(_c,c):.())) `mappend` emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609203325.1477:(a,b) + (b,c)
                         -- @+node:gcross.20100609203325.1479:(a,b) + (a,c)
                         ,testProperty "(a,b) + (a,c)" $
                             \a1 a2 b c ->
                                 (Just a2 :. Just b :. Just c :. ()) ==
                                     getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a1::Int):.(_b,b):.())) `mappend` (withFields ((_a,a2::Int):.(_c,c):.())) `mappend` emptyObject)
+                                        ((withFields ((_a,a1::Int):.(_b,b):.())) `mappend` (withFields ((_a,a2::Int):.(_c,c):.())) `mappend` emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609203325.1479:(a,b) + (a,c)
                         -- @+node:gcross.20100609203325.1481:(a,b) + (a,c)
                         ,testProperty "(a,c) + (a,b)" $
                             \a1 a2 b c ->
                                 (Just a1 :. Just b :. Just c :. ()) ==
                                     getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a2::Int):.(_c,c):.())) `mappend` (withFields ((_a,a1::Int):.(_b,b):.())) `mappend` emptyObject)
-
+                                        ((withFields ((_a,a2::Int):.(_c,c):.())) `mappend` (withFields ((_a,a1::Int):.(_b,b):.())) `mappend` emptyRecord)
                         -- @-node:gcross.20100609203325.1481:(a,b) + (a,c)
                         -- @+node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
                         ,testProperty "(a,c) `mappend` (TestRecord)" $
                             \a b c a_ ->
                                 (Just a :. Just b :. Just c :. ()) ==
                                     getFields (_a :. _b :. _c :. ())
-                                    ((withFields ((_a,(a_::Int)) :. (_c,c) :. ())) `mappend` (toTable (TestRecord a b)) `mappend` emptyObject)
+                                    ((withFields ((_a,(a_::Int)) :. (_c,c) :. ())) `mappend` (toRecord (TestRecord a b)) `mappend` emptyRecord)
+                        -- @nonl
                         -- @-node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
                         -- @-others
                         ]
-                    -- @-node:gcross.20100609203325.1470:Monoid Object
-                    -- @+node:gcross.20100609203325.1465:updateTableWith
-                    ,testGroup "updateTableWith"
+                    -- @nonl
+                    -- @-node:gcross.20100609203325.1470:Monoid Record
+                    -- @+node:gcross.20100609203325.1465:updateRecordWith
+                    ,testGroup "updateRecordWith"
                         -- @    @+others
-                        -- @+node:gcross.20100609203325.1466:update empty object
-                        [testProperty "update empty object" $
-                            \a b -> let record = TestRecord a b in Just record == (fromTable . mappend emptyObject . updateTableWith record) emptyObject
+                        -- @+node:gcross.20100609203325.1466:update empty Record
+                        [testProperty "update empty Record" $
+                            \a b -> let record = TestRecord a b in Just record == (fromRecord . mappend emptyRecord . updateRecordWith record) emptyRecord
                         -- @nonl
-                        -- @-node:gcross.20100609203325.1466:update empty object
-                        -- @+node:gcross.20100609203325.1468:completely overwrite object
-                        ,testProperty "completely overwrite object" $
+                        -- @-node:gcross.20100609203325.1466:update empty Record
+                        -- @+node:gcross.20100609203325.1468:completely overwrite Record
+                        ,testProperty "completely overwrite Record" $
                             \a b c d ->
                                 let record1 = TestRecord a b
                                     record2 = TestRecord c d
-                                in Just record2 == (fromTable . mappend emptyObject . updateTableWith record2 . toTable) record1
-                        -- @-node:gcross.20100609203325.1468:completely overwrite object
-                        -- @+node:gcross.20100609203325.1469:set a, set c, updateObjectWith (TestRecord a b)
-                        ,testProperty "set a, set c, updateObjectWith (TestRecord a b)" $
+                                in Just record2 == (fromRecord . mappend emptyRecord . updateRecordWith record2 . toRecord) record1
+                        -- @nonl
+                        -- @-node:gcross.20100609203325.1468:completely overwrite Record
+                        -- @+node:gcross.20100609203325.1469:set a, set c, updateRecordWith (TestRecord a b)
+                        ,testProperty "set a, set c, updateRecordWith (TestRecord a b)" $
                             \a b c a_ ->
                                 (Just a :. Just b :. Just c :. ()) ==
                                   (
                                     getFields (_a :. _b :. _c :. ())
                                     .
-                                    (mappend emptyObject)
+                                    (mappend emptyRecord)
                                     .
-                                    updateTableWith (TestRecord a b)
+                                    updateRecordWith (TestRecord a b)
                                   ) (withFields ((_a,(a_::Int)) :. (_c,c) :. ()))
-                        -- @-node:gcross.20100609203325.1469:set a, set c, updateObjectWith (TestRecord a b)
+                        -- @nonl
+                        -- @-node:gcross.20100609203325.1469:set a, set c, updateRecordWith (TestRecord a b)
                         -- @-others
                         ]
-                    -- @-node:gcross.20100609203325.1465:updateTableWith
+                    -- @nonl
+                    -- @-node:gcross.20100609203325.1465:updateRecordWith
                     -- @-others
                     ]
         in  [makeTests
                 "Dynamic"
-                (emptyTable :: Object)
+                (emptyTable :: Record)
                 toDyn
             ,makeTests
                 "Entity"
-                (emptyTable :: SerializableObject)
+                (emptyTable :: SerializableRecord)
                 (toEntity :: (Binary value, Typeable value) => value -> Entity)
             ,testProperty "decode . encode" $
                 \a b -> let record = TestRecord a b
                         in
                             (== Just record)
                             .
-                            fromTable
+                            fromRecord
                             .
-                            (mappend (emptyTable :: SerializableObject))
+                            (mappend (emptyTable :: SerializableRecord))
                             .
                             decode
                             .
                             encode
                             .
-                            (mappend (emptyTable :: SerializableObject))
+                            (mappend (emptyTable :: SerializableRecord))
                             .
-                            toTable
+                            toRecord
                             $
                             record
             ]
-    -- @-node:gcross.20100609163522.1702:Data.Object
+    -- @nonl
+    -- @-node:gcross.20100609163522.1702:Data.Record
     -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
     ,testGroup "Blueprint.IOTask"
         -- @    @+others
@@ -1388,7 +1406,7 @@ main = defaultMain
                 let compiler = 
                         Compiler
                         {   compilerProgram = undefined
-                        ,   compilerInvocationToCompileObject = undefined
+                        ,   compilerInvocationToCompileRecord = undefined
                         ,   compilerInvocationToCompileProgram =
                                 newAngleSTMP $
                                     "compile <sources; separator=\" and \"> to <program>"
@@ -1397,6 +1415,7 @@ main = defaultMain
                     sources = ["source.file." ++ show i | i ← [1..3::Int]]
                     program = "program"
                 in computeCompileToProgramCommand compiler (map SourceCodeFile sources) program
+        -- @nonl
         -- @-node:gcross.20100614121927.1730:computeCompileToProgramCommand
         -- @-others
         ]
@@ -1495,20 +1514,22 @@ main = defaultMain
                 ,("g++ -c helloworld.cc -o helloworld.o"
                  ,[("command","g++")
                   ,("source","helloworld.cc")
-                  ,("object","helloworld.o")
+                  ,("Record","helloworld.o")
                   ]
                  ,[]
                  )
+                -- @nonl
                 -- @-node:gcross.20100614172544.1716:g++ -c helloworld.cc -o helloworld.o
                 -- @+node:gcross.20100614185504.1694:g++ -c hello-world.cc -o helloworld.o
                 ,("g++ -c hello-world.cc -o helloworld.o"
                  ,[("command","g++")
                   ,("source","world.cc")
                   ,("source","hello-")
-                  ,("object","helloworld.o")
+                  ,("Record","helloworld.o")
                   ]
                  ,[]
                  )
+                -- @nonl
                 -- @-node:gcross.20100614185504.1694:g++ -c hello-world.cc -o helloworld.o
                 -- @+node:gcross.20100614172544.1717:gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld
                 ,("gcc helloworld.c -llapack /usr/lib/foo.a -o helloworld"
@@ -1525,12 +1546,13 @@ main = defaultMain
                 ,("gcc -c helloworld.c -o helloworld.o"
                  ,[("command","gcc")
                   ,("source","helloworld.c")
-                  ,("object","helloworld.o")
+                  ,("Record","helloworld.o")
                   ]
                  ,[Library "lapack" Nothing Nothing
                   ,Library "foo" (Just "/usr/lib/foo.a") Nothing
                   ]
                  )
+                -- @nonl
                 -- @-node:gcross.20100614185504.1696:gcc -c helloworld.cc -o helloworld.o
                 -- @-others
                 ]

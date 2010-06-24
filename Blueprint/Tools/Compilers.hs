@@ -20,7 +20,7 @@ import Control.Exception
 import Data.ByteString.Char8 (pack)
 import qualified Data.ByteString.Char8 as S
 import Data.Data
-import Data.Object
+import Data.Record
 import Data.Typeable
 
 import System.Directory
@@ -33,6 +33,7 @@ import Text.StringTemplate
 import Blueprint.Language
 import Blueprint.Language.Programming
 import Blueprint.Miscellaneous
+-- @nonl
 -- @-node:gcross.20100611224425.1702:<< Import needed modules >>
 -- @nl
 
@@ -46,10 +47,11 @@ instance Exception CompilationException
 -- @+node:gcross.20100611224425.1704:Compiler
 data Compiler language = Compiler
     {   compilerProgram :: FilePath
-    ,   compilerInvocationToCompileObject :: StringTemplate String
+    ,   compilerInvocationToCompileRecord :: StringTemplate String
     ,   compilerInvocationToCompileProgram :: StringTemplate String
     ,   compilationLibraryDependencies :: [Library]
     }
+-- @nonl
 -- @-node:gcross.20100611224425.1704:Compiler
 -- @+node:gcross.20100614121927.1637:Library
 data Library = Library

@@ -17,8 +17,8 @@ import Control.Monad.Trans.RWS
 import Data.Binary
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Object (Field, SerializableObject)
-import qualified Data.Object as Object
+import Data.Record (Field, SerializableRecord)
+import qualified Data.Record as Record
 import Data.Typeable
 
 import Blueprint.Phases
@@ -28,7 +28,8 @@ import Blueprint.Phases
 -- @+others
 -- @+node:gcross.20100613184558.1632:Types
 -- @+node:gcross.20100613184558.1633:Phase
-type Phase = RWS (Map String String) () SerializableObject
+type Phase = RWS (Map String String) () SerializableRecord
+-- @nonl
 -- @-node:gcross.20100613184558.1633:Phase
 -- @-node:gcross.20100613184558.1632:Types
 -- @+node:gcross.20100613184558.1636:Instances
@@ -43,11 +44,13 @@ getOption = asks . Map.lookup
 -- @-node:gcross.20100613184558.1640:getOption
 -- @+node:gcross.20100613184558.1635:getField
 getField :: (Binary a, Typeable a) ⇒ Field a → Phase (Maybe a)
-getField = gets . Object.getField
+getField = gets . Record.getField
+-- @nonl
 -- @-node:gcross.20100613184558.1635:getField
 -- @+node:gcross.20100613184558.1639:setField
 setField :: (Binary a, Typeable a) ⇒ Field a → a → Phase ()
-setField field value = modify (Object.setField field value)
+setField field value = modify (Record.setField field value)
+-- @nonl
 -- @-node:gcross.20100613184558.1639:setField
 -- @-node:gcross.20100613184558.1634:Functions
 -- @-others

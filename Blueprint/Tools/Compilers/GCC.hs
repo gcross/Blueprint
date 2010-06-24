@@ -52,7 +52,7 @@ gcc_invocation_template = newAngleSTMP
     \<if(language)>\
         \ -x <language>\
     \<endif>\
-    \<if(object)>\
+    \<if(Record)>\
         \ -c <source>\
     \<else>\
         \ <source; separator=\" \">\
@@ -66,7 +66,8 @@ gcc_invocation_template = newAngleSTMP
             \<endif>\
         \}>\
     \<endif>\
-    \ -o <object><program>"
+    \ -o <Record><program>"
+-- @nonl
 -- @-node:gcross.20100614172544.1686:gcc_invocation_template
 -- @-node:gcross.20100611224425.1608:Values
 -- @-others
