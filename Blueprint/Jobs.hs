@@ -120,35 +120,49 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
--- @+node:gcross.20100604204549.1368:Job
-data Job label result = 
-    ∀ cache. Binary cache =>
-        JobSubmission [label] (Maybe cache → JobTask label result ([result],cache)) ThreadId
-  | JobFailure Int (IntMap SomeException)
-  | ExternalRequest label (MVar (Either SomeException result))
-  | ExternalRequestForCache (MVar (Map [label] ByteString))
-  | ∀ cache. Binary cache => JobTask Int (JobTask label result ([result],cache))
--- @-node:gcross.20100604204549.1368:Job
--- @+node:gcross.20100604184944.1294:JobStatus
-data JobStatus label result =
-    ∀ cache. Binary cache => Pending (Maybe cache → JobTask label result ([result],cache))
-  | Running [Int] [(Int,MVar (Either SomeException result))]
-  | Succeeded [result]
-  | Failed (IntMap SomeException) CombinedException
--- @-node:gcross.20100604184944.1294:JobStatus
--- @+node:gcross.20100604184944.1295:JobTask
+-- @+node:gcross.20100624100717.1751:JobResults
+data JobResults result cache = JobResults
+    {   jobResults :: [result]
+    ,   jobCache :: cache
+    }
+-- @-node:gcross.20100624100717.1751:JobResults
+-- @+node:gcross.20100624100717.1749:JobTask
 data JobTask label result a =
     Request [label] ([result] → JobTask label result a)
   | ∀ b. PerformIO (IO b) (b → JobTask label result a)
   | Return a
--- @-node:gcross.20100604184944.1295:JobTask
--- @+node:gcross.20100604204549.1380:PausedJob
+-- @-node:gcross.20100624100717.1749:JobTask
+-- @+node:gcross.20100624100717.1747:JobTaskResult
+type JobTaskResult label result cache = JobTask label result (JobResults result cache)
+-- @-node:gcross.20100624100717.1747:JobTaskResult
+-- @+node:gcross.20100624100717.1753:JobStatus
+data JobStatus label result =
+    ∀ cache. Binary cache => Pending (JobRunner label result cache)
+  | Running [Int] [(Int,MVar (Either SomeException result))]
+  | Succeeded [result]
+  | Failed (IntMap SomeException) CombinedException
+-- @-node:gcross.20100624100717.1753:JobStatus
+-- @+node:gcross.20100604204549.1368:Job
+data Job label result = 
+    ∀ cache. Binary cache => JobSubmission [label] (JobRunner label result cache) ThreadId
+  | JobFailure Int (IntMap SomeException)
+  | ExternalRequest label (MVar (Either SomeException result))
+  | ExternalRequestForCache (MVar (Map [label] ByteString))
+  | ∀ cache. Binary cache => JobTask Int (JobTaskResult label result cache)
+-- @-node:gcross.20100604204549.1368:Job
+-- @+node:gcross.20100624100717.1743:JobRunner
+type JobRunner label result cache = Maybe cache → JobTaskResult label result cache
+-- @-node:gcross.20100624100717.1743:JobRunner
+-- @+node:gcross.20100607083309.1398:JobServer
+data JobServer label result = JobServer (Chan (Job label result)) [ThreadId]
+-- @-node:gcross.20100607083309.1398:JobServer
+-- @+node:gcross.20100624100717.1755:PausedJob
 data PausedJob label result = ∀ cache. Binary cache => PausedJob
     {   pausedJobPendingRequests :: IntSet
     ,   pausedJobRequests :: [(Int,Int)]
-    ,   pausedJobComputeTask :: [result] → JobTask label result ([result],cache)
+    ,   pausedJobComputeTask :: [result] → JobTask label result (JobResults result cache)
     }
--- @-node:gcross.20100604204549.1380:PausedJob
+-- @-node:gcross.20100624100717.1755:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
 data JobServerState label result = JobServerState
     {   serverNextJobId_ :: Int
@@ -163,9 +177,6 @@ data JobServerState label result = JobServerState
 
 $( deriveAccessors ''JobServerState )
 -- @-node:gcross.20100604204549.1375:JobServerState
--- @+node:gcross.20100607083309.1398:JobServer
-data JobServer label result = JobServer (Chan (Job label result)) [ThreadId]
--- @-node:gcross.20100607083309.1398:JobServer
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask
@@ -261,7 +272,7 @@ submitJob ::
     Binary cache =>
     JobServer label result →
     [label] →
-    (Maybe cache → JobTask label result ([result],cache)) →
+    JobRunner label result cache →
     IO ()
 submitJob (JobServer job_queue _) names job =
     myThreadId >>= writeChan job_queue . JobSubmission names job
@@ -283,17 +294,17 @@ requestJobCache (JobServer job_queue _) = do
     writeChan job_queue $ ExternalRequestForCache result_var
     takeMVar result_var
 -- @-node:gcross.20100607205618.1429:requestJobCache
--- @+node:gcross.20100607083309.1414:returnValueAndCache
-returnValuesAndCache values cache = return (values,cache)
--- @-node:gcross.20100607083309.1414:returnValueAndCache
+-- @+node:gcross.20100607083309.1414:returnValuesAndCache
+returnValuesAndCache values cache = return $ JobResults values cache
+-- @-node:gcross.20100607083309.1414:returnValuesAndCache
 -- @+node:gcross.20100607205618.1443:returnValueAndCache
-returnValueAndCache value cache = return ([value],cache)
+returnValueAndCache value cache = return $ JobResults [value] cache
 -- @-node:gcross.20100607205618.1443:returnValueAndCache
 -- @+node:gcross.20100607205618.1427:returnValue
-returnValue value = return ([value],())
+returnValue value = return $ JobResults [value] ()
 -- @-node:gcross.20100607205618.1427:returnValue
 -- @+node:gcross.20100607205618.1441:returnValues
-returnValues values = return (values,())
+returnValues values = return $ JobResults values ()
 -- @-node:gcross.20100607205618.1441:returnValues
 -- @+node:gcross.20100607083309.1417:request
 request :: [label] → JobTask label result [result]
@@ -335,7 +346,7 @@ fetchResultsAndRunJobTask ::
     ) =>
     Int →
     [(Int,Int)] →
-    ([result] → JobTask label result ([result],cache)) →
+    ([result] → JobTaskResult label result cache) →
     StateT (JobServerState label result) IO ()
 fetchResultsAndRunJobTask job_id requests computeTask = do
     server_job_statuses ← get serverJobStatuses
@@ -412,7 +423,7 @@ startJobTask ::
     ,Binary cache
     ) =>
     Int →
-    (Maybe cache -> JobTask label result ([result],cache)) →
+    JobRunner label result cache →
     StateT (JobServerState label result) IO ()
 startJobTask job_id computeTaskFromCache = do
     server_job_cache ← get serverJobCache
@@ -669,9 +680,9 @@ processJob (JobTask job_id task) =
                                     -- @nl
         -- @-node:gcross.20100604204549.7667:Request
         -- @+node:gcross.20100604204549.1382:Return
-        Return (result_,cache_) → do
-            result ← liftIO . evaluate . withStrategy rdeepseq $ result_
-            let number_of_returned_results = length result
+        Return (JobResults results_ cache_) → do
+            results ← liftIO . evaluate . withStrategy rdeepseq $ results_
+            let number_of_returned_results = length results
             number_of_expected_results ←
                 fmap (
                     length
@@ -694,9 +705,9 @@ processJob (JobTask job_id task) =
                 .
                 Succeeded
                 $
-                result
+                results
             liftIO . forM_ listeners $ \(result_number,destination_var) →
-                putMVar destination_var . Right . (!! result_number) $ result
+                putMVar destination_var . Right . (!! result_number) $ results
             notifyPausedJobsThatRequestedJobIsFinished job_id requesting_job_ids
 
             cache ← liftIO . evaluate . withStrategy rwhnf . encode $ cache_
