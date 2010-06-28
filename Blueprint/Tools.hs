@@ -44,7 +44,6 @@ data CachedDependencies = CachedDependencies
         ,   cachedExplicitDependencies :: [UnresolvedDependency]
         ,   cachedImplicitDependencies :: [UnresolvedDependency]
         ,   cachedDependencyDigests :: [MD5Digest]
-        ,   cachedDeferredDependencies :: [Dependency]
         ,   cachedProductDigests :: [MD5Digest]
         } deriving (Show,Eq);  $( derive makeBinary ''CachedDependencies )
 -- @-node:gcross.20100624100717.2148:CachedDependencies
@@ -100,7 +99,6 @@ analyzeDependenciesAndRebuildIfNecessary
         -- Check if anything else on which the build depends has changed
         unless (
             and [explicit_dependencies == cachedExplicitDependencies
-                ,deferred_dependencies == cachedDeferredDependencies
                 ,dependency_digests == cachedDependencyDigests
                 ,miscellaneous_information == cached_miscellaneous_information
                 ]
@@ -110,7 +108,7 @@ analyzeDependenciesAndRebuildIfNecessary
         lift (checkProducts cachedProductDigests) >>= flip unless rebuildIt
 
         -- If we reach here, then nothing more needs to be done. 
-        lift (declareVictory cache)
+        lift (declareVictory cache deferred_dependencies)
 
   where
     digestSources =
@@ -152,16 +150,16 @@ analyzeDependenciesAndRebuildIfNecessary
             ,   cachedExplicitDependencies = explicit_dependencies
             ,   cachedImplicitDependencies = implicit_dependencies
             ,   cachedDependencyDigests = dependency_digests
-            ,   cachedDeferredDependencies = deferred_dependencies
             ,   cachedProductDigests = product_digests
             }
+            deferred_dependencies
 
-    declareVictory (cache@CachedDependencies{..}) =
+    declareVictory (cache@CachedDependencies{..}) deferred_dependencies =
         let values =
                 map (\digest →
                     withFields (
                         (_digest,digest)
-                     :. (_deferred_dependencies,cachedDeferredDependencies)
+                     :. (_deferred_dependencies,deferred_dependencies)
                      :. ()
                     )
                 )

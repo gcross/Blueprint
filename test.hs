@@ -1812,7 +1812,6 @@ main = defaultMain
                             ,   cachedExplicitDependencies = []
                             ,   cachedImplicitDependencies = []
                             ,   cachedDependencyDigests = []
-                            ,   cachedDeferredDependencies = []
                             ,   cachedProductDigests = product_digests
                             }
                     assertEqual
@@ -1832,7 +1831,6 @@ main = defaultMain
                         ,   cachedExplicitDependencies = []
                         ,   cachedImplicitDependencies = []
                         ,   cachedDependencyDigests = []
-                        ,   cachedDeferredDependencies = []
                         ,   cachedProductDigests = product_digests
                         }
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
@@ -1878,7 +1876,6 @@ main = defaultMain
                         ,   cachedExplicitDependencies = []
                         ,   cachedImplicitDependencies = []
                         ,   cachedDependencyDigests = []
-                        ,   cachedDeferredDependencies = []
                         ,   cachedProductDigests = product_digests
                         }
                     source_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
@@ -1890,7 +1887,6 @@ main = defaultMain
                         ,   cachedExplicitDependencies = []
                         ,   cachedImplicitDependencies = []
                         ,   cachedDependencyDigests = []
-                        ,   cachedDeferredDependencies = []
                         ,   cachedProductDigests = product_digests
                         }
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
