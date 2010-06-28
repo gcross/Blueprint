@@ -1866,6 +1866,66 @@ main = defaultMain
                         (cache,())
                         (decode new_cache)
             -- @-node:gcross.20100628115452.1828:no-op
+            -- @+node:gcross.20100628115452.1834:modified sources
+            ,testCase "modified sources" $
+                let job_id = Identifier UUID.nil "job"
+                    job_ids = [job_id]
+                    product_digest = md5 . L.pack $ "Job results"
+                    product_digests = [product_digest]
+                    cache =
+                        CachedDependencies
+                        {   cachedSourceDigests = product_digests
+                        ,   cachedExplicitDependencies = []
+                        ,   cachedImplicitDependencies = []
+                        ,   cachedDependencyDigests = []
+                        ,   cachedDeferredDependencies = []
+                        ,   cachedProductDigests = product_digests
+                        }
+                    source_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
+                    source_job_ids = [source_job_id]
+                    source_digest = md5 . L.pack $ "Source digest"
+                    correct_cache =
+                        CachedDependencies
+                        {   cachedSourceDigests = [source_digest]
+                        ,   cachedExplicitDependencies = []
+                        ,   cachedImplicitDependencies = []
+                        ,   cachedDependencyDigests = []
+                        ,   cachedDeferredDependencies = []
+                        ,   cachedProductDigests = product_digests
+                        }
+                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                    scanner_called_ref ← newIORef False
+                    builder_called_ref ← newIORef False
+                    digester_ignored_ref ← newIORef True
+                    submitJob job_server source_job_ids $
+                        const . returnValue . withFields $ ((_digest,source_digest):.())
+                    submitJob job_server job_ids $
+                        analyzeDependenciesAndRebuildIfNecessary
+                            (liftIO (writeIORef scanner_called_ref True) >> return [])
+                            (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                            (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                            undefined
+                            ()
+                            source_job_ids
+                            []
+                    result ← requestJobResult job_server job_id
+                    new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                    readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                    readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                    assertEqual
+                        "Is the digest correct?"
+                        (Just product_digest)
+                        (getField _digest result)
+                    assertEqual
+                        "Are the deferred dependencies correct?"
+                        (Just [])
+                        (getField _deferred_dependencies result)
+                    assertEqual
+                        "Is the cache correct?"
+                        (correct_cache,())
+                        (decode new_cache)
+            -- @-node:gcross.20100628115452.1834:modified sources
             -- @-others
             ]
         -- @-node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
