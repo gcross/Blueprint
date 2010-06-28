@@ -124,7 +124,7 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100624100717.2145:JobId
-data OfJob
+data OfJob deriving Typeable
 type JobId = Identifier OfJob
 -- @-node:gcross.20100624100717.2145:JobId
 -- @+node:gcross.20100624100717.1751:JobResults
@@ -230,7 +230,6 @@ startJobServer ::
     (Ord label
     ,Show label
     ,Typeable label
-    ,NFData result
     ) =>
     Int →
     Map [label] ByteString →
@@ -262,7 +261,6 @@ withJobServer ::
     (Ord label
     ,Show label
     ,Typeable label
-    ,NFData result
     ) =>
     Int →
     Map [label] ByteString →
@@ -475,7 +473,6 @@ processJob ::
     (Ord label
     ,Show label
     ,Typeable label
-    ,NFData result
     ) =>
     Job label result →
     StateT (JobServerState label result) IO ()
@@ -688,7 +685,7 @@ processJob (JobTask job_id task) =
         -- @-node:gcross.20100604204549.7667:Request
         -- @+node:gcross.20100604204549.1382:Return
         Return (JobResults results_ cache_) → do
-            results ← liftIO . evaluate . withStrategy rdeepseq $ results_
+            results ← liftIO . evaluate $ results_
             let number_of_returned_results = length results
             number_of_expected_results ←
                 fmap (
@@ -750,7 +747,6 @@ runJobServer ::
     (Ord label
     ,Show label
     ,Typeable label
-    ,NFData result
     ) =>
     StateT (JobServerState label result) IO ()
 runJobServer =
