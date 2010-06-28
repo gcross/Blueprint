@@ -32,16 +32,19 @@ import Data.Binary (Binary,encode,decode)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Digest.Pure.MD5
 import Data.Dynamic
 import Data.Either.Unwrap
 import Data.IORef
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
+import Data.UUID (UUID)
 import Data.Vec ((:.)(..))
 import Data.Version
 
@@ -59,6 +62,7 @@ import Text.StringTemplate
 import Text.StringTemplate.GenericStandard
 
 import System.IO
+import System.Random
 
 import Control.Monad.Goto
 
@@ -66,6 +70,7 @@ import Data.Record
 
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.Configuration.Tools
+import Blueprint.Identifier
 import Blueprint.Language
 import Blueprint.Language.Programming
 import Blueprint.Language.Programming.C
@@ -1399,6 +1404,40 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100604204549.1358:Blueprint.Options
+    -- @+node:gcross.20100624100717.2151:Blueprint.Tools
+    ,testGroup "Blueprint.Tools" $
+        -- @    @+others
+        -- @+node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
+        [testGroup "analyzeDependenciesAndRebuildIfNecessary" $
+            -- @    @+others
+            -- @+node:gcross.20100624100717.2155:return cached value
+            [testCase "trivial" . withJobServer 1 Map.empty $ \job_server → do
+                scanner_called_ref ← newIORef False
+                builder_called_ref ← newIORef False
+                digester_called_ref ← newIORef False
+                job_uuid ← randomIO
+                let job_id = Identifier job_uuid "job"
+                submitJob job_server [job_id] $
+                    analyzeDependenciesAndRebuildIfNecessary
+                        (liftIO (writeIORef scanner_called_ref True) >> return [])
+                        (liftIO (writeIORef builder_called_ref True) >> return ())
+                        (liftIO (writeIORef digester_called_ref True) >> return [md5 . L.pack $ "Job results"])
+                        undefined
+                        ()
+                        []
+                        []
+                result ← requestJobResult job_server job_id
+                cache ← fmap (fromJust . Map.lookup [job_id]) . requestJobCache $ job_server
+                readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                readIORef digester_called_ref >>= assertBool "Was the digester called?"
+            -- @-node:gcross.20100624100717.2155:return cached value
+            -- @-others
+            ]
+        -- @-node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
+        -- @-others
+        ]
+    -- @-node:gcross.20100624100717.2151:Blueprint.Tools
     -- @+node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
     ,testGroup "Blueprint.Tools.Compilers" $
         -- @    @+others
