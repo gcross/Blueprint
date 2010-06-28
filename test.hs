@@ -45,6 +45,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
 import Data.UUID (UUID)
+import qualified Data.UUID as UUID
 import Data.Vec ((:.)(..))
 import Data.Version
 
@@ -1404,40 +1405,6 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100604204549.1358:Blueprint.Options
-    -- @+node:gcross.20100624100717.2151:Blueprint.Tools
-    ,testGroup "Blueprint.Tools" $
-        -- @    @+others
-        -- @+node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
-        [testGroup "analyzeDependenciesAndRebuildIfNecessary" $
-            -- @    @+others
-            -- @+node:gcross.20100624100717.2155:return cached value
-            [testCase "trivial" . withJobServer 1 Map.empty $ \job_server → do
-                scanner_called_ref ← newIORef False
-                builder_called_ref ← newIORef False
-                digester_called_ref ← newIORef False
-                job_uuid ← randomIO
-                let job_id = Identifier job_uuid "job"
-                submitJob job_server [job_id] $
-                    analyzeDependenciesAndRebuildIfNecessary
-                        (liftIO (writeIORef scanner_called_ref True) >> return [])
-                        (liftIO (writeIORef builder_called_ref True) >> return ())
-                        (liftIO (writeIORef digester_called_ref True) >> return [md5 . L.pack $ "Job results"])
-                        undefined
-                        ()
-                        []
-                        []
-                result ← requestJobResult job_server job_id
-                cache ← fmap (fromJust . Map.lookup [job_id]) . requestJobCache $ job_server
-                readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
-                readIORef builder_called_ref >>= assertBool "Was the builder called?"
-                readIORef digester_called_ref >>= assertBool "Was the digester called?"
-            -- @-node:gcross.20100624100717.2155:return cached value
-            -- @-others
-            ]
-        -- @-node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
-        -- @-others
-        ]
-    -- @-node:gcross.20100624100717.2151:Blueprint.Tools
     -- @+node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
     ,testGroup "Blueprint.Tools.Compilers" $
         -- @    @+others
@@ -1797,6 +1764,73 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100624100717.1917:Control.Monad.Goto
+    -- @+node:gcross.20100624100717.2151:Blueprint.Tools
+    ,testGroup "Blueprint.Tools" $
+        -- @    @+others
+        -- @+node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
+        [testGroup "analyzeDependenciesAndRebuildIfNecessary" $
+            -- @    @+others
+            -- @+node:gcross.20100624100717.2155:trivial
+            [testCase "trivial" . withJobServer 1 Map.empty $ \job_server → do
+                scanner_called_ref ← newIORef False
+                builder_called_ref ← newIORef False
+                digester_called_ref ← newIORef False
+                job_uuid ← randomIO
+                let job_id = Identifier job_uuid "job"
+                submitJob job_server [job_id] $
+                    analyzeDependenciesAndRebuildIfNecessary
+                        (liftIO (writeIORef scanner_called_ref True) >> return [])
+                        (liftIO (writeIORef builder_called_ref True) >> return ())
+                        (liftIO (writeIORef digester_called_ref True) >> return [md5 . L.pack $ "Job results"])
+                        undefined
+                        ()
+                        []
+                        []
+                result ← requestJobResult job_server job_id
+                cache ← fmap (fromJust . Map.lookup [job_id]) . requestJobCache $ job_server
+                readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                readIORef digester_called_ref >>= assertBool "Was the digester called?"
+            -- @-node:gcross.20100624100717.2155:trivial
+            -- @+node:gcross.20100628115452.1828:no-op
+            ,testCase "no-op" $
+                let job_id = Identifier UUID.nil "job"
+                    job_ids = [job_id]
+                    product_digests = [md5 . L.pack $ "Job results"]
+                    cache =
+                        CachedDependencies
+                        {   cachedSourceDigests = []
+                        ,   cachedExplicitDependencies = []
+                        ,   cachedImplicitDependencies = []
+                        ,   cachedDependencyDigests = []
+                        ,   cachedDeferredDependencies = []
+                        ,   cachedProductDigests = product_digests
+                        }
+                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                    scanner_ignored_ref ← newIORef True
+                    builder_ignored_ref ← newIORef True
+                    digester_called_ref ← newIORef False
+                    submitJob job_server job_ids $
+                        analyzeDependenciesAndRebuildIfNecessary
+                            (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                            (liftIO (writeIORef builder_ignored_ref False) >> return ())
+                            (liftIO (writeIORef digester_called_ref True) >> return product_digests)
+                            undefined
+                            ()
+                            []
+                            []
+                    result ← requestJobResult job_server job_id
+                    cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                    readIORef builder_ignored_ref >>= assertBool "Was the builder ignored?"
+                    readIORef digester_called_ref >>= assertBool "Was the digester called?"
+            -- @-node:gcross.20100628115452.1828:no-op
+            -- @-others
+            ]
+        -- @-node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
+        -- @-others
+        ]
+    -- @-node:gcross.20100624100717.2151:Blueprint.Tools
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl
