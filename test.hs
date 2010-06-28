@@ -71,13 +71,10 @@ import Data.Record
 
 import Blueprint.Configuration.Libraries.LAPACK
 import Blueprint.Configuration.Tools
+import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Fields.Digest
 import Blueprint.Identifier
-import Blueprint.Language
-import Blueprint.Language.Programming
-import Blueprint.Language.Programming.C
-import Blueprint.Language.Programming.CPP
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.Tools.Compilers
@@ -154,6 +151,35 @@ _b = field "b" "52a37070-f576-4f44-b6f5-b6825f5d756f" :: Field Char
 _c = field "c" "acc11d70-deae-4745-ba97-112350d5930f" :: Field Bool
 _a_as_char = field "a" "e75eb3a0-5986-4772-9e3c-2926ded9239c" :: Field Char
 -- @-node:gcross.20100609163522.1701:Test fields
+-- @+node:gcross.20100628115452.1835:Test dependencies
+test_dependency_type :: DependencyType
+test_dependency_type = identifier "b1a70c20-95ae-4a2e-805e-5c15cb430a61" "test"
+
+test_dependency, test_dependency_1, test_dependency_2 :: Dependency
+test_dependency =
+    Dependency
+    {   dependencyName = "test"
+    ,   dependencyType = test_dependency_type
+    }
+test_dependency_1 =
+    Dependency
+    {   dependencyName = "test 1"
+    ,   dependencyType = test_dependency_type
+    }
+test_dependency_2 = 
+    Dependency
+    {   dependencyName = "test 2"
+    ,   dependencyType = test_dependency_type
+    }
+
+test_unresolved_dependency :: UnresolvedDependency
+test_unresolved_dependency =
+    UnresolvedDependency
+    {   unresolvedDependency = test_dependency
+    ,   unresolvedDependencyIsExternal = Nothing
+    }
+
+-- @-node:gcross.20100628115452.1835:Test dependencies
 -- @-node:gcross.20100602152546.1874:Values
 -- @+node:gcross.20100609163522.1717:Types
 -- @+node:gcross.20100609163522.1718:TestRecord
@@ -932,13 +958,15 @@ main = defaultMain
         [testCase "dependency extractor" $
             assertEqual
                 "Were the dependencies extracted correctly?"
-                [Dependency Nothing ["A/B/C.hi"]
-                ,Dependency Nothing ["X/Y.hi"]
-                ,Dependency Nothing ["P/Q.hi"]
-                ,Dependency Nothing ["U.hi"]
-                ]
+                (map (UnresolvedDependency Nothing . haskellModuleDependency)
+                    ["A.B.C"
+                    ,"X.Y"
+                    ,"P.Q"
+                    ,"U"
+                    ]
+                )
             .
-            languageDependencyExtractor (language :: Haskell)
+            extractDependenciesFromHaskellSource
             .
             L.pack
             .
@@ -1407,32 +1435,6 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100604204549.1358:Blueprint.Options
-    -- @+node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
-    ,testGroup "Blueprint.Tools.Compilers" $
-        -- @    @+others
-        -- @+node:gcross.20100614121927.1730:computeCompileToProgramCommand
-        [testCase "computeCompileToProgramCommand" $
-            assertEqual
-                "Is the computed program command correct?"
-                ("compile",["source.file.1","and","source.file.2","and","source.file.3","to","program"])
-                $
-                let compiler = 
-                        Compiler
-                        {   compilerProgram = undefined
-                        ,   compilerInvocationToCompileRecord = undefined
-                        ,   compilerInvocationToCompileProgram =
-                                newAngleSTMP $
-                                    "compile <sources; separator=\" and \"> to <program>"
-                        ,   compilationLibraryDependencies = undefined
-                        } :: Compiler NullLanguage
-                    sources = ["source.file." ++ show i | i ← [1..3::Int]]
-                    program = "program"
-                in computeCompileToProgramCommand compiler (map SourceCodeFile sources) program
-        -- @nonl
-        -- @-node:gcross.20100614121927.1730:computeCompileToProgramCommand
-        -- @-others
-        ]
-    -- @-node:gcross.20100614121927.1729:Blueprint.Tools.Compilers
     -- @+node:gcross.20100614121927.2365:Blueprint.Tools.Compilers.GCC
     ,testGroup "Blueprint.Tools.Compilers.GCC"
         -- @    @+others

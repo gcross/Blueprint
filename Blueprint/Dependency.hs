@@ -22,6 +22,7 @@ import Data.Binary
 import Data.Either
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
+import Data.List
 import Data.Typeable
 
 import Blueprint.Identifier
@@ -114,7 +115,7 @@ concatResolvedDependencies :: [ResolvedDependencies] → ResolvedDependencies
 concatResolvedDependencies =
     uncurry ResolvedDependencies
     .
-    (concat *** concat)
+    ((nub . concat) *** (nub . concat))
     .
     unzip
     .

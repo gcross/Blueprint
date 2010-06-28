@@ -33,24 +33,12 @@ class Language language where
     languageName :: language → String
     languageFileExtension :: language → String
     languageFileExtensions :: language → [String]
-    languageDependencyExtractor :: language → L.ByteString → [Dependency]
 
     language = undefined
-    languageDependencyExtractor _ = const []
     languageFileExtension = head . languageFileExtensions
     languageFileExtensions = (:[]) . languageFileExtension
 -- @-node:gcross.20100611224425.1638:Language
 -- @-node:gcross.20100611224425.1637:Classes
--- @+node:gcross.20100611224425.1706:Types
--- @+node:gcross.20100611224425.1707:Dependency
-data Dependency =
-    Dependency
-    {   dependencyBelongsToSystem :: Maybe Bool
-    ,   dependencyPotentialRelativeFilePaths :: [String]
-    } deriving (Eq, Show)
-
--- @-node:gcross.20100611224425.1707:Dependency
--- @-node:gcross.20100611224425.1706:Types
 -- @+node:gcross.20100614121927.1732:Languages
 -- @+node:gcross.20100614121927.1734:NullLanguage
 data NullLanguage
