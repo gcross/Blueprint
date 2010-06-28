@@ -31,7 +31,6 @@ import System.IO
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Fields.Digest
-import Blueprint.Fields.FilePath
 import Blueprint.Miscellaneous
 import Blueprint.Jobs
 -- @-node:gcross.20100624100717.2134:<< Import needed modules >>
@@ -56,20 +55,20 @@ analyzeDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) ⇒
     JobTask JobId Record [UnresolvedDependency] →
     JobTask JobId Record () →
+    JobTask JobId Record [MD5Digest] →
     DependencyResolver →
     a →
     [JobId] →
     [UnresolvedDependency] →
-    [FilePath] →
     JobRunner JobId Record (CachedDependencies,a)
 analyzeDependenciesAndRebuildIfNecessary
     scanner
     builder
+    digestProducts
     resolveDependency
     miscellaneous_information
     source_dependency_job_ids
     explicit_dependencies
-    product_file_paths
     maybe_cache
  = case maybe_cache of
     Nothing → digestSources >>= rescanAndRebuild
@@ -107,17 +106,7 @@ analyzeDependenciesAndRebuildIfNecessary
                 ]
             ) $ rebuildIt
 
-        -- Check whether the product files still exist
-        (fmap and
-         .
-         liftIO
-         .
-         mapM doesFileExist
-         $
-         product_file_paths
-         ) >>= flip unless rebuildIt
-
-        -- Check whether the products have been corrupted
+        -- Check whether the product files either don't exist or have been corrupted
         fmap (== cachedProductDigests) (lift digestProducts)
            >>= flip unless rebuildIt
 
@@ -147,16 +136,6 @@ analyzeDependenciesAndRebuildIfNecessary
             resolvedImmediateDependencies
         return (dependency_digests,resolvedDeferredDependencies)
 
-
-    digestProducts =
-        fmap (withStrategy (parList rwhnf))
-        .
-        liftIO
-        .
-        digestFiles
-        $
-        product_file_paths
-
     rescanAndRebuild source_digests = do
         implicit_dependencies ← scanner
         (dependency_digests,deferred_dependencies) ← resolveAllDependencies implicit_dependencies
@@ -181,14 +160,15 @@ analyzeDependenciesAndRebuildIfNecessary
 
     declareVictory (cache@CachedDependencies{..}) =
         let values =
-                zipWith (\file_path digest →
+                map (\digest →
                     withFields (
-                        (_file_path,file_path)
-                     :. (_digest,digest)
+                        (_digest,digest)
                      :. (_deferred_dependencies,cachedDeferredDependencies)
                      :. ()
                     )
-                ) product_file_paths cachedProductDigests
+                )
+                $
+                cachedProductDigests
         in returnValuesAndCache values (cache,miscellaneous_information)
 -- @-node:gcross.20100624100717.2137:analyzeDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20100624100717.2135:Functions
