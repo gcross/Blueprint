@@ -44,6 +44,17 @@ import Data.Vec ((:.)(..))
 
 -- @+others
 -- @+node:gcross.20100609163522.1434:Exceptions
+-- @+node:gcross.20100624100717.2062:FieldNotFoundError
+data FieldNotFoundError = ∀ a. Typeable a => FieldNotFoundError (Field a) deriving (Typeable)
+
+instance Eq FieldNotFoundError
+
+instance Show FieldNotFoundError where
+    show (FieldNotFoundError (Field{..} :: Field a)) =
+        "Field " ++ fieldName ++ " does not exist."
+
+instance Exception FieldNotFoundError
+-- @-node:gcross.20100624100717.2062:FieldNotFoundError
 -- @+node:gcross.20100609163522.1435:TypeError
 data TypeError = ∀ a. Typeable a => TypeError (Field a) deriving (Typeable)
 
@@ -191,7 +202,8 @@ getField ::
     (FieldValue entity value
     ,Typeable entity
     ) =>
-    Field value → Table entity →
+    Field value →
+    Table entity →
     Maybe value
 getField (field@Field {..}) (Table fields) =
     case Map.lookup fieldId fields of
@@ -201,6 +213,16 @@ getField (field@Field {..}) (Table fields) =
                 Nothing → throw (TypeError field)
                 Just value → Just value
 -- @-node:gcross.20100609163522.1430:getField
+-- @+node:gcross.20100624100717.2061:getRequiredField
+getRequiredField ::
+    (FieldValue entity value
+    ,Typeable entity
+    ) =>
+    Field value →
+    Table entity →
+    value
+getRequiredField field = fromMaybe (throw (FieldNotFoundError field)) . getField field
+-- @-node:gcross.20100624100717.2061:getRequiredField
 -- @+node:gcross.20100609163522.1432:setField
 setField ::
     (FieldValue entity value

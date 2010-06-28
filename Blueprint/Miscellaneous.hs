@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100614121927.1660:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100614121927.1660:<< Language extensions >>
 -- @nl
@@ -16,6 +17,8 @@ import Control.Exception
 import Control.Monad
 
 import qualified Data.ByteString.Char8 as S
+import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Digest.Pure.MD5
 import Data.Typeable
 import Data.UUID
 
@@ -42,7 +45,21 @@ instance Show ProgramFailed where
 instance Exception ProgramFailed
 -- @-node:gcross.20100614121927.2362:ProgramFailed
 -- @-node:gcross.20100614121927.2361:Exceptions
+-- @+node:gcross.20100624100717.2142:Instances
+-- @+node:gcross.20100624100717.2143:Typeable MD5Digest
+deriving instance Typeable MD5Digest
+-- @-node:gcross.20100624100717.2143:Typeable MD5Digest
+-- @-node:gcross.20100624100717.2142:Instances
 -- @+node:gcross.20100614121927.1662:Functions
+-- @+node:gcross.20100624100717.2077:digestFile
+digestFile :: FilePath → IO MD5Digest
+digestFile = fmap md5 . L.readFile
+-- @-node:gcross.20100624100717.2077:digestFile
+-- @+node:gcross.20100624100717.2079:digestFiles
+digestFiles :: [FilePath] → IO [MD5Digest]
+digestFiles = mapM digestFile
+-- @nonl
+-- @-node:gcross.20100624100717.2079:digestFiles
 -- @+node:gcross.20100614121927.2357:echo
 echo x = trace (show x) x
 -- @-node:gcross.20100614121927.2357:echo

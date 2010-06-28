@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100604184944.1291:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RelaxedPolyRec #-}
@@ -52,7 +53,9 @@ import System.IO
 
 import System.Mem.Weak
 
+import Blueprint.Identifier
 import Blueprint.IOTask
+-- @nonl
 -- @-node:gcross.20100604184944.1292:<< Import needed modules >>
 -- @nl
 
@@ -120,6 +123,10 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
+-- @+node:gcross.20100624100717.2145:JobId
+data OfJob
+type JobId = Identifier OfJob
+-- @-node:gcross.20100624100717.2145:JobId
 -- @+node:gcross.20100624100717.1751:JobResults
 data JobResults result cache = JobResults
     {   jobResults :: [result]

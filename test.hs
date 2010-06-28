@@ -80,6 +80,7 @@ import Blueprint.Jobs
 import Blueprint.Options
 import Blueprint.Phases
 import qualified Blueprint.Phases.Configuration as Configuration
+import Blueprint.Tools
 -- @nonl
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
 -- @nl
@@ -162,7 +163,6 @@ instance Castable Dynamic TestRecord where
 instance Castable Entity TestRecord where
     toRecord = toRecordUsingFields fields
     fromRecord = fromRecordUsingFields fields TestRecord
--- @nonl
 -- @-node:gcross.20100609163522.1718:TestRecord
 -- @-node:gcross.20100609163522.1717:Types
 -- @-others
