@@ -314,7 +314,8 @@ returnValues values = returnValuesAndCache values ()
 -- @-node:gcross.20100607205618.1441:returnValues
 -- @+node:gcross.20100607083309.1417:request
 request :: [label] → JobTask label result [result]
-request = flip Request return
+request [] = return []
+request requests = Request requests return
 -- @-node:gcross.20100607083309.1417:request
 -- @-node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1405:Implementation
