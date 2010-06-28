@@ -30,6 +30,7 @@ import Control.Monad
 import qualified Control.Monad.CatchIO as M
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State (StateT,evalStateT)
+import Control.Parallel
 import Control.Parallel.Strategies
 
 import Data.Accessor.Monad.Trans.State
@@ -300,16 +301,16 @@ requestJobCache (JobServer job_queue _) = do
     takeMVar result_var
 -- @-node:gcross.20100607205618.1429:requestJobCache
 -- @+node:gcross.20100607083309.1414:returnValuesAndCache
-returnValuesAndCache values cache = return $ JobResults values cache
+returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
 -- @-node:gcross.20100607083309.1414:returnValuesAndCache
 -- @+node:gcross.20100607205618.1443:returnValueAndCache
-returnValueAndCache value cache = return $ JobResults [value] cache
+returnValueAndCache value cache = value `par` cache `par` return (JobResults [value] cache)
 -- @-node:gcross.20100607205618.1443:returnValueAndCache
 -- @+node:gcross.20100607205618.1427:returnValue
-returnValue value = return $ JobResults [value] ()
+returnValue value = returnValueAndCache value ()
 -- @-node:gcross.20100607205618.1427:returnValue
 -- @+node:gcross.20100607205618.1441:returnValues
-returnValues values = return $ JobResults values ()
+returnValues values = returnValuesAndCache values ()
 -- @-node:gcross.20100607205618.1441:returnValues
 -- @+node:gcross.20100607083309.1417:request
 request :: [label] → JobTask label result [result]
