@@ -15,6 +15,7 @@ module Blueprint.Miscellaneous where
 -- @+node:gcross.20100614121927.1661:<< Import needed modules >>
 import Control.Exception
 import Control.Monad
+import Control.Parallel.Strategies
 
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy.Char8 as L
@@ -53,7 +54,7 @@ deriving instance Typeable MD5Digest
 -- @+node:gcross.20100614121927.1662:Functions
 -- @+node:gcross.20100624100717.2077:digestFile
 digestFile :: FilePath → IO MD5Digest
-digestFile = fmap md5 . L.readFile
+digestFile = L.readFile >=> (return .|| rwhnf) md5
 -- @-node:gcross.20100624100717.2077:digestFile
 -- @+node:gcross.20100624100717.2079:digestFiles
 digestFiles :: [FilePath] → IO [MD5Digest]
