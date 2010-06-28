@@ -46,7 +46,7 @@ data CachedDependencies = CachedDependencies
         ,   cachedDependencyDigests :: [MD5Digest]
         ,   cachedDeferredDependencies :: [Dependency]
         ,   cachedProductDigests :: [MD5Digest]
-        };  $( derive makeBinary ''CachedDependencies )
+        } deriving (Show,Eq);  $( derive makeBinary ''CachedDependencies )
 -- @-node:gcross.20100624100717.2148:CachedDependencies
 -- @-node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100624100717.2135:Functions

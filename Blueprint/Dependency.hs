@@ -39,14 +39,13 @@ type DependencyType = Identifier OfDependencyType
 data Dependency = Dependency
     {   dependencyType :: DependencyType
     ,   dependencyName :: String
-    } deriving (Eq,Typeable); $(derive makeBinary ''Dependency)
+    } deriving (Show,Eq,Typeable); $(derive makeBinary ''Dependency)
 -- @-node:gcross.20100624100717.1721:Dependency
 -- @+node:gcross.20100624100717.1726:DependencyExporters
 data DependencyExporters = DependencyExporters
     {   dependencyExporterType :: String
     ,   dependencyExporterNames :: [String]
-    }
--- @nonl
+    } deriving (Eq)
 -- @-node:gcross.20100624100717.1726:DependencyExporters
 -- @+node:gcross.20100624100717.1741:ResolvedDependencies
 data ResolvedDependencies = ResolvedDependencies
@@ -58,13 +57,13 @@ data ResolvedDependencies = ResolvedDependencies
 data UnresolvedDependency = UnresolvedDependency
     {   unresolvedDependencyIsExternal :: Maybe Bool
     ,   unresolvedDependency :: Dependency
-    } deriving (Eq);  $( derive makeBinary ''UnresolvedDependency )
+    } deriving (Show,Eq);  $( derive makeBinary ''UnresolvedDependency )
 -- @-node:gcross.20100624100717.1727:UnresolvedDependency
 -- @+node:gcross.20100624100717.2064:UnknownDependency
 data UnknownDependency = UnknownDependency
     {   unknownDependency :: Dependency
     ,   unknownDependencyExporters :: Maybe DependencyExporters
-    } deriving (Typeable)
+    } deriving (Show,Eq,Typeable)
 
 -- @-node:gcross.20100624100717.2064:UnknownDependency
 -- @+node:gcross.20100624100717.1737:DependencyResolution
