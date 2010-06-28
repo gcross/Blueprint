@@ -54,8 +54,8 @@ data CachedDependencies = CachedDependencies
 analyzeDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) ⇒
     JobTask JobId Record [UnresolvedDependency] →
-    JobTask JobId Record () →
     JobTask JobId Record [MD5Digest] →
+    ([MD5Digest] → JobTask JobId Record Bool) →
     DependencyResolver →
     a →
     [JobId] →
@@ -64,7 +64,7 @@ analyzeDependenciesAndRebuildIfNecessary ::
 analyzeDependenciesAndRebuildIfNecessary
     scanner
     builder
-    digestProducts
+    checkProducts
     resolveDependency
     miscellaneous_information
     source_dependency_job_ids
@@ -107,8 +107,7 @@ analyzeDependenciesAndRebuildIfNecessary
             ) $ rebuildIt
 
         -- Check whether the product files either don't exist or have been corrupted
-        fmap (== cachedProductDigests) (lift digestProducts)
-           >>= flip unless rebuildIt
+        lift (checkProducts cachedProductDigests) >>= flip unless rebuildIt
 
         -- If we reach here, then nothing more needs to be done. 
         lift (declareVictory cache)
@@ -146,8 +145,7 @@ analyzeDependenciesAndRebuildIfNecessary
             deferred_dependencies
 
     rebuild source_digests implicit_dependencies dependency_digests deferred_dependencies = do
-        builder
-        product_digests ← digestProducts
+        product_digests ← builder
         declareVictory
             CachedDependencies
             {   cachedSourceDigests = source_digests

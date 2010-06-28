@@ -1772,52 +1772,52 @@ main = defaultMain
         -- @+node:gcross.20100624100717.2152:analyzeDependenciesAndRebuildIfNecessary
         [testGroup "analyzeDependenciesAndRebuildIfNecessary" $
             -- @    @+others
-            -- @+node:gcross.20100624100717.2155:trivial
-            [testCase "trivial" . withJobServer 1 Map.empty $ \job_server → do
-                scanner_called_ref ← newIORef False
-                builder_called_ref ← newIORef False
-                digester_called_ref ← newIORef False
-                job_uuid ← randomIO
-                let job_id = Identifier job_uuid "job"
+            -- @+node:gcross.20100624100717.2155:no cache
+            [testCase "no cache" $
+                let job_id = Identifier UUID.nil "job"
                     job_ids = [job_id]
                     product_digest = md5 . L.pack $ "Job results"
                     product_digests = [product_digest]
-                submitJob job_server [job_id] $
-                    analyzeDependenciesAndRebuildIfNecessary
-                        (liftIO (writeIORef scanner_called_ref True) >> return [])
-                        (liftIO (writeIORef builder_called_ref True) >> return ())
-                        (liftIO (writeIORef digester_called_ref True) >> return product_digests)
-                        undefined
-                        ()
-                        []
-                        []
-                result ← requestJobResult job_server job_id
-                cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
-                readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
-                readIORef builder_called_ref >>= assertBool "Was the builder called?"
-                readIORef digester_called_ref >>= assertBool "Was the digester called?"
-                assertEqual
-                    "Is the digest correct?"
-                    (Just product_digest)
-                    (getField _digest result)
-                assertEqual
-                    "Are the deferred dependencies correct?"
-                    (Just [])
-                    (getField _deferred_dependencies result)
-                let correct_cache =
-                        CachedDependencies
-                        {   cachedSourceDigests = []
-                        ,   cachedExplicitDependencies = []
-                        ,   cachedImplicitDependencies = []
-                        ,   cachedDependencyDigests = []
-                        ,   cachedDeferredDependencies = []
-                        ,   cachedProductDigests = product_digests
-                        }
-                assertEqual
-                    "Is the cache correct?"
-                    (correct_cache,())
-                    (decode cache)
-            -- @-node:gcross.20100624100717.2155:trivial
+                in withJobServer 1 Map.empty $ \job_server → do
+                    scanner_called_ref ← newIORef False
+                    builder_called_ref ← newIORef False
+                    digester_ignored_ref ← newIORef True
+                    submitJob job_server [job_id] $
+                        analyzeDependenciesAndRebuildIfNecessary
+                            (liftIO (writeIORef scanner_called_ref True) >> return [])
+                            (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                            (const $ liftIO (writeIORef digester_ignored_ref False) >> return False)
+                            undefined
+                            ()
+                            []
+                            []
+                    result ← requestJobResult job_server job_id
+                    cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                    readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                    readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                    assertEqual
+                        "Is the digest correct?"
+                        (Just product_digest)
+                        (getField _digest result)
+                    assertEqual
+                        "Are the deferred dependencies correct?"
+                        (Just [])
+                        (getField _deferred_dependencies result)
+                    let correct_cache =
+                            CachedDependencies
+                            {   cachedSourceDigests = []
+                            ,   cachedExplicitDependencies = []
+                            ,   cachedImplicitDependencies = []
+                            ,   cachedDependencyDigests = []
+                            ,   cachedDeferredDependencies = []
+                            ,   cachedProductDigests = product_digests
+                            }
+                    assertEqual
+                        "Is the cache correct?"
+                        (correct_cache,())
+                        (decode cache)
+            -- @-node:gcross.20100624100717.2155:no cache
             -- @+node:gcross.20100628115452.1828:no-op
             ,testCase "no-op" $
                 let job_id = Identifier UUID.nil "job"
@@ -1840,8 +1840,8 @@ main = defaultMain
                     submitJob job_server job_ids $
                         analyzeDependenciesAndRebuildIfNecessary
                             (liftIO (writeIORef scanner_ignored_ref False) >> return [])
-                            (liftIO (writeIORef builder_ignored_ref False) >> return ())
-                            (liftIO (writeIORef digester_called_ref True) >> return product_digests)
+                            (liftIO (writeIORef builder_ignored_ref False) >> return product_digests)
+                            (const $ liftIO (writeIORef digester_called_ref True) >> return True)
                             undefined
                             ()
                             []
