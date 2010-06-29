@@ -1833,7 +1833,7 @@ main = defaultMain
                         ,   cachedDependencyDigests = []
                         ,   cachedProductDigests = product_digests
                         }
-                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                in withJobServer 1 (Map.singleton job_ids (encode (cache,()))) $ \job_server → do
                     scanner_ignored_ref ← newIORef True
                     builder_ignored_ref ← newIORef True
                     digester_called_ref ← newIORef False
@@ -1889,7 +1889,7 @@ main = defaultMain
                         ,   cachedDependencyDigests = []
                         ,   cachedProductDigests = product_digests
                         }
-                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                in withJobServer 1 (Map.singleton job_ids (encode (cache,()))) $ \job_server → do
                     scanner_called_ref ← newIORef False
                     builder_called_ref ← newIORef False
                     digester_ignored_ref ← newIORef True
@@ -1947,7 +1947,7 @@ main = defaultMain
                         ,   cachedDependencyDigests = [dependency_digest]
                         ,   cachedProductDigests = product_digests
                         }
-                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                in withJobServer 1 (Map.singleton job_ids (encode (cache,()))) $ \job_server → do
                     scanner_ignored_ref ← newIORef True
                     builder_called_ref ← newIORef False
                     digester_ignored_ref ← newIORef True
