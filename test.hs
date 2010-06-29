@@ -2200,6 +2200,38 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100624100717.2151:Blueprint.Tools
+    -- @+node:gcross.20100628115452.1875:Blueprint.Identifier
+    ,testGroup "Blueprint.Tools" $
+        -- @    @+others
+        -- @+node:gcross.20100628115452.1885:bin
+        [testGroup "bin" $
+            -- @    @+others
+            -- @+node:gcross.20100628115452.1886:trivial
+            [testCase "trivial" $
+                assertEqual
+                    "Is the resulting map correct?"
+                    (Map.empty :: Map (Identifier ()) [()])
+                .
+                bin
+                $
+                []
+            -- @-node:gcross.20100628115452.1886:trivial
+            -- @+node:gcross.20100628115452.1888:singleton
+            ,testCase "singleton" $
+                assertEqual
+                    "Is the resulting map correct?"
+                    (Map.singleton (nullIdentifier :: Identifier ()) [()])
+                .
+                bin
+                $
+                [(nullIdentifier,())]
+            -- @-node:gcross.20100628115452.1888:singleton
+            -- @-others
+            ]
+        -- @-node:gcross.20100628115452.1885:bin
+        -- @-others
+        ]
+    -- @-node:gcross.20100628115452.1875:Blueprint.Identifier
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl

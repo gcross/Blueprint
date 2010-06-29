@@ -15,6 +15,7 @@ module Blueprint.Dependency where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.1715:<< Import needed modules >>
+import Control.Applicative
 import Control.Arrow
 import Control.Exception
 
@@ -130,6 +131,9 @@ resolveAndExtractAndConcatenateDependenciesUsing resolveDependency =
     .
     map resolveDependency
 -- @-node:gcross.20100624100717.2073:resolveAllDependenciesUsing
+-- @+node:gcross.20100628115452.1863:binDependencies
+binDependencies = bin . map (liftA2 (,) dependencyType dependencyName)
+-- @-node:gcross.20100628115452.1863:binDependencies
 -- @-node:gcross.20100624100717.2066:Functions
 -- @-others
 -- @-node:gcross.20100624100717.1713:@thin Dependency.hs

@@ -16,9 +16,12 @@ import Control.Monad
 
 import Data.Binary
 import Data.Function
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Record (uuid)
 import Data.Typeable
 import Data.UUID
+import qualified Data.UUID as UUID
 -- @-node:gcross.20100624100717.1733:<< Import needed modules >>
 -- @nl
 
@@ -56,7 +59,28 @@ identifier, (★) :: String → String → Identifier a
 identifier = Identifier . uuid
 (★) = identifier
 -- @-node:gcross.20100624100717.1739:identifier
+-- @+node:gcross.20100628115452.1862:bin
+bin :: [(Identifier a, b)] → Map (Identifier a) [b]
+bin =
+    foldr
+        (\(k,v) bins →
+            flip (Map.insert k) bins
+            .
+            maybe [v] (v:)
+            .
+            Map.lookup k
+            $
+            bins
+        )
+        Map.empty
+-- @-node:gcross.20100628115452.1862:bin
 -- @-node:gcross.20100624100717.1738:Functions
+-- @+node:gcross.20100628115452.1889:Values
+-- @+node:gcross.20100628115452.1890:nullIdentifier
+nullIdentifier :: Identifier a
+nullIdentifier = Identifier UUID.nil ""
+-- @-node:gcross.20100628115452.1890:nullIdentifier
+-- @-node:gcross.20100628115452.1889:Values
 -- @-others
 -- @-node:gcross.20100624100717.1731:@thin Identifier.hs
 -- @-leo
