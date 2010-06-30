@@ -144,6 +144,12 @@ assertJobCacheEqualTo job_server correct_cache =
         correct_cache
 -- @-node:gcross.20100607205618.1434:assertJobCacheEqualTo
 -- @-node:gcross.20100602195250.1297:Functions
+-- @+node:gcross.20100628115452.1892:Generators
+-- @+node:gcross.20100628115452.1893:Arbitrary UUID
+instance Arbitrary UUID where
+    arbitrary = fmap (fromJust . UUID.fromByteString . L.pack) . vectorOf 16 $ arbitrary
+-- @-node:gcross.20100628115452.1893:Arbitrary UUID
+-- @-node:gcross.20100628115452.1892:Generators
 -- @+node:gcross.20100602152546.1874:Values
 -- @+node:gcross.20100609163522.1701:Test fields
 _a = field "a" "e75eb3a0-5986-4772-9e3c-2926ded9239c" :: Field Int
@@ -2232,6 +2238,31 @@ main = defaultMain
                 $
                 [(test_identifier,())]
             -- @-node:gcross.20100628115452.1888:singleton
+            -- @+node:gcross.20100628115452.1894:random data
+            ,testProperty "random data" $ do
+                identifiers ←
+                    choose (1,10)
+                    >>=
+                    fmap (zipWith (\index uuid → Identifier uuid ("uuid #" ++ show index)) [1..])
+                    .
+                    flip vectorOf arbitrary
+                random_data ←
+                    choose (1,100)
+                    >>=
+                    flip vectorOf (liftA2 (,) (elements identifiers) (arbitrary :: Gen Int))
+                let binned_data = bin random_data
+                return
+                    .
+                    all (
+                        \identifier →
+                            (map snd . filter ((== identifier) . fst) $ random_data)
+                            ==
+                            fromMaybe [] (Map.lookup identifier binned_data)
+                    )
+
+                    $
+                    identifiers
+            -- @-node:gcross.20100628115452.1894:random data
             -- @-others
             ]
         -- @-node:gcross.20100628115452.1885:bin
