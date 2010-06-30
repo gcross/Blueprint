@@ -119,8 +119,10 @@ analyzeDependenciesAndRebuildIfNecessary
         source_dependency_job_ids
 
     resolveAllDependencies implicit_dependencies = do
-        let ResolvedDependencies{..} =
-                resolveAndExtractAndConcatenateDependenciesUsing resolveDependency
+        ResolvedDependencies{..} ←
+                fmap extractAndConcatenateDependencies
+                .
+                mapM resolveDependency
                 .
                 (explicit_dependencies ++)
                 $

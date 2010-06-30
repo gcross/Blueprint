@@ -1970,7 +1970,7 @@ main = defaultMain
                             (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                             (liftIO (writeIORef builder_called_ref True) >> return product_digests)
                             (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
-                            (const . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                            (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
                             ()
                             []
                             [test_unresolved_dependency]
@@ -2028,7 +2028,7 @@ main = defaultMain
                             (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                             (liftIO (writeIORef builder_called_ref True) >> return product_digests)
                             (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
-                            (const . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                            (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
                             ()
                             []
                             [test_unresolved_dependency]
@@ -2086,7 +2086,7 @@ main = defaultMain
                             (liftIO (writeIORef scanner_ignored_ref False) >> return [test_unresolved_dependency])
                             (liftIO (writeIORef builder_called_ref True) >> return product_digests)
                             (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
-                            (const . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                            (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
                             ()
                             []
                             []

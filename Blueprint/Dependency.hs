@@ -24,6 +24,7 @@ import Data.Either
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.List
+import Data.Record
 import Data.Typeable
 
 import Blueprint.Identifier
@@ -72,7 +73,7 @@ data UnknownDependency = UnknownDependency
 type DependencyResolution = Either UnknownDependency ResolvedDependencies
 -- @-node:gcross.20100624100717.1737:DependencyResolution
 -- @+node:gcross.20100624100717.1725:DependencyResolver
-type DependencyResolver = UnresolvedDependency → DependencyResolution
+type DependencyResolver = UnresolvedDependency → JobTask JobId Record DependencyResolution
 -- @-node:gcross.20100624100717.1725:DependencyResolver
 -- @-node:gcross.20100624100717.1720:Types
 -- @+node:gcross.20100624100717.2063:Exceptions
@@ -133,15 +134,13 @@ concatResolvedDependencies =
     .
     map (\(ResolvedDependencies a b) → (a,b))
 -- @-node:gcross.20100624100717.2068:concatResolvedDependencies
--- @+node:gcross.20100624100717.2073:resolveAllDependenciesUsing
-resolveAndExtractAndConcatenateDependenciesUsing :: DependencyResolver → [UnresolvedDependency] → ResolvedDependencies
-resolveAndExtractAndConcatenateDependenciesUsing resolveDependency =
+-- @+node:gcross.20100624100717.2073:extractAndConcatenateDependencies
+extractAndConcatenateDependencies :: [DependencyResolution] → ResolvedDependencies
+extractAndConcatenateDependencies =
     concatResolvedDependencies
     .
     extractDependenciesOrError
-    .
-    map resolveDependency
--- @-node:gcross.20100624100717.2073:resolveAllDependenciesUsing
+-- @-node:gcross.20100624100717.2073:extractAndConcatenateDependencies
 -- @+node:gcross.20100628115452.1863:binDependencies
 binDependencies = bin . map (liftA2 (,) dependencyType dependencyName)
 -- @-node:gcross.20100628115452.1863:binDependencies
