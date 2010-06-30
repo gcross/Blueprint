@@ -3,6 +3,8 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1611:<< Language extensions >>
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1611:<< Language extensions >>
 -- @nl
@@ -12,14 +14,18 @@ module Blueprint.Tools.Compilers.GHC where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1612:<< Import needed modules >>
 import Control.Exception
+import Control.Monad.IO.Class
 
 import Data.Either.Unwrap
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
+
+import System.Process
 
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
@@ -28,11 +34,17 @@ import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Identifier
+import Blueprint.Jobs
 import Blueprint.Language.Programming.Haskell
 -- @-node:gcross.20100611224425.1612:<< Import needed modules >>
 -- @nl
 
 -- @+others
+-- @+node:gcross.20100630111926.1861:Types
+-- @+node:gcross.20100630111926.1862:GHCKnownModules
+type GHCKnownModules = Map String ResolvedDependencies
+-- @-node:gcross.20100630111926.1862:GHCKnownModules
+-- @-node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100628115452.1859:compilation/linking arguments
 -- @+node:gcross.20100628115452.1854:computeGHCCompileToObjectArguments
@@ -84,7 +96,7 @@ computeFieldOptions field computeOptionsFromField =
 computeGHCLinkDependencyOptions :: [Dependency] → [String]
 computeGHCLinkDependencyOptions dependencies =
     if Set.null unrecognized_dependency_types
-        then throw $ UnrecognizedDependencyTypes (Just "GHC linker") (Set.toList unrecognized_dependency_types)
+        then throw $ UnrecognizedDependencyTypes "the GHC linker" (Set.toList unrecognized_dependency_types)
         else concat
              .
              map (\(bin_id,computeOptionsFrom) → (computeOptionsFrom . getBin bin_id) binned_dependencies)
@@ -102,6 +114,40 @@ computeGHCPackageDependencyOptions (package:rest_packages) =
     "-package":package:computeGHCPackageDependencyOptions rest_packages
 -- @-node:gcross.20100628115452.1900:computeGHCPackageDependencyOptions
 -- @-node:gcross.20100628115452.1899:dependency options
+-- @+node:gcross.20100630111926.1860:dependency resolution
+-- @+node:gcross.20100630111926.1863:resolveGHCModuleDependencies
+resolveGHCModuleDependency :: FilePath → GHCKnownModules → DependencyResolver
+resolveGHCModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
+  | dependencyType == haskell_module_dependency_type
+    = case Map.lookup dependencyName known_modules of
+        Nothing → 
+            liftIO (findPackagesExposingModule path_to_ghc_pkg dependencyName)
+            >>=
+            return
+                .
+                Left
+                .
+                UnknownDependency unresolvedDependency
+                .
+                Just
+                .
+                DependencyExporters haskell_package_dependency_type
+        Just resolution → return . Right $ resolution      
+  | otherwise
+    = throw $ UnrecognizedDependencyType "the GHC compiler" dependencyType
+  where
+    Dependency{..} = unresolvedDependency
+-- @-node:gcross.20100630111926.1863:resolveGHCModuleDependencies
+-- @+node:gcross.20100630111926.1868:findPackagesExposingModule
+findPackagesExposingModule :: FilePath -> String -> IO [String]
+findPackagesExposingModule path_to_ghc_pkg module_name =
+    fmap words
+    .
+    readProcess path_to_ghc_pkg ["--simple-output","find-module",module_name]
+    $
+    ""
+-- @-node:gcross.20100630111926.1868:findPackagesExposingModule
+-- @-node:gcross.20100630111926.1860:dependency resolution
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100611224425.1613:Values
 -- @+node:gcross.20100611224425.1614:ghc_probe

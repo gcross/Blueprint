@@ -46,7 +46,7 @@ data Dependency = Dependency
 -- @-node:gcross.20100624100717.1721:Dependency
 -- @+node:gcross.20100624100717.1726:DependencyExporters
 data DependencyExporters = DependencyExporters
-    {   dependencyExporterType :: String
+    {   dependencyExporterType :: DependencyType
     ,   dependencyExporterNames :: [String]
     } deriving (Eq)
 -- @-node:gcross.20100624100717.1726:DependencyExporters
@@ -96,14 +96,21 @@ instance Show UnknownDependenciesError where
 
 instance Exception UnknownDependenciesError
 -- @-node:gcross.20100624100717.2065:UnknownDependenciesError
+-- @+node:gcross.20100630111926.1866:UnrecognizedDependencyType
+data UnrecognizedDependencyType = UnrecognizedDependencyType String DependencyType deriving Typeable
+
+instance Show UnrecognizedDependencyType where
+    show (UnrecognizedDependencyType actor dependency_type) =
+        actor ++ " does not recognize the dependency type " ++ show dependency_type
+
+instance Exception UnrecognizedDependencyType
+-- @-node:gcross.20100630111926.1866:UnrecognizedDependencyType
 -- @+node:gcross.20100628115452.1902:UnrecognizedDependencyTypes
-data UnrecognizedDependencyTypes = UnrecognizedDependencyTypes (Maybe String) [DependencyType] deriving Typeable
+data UnrecognizedDependencyTypes = UnrecognizedDependencyTypes String [DependencyType] deriving Typeable
 
 instance Show UnrecognizedDependencyTypes where
-    show (UnrecognizedDependencyTypes Nothing dependency_types) =
-        "The following types of dependencies are not recognized: " ++ show dependency_types
-    show (UnrecognizedDependencyTypes (Just actor) dependency_types) =
-        "The " ++ actor ++ " does not recognize the following types of dependencies: " ++ show dependency_types
+    show (UnrecognizedDependencyTypes actor dependency_types) =
+        actor ++ " does not recognize the following types of dependencies: " ++ show dependency_types
 
 instance Exception UnrecognizedDependencyTypes
 -- @-node:gcross.20100628115452.1902:UnrecognizedDependencyTypes
@@ -111,7 +118,7 @@ instance Exception UnrecognizedDependencyTypes
 -- @+node:gcross.20100624100717.2149:Instances
 -- @+node:gcross.20100624100717.2150:Show DependencyExporters
 instance Show DependencyExporters where
-    show (DependencyExporters{..}) = dependencyExporterType ++ "(s) " ++ show dependencyExporterNames
+    show (DependencyExporters{..}) = show dependencyExporterType ++ "(s) " ++ show dependencyExporterNames
 -- @nonl
 -- @-node:gcross.20100624100717.2150:Show DependencyExporters
 -- @-node:gcross.20100624100717.2149:Instances
