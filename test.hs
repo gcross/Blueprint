@@ -180,6 +180,12 @@ test_unresolved_dependency =
     }
 
 -- @-node:gcross.20100628115452.1835:Test dependencies
+-- @+node:gcross.20100628115452.1891:Test identifiers
+test_identifier, test_identifier_1, test_identifier_2 :: Identifier ()
+test_identifier = identifier "1fa9d5fa-0b71-4e59-9534-6c7d2c146717" "test identifier"
+test_identifier_1 = identifier "4b33b60f-09c1-416e-a421-d048aca91699" "test identifier 1"
+test_identifier_2 = identifier "d3e9ab2c-1430-466e-a451-906f98031c22" "test identifier 2"
+-- @-node:gcross.20100628115452.1891:Test identifiers
 -- @-node:gcross.20100602152546.1874:Values
 -- @+node:gcross.20100609163522.1717:Types
 -- @+node:gcross.20100609163522.1718:TestRecord
@@ -2220,11 +2226,11 @@ main = defaultMain
             ,testCase "singleton" $
                 assertEqual
                     "Is the resulting map correct?"
-                    (Map.singleton (nullIdentifier :: Identifier ()) [()])
+                    (Map.singleton test_identifier [()])
                 .
                 bin
                 $
-                [(nullIdentifier,())]
+                [(test_identifier,())]
             -- @-node:gcross.20100628115452.1888:singleton
             -- @-others
             ]

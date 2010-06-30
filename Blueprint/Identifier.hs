@@ -76,10 +76,10 @@ bin =
 -- @-node:gcross.20100628115452.1862:bin
 -- @-node:gcross.20100624100717.1738:Functions
 -- @+node:gcross.20100628115452.1889:Values
--- @+node:gcross.20100628115452.1890:nullIdentifier
-nullIdentifier :: Identifier a
-nullIdentifier = Identifier UUID.nil ""
--- @-node:gcross.20100628115452.1890:nullIdentifier
+-- @+node:gcross.20100628115452.1890:null_identifier
+null_identifier :: Identifier a
+null_identifier = Identifier UUID.nil ""
+-- @-node:gcross.20100628115452.1890:null_identifier
 -- @-node:gcross.20100628115452.1889:Values
 -- @-others
 -- @-node:gcross.20100624100717.1731:@thin Identifier.hs
