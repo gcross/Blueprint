@@ -74,6 +74,9 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @+node:gcross.20100628115452.1839:haskell_module_dependency_type
 haskell_module_dependency_type = identifier "450299f0-5957-4e05-a185-88d765a032b8" "haskell module"
 -- @-node:gcross.20100628115452.1839:haskell_module_dependency_type
+-- @+node:gcross.20100628115452.1898:haskell_package_dependency_type
+haskell_package_dependency_type = identifier "b0094d7f-1cf0-4cbf-8938-e40bf38a6e81" "haskell package"
+-- @-node:gcross.20100628115452.1898:haskell_package_dependency_type
 -- @-node:gcross.20100611224425.1689:Values
 -- @-others
 -- @-node:gcross.20100611224425.1682:@thin Haskell.hs

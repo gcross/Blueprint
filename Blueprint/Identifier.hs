@@ -18,6 +18,7 @@ import Data.Binary
 import Data.Function
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Record (uuid)
 import Data.Typeable
 import Data.UUID
@@ -55,9 +56,8 @@ instance Show (Identifier a) where
 -- @-node:gcross.20100624100717.1765:Instances
 -- @+node:gcross.20100624100717.1738:Functions
 -- @+node:gcross.20100624100717.1739:identifier
-identifier, (★) :: String → String → Identifier a
+identifier :: String → String → Identifier a
 identifier = Identifier . uuid
-(★) = identifier
 -- @-node:gcross.20100624100717.1739:identifier
 -- @+node:gcross.20100628115452.1862:bin
 bin :: [(Identifier a, b)] → Map (Identifier a) [b]
@@ -74,6 +74,10 @@ bin =
         )
         Map.empty
 -- @-node:gcross.20100628115452.1862:bin
+-- @+node:gcross.20100628115452.1896:getBin
+getBin :: Identifier a → Map (Identifier a) [b] → [b]
+getBin key = fromMaybe [] . Map.lookup key
+-- @-node:gcross.20100628115452.1896:getBin
 -- @-node:gcross.20100624100717.1738:Functions
 -- @+node:gcross.20100628115452.1889:Values
 -- @+node:gcross.20100628115452.1890:null_identifier
