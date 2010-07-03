@@ -8,7 +8,7 @@
 -- @-node:gcross.20100624100717.1786:<< Language extensions >>
 -- @nl
 
-module Control.Monad.Goto where
+module Control.Monad.Trans.Goto where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.1787:<< Import needed modules >>

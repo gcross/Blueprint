@@ -16,7 +16,7 @@ module Blueprint.Miscellaneous where
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Abort
 import Control.Parallel.Strategies
 
 import qualified Data.ByteString.Char8 as S
@@ -56,14 +56,10 @@ deriving instance Typeable MD5Digest
 -- @+node:gcross.20100614121927.1662:Functions
 -- @+node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
 checkDigestsOfFilesIfExisting :: [FilePath] → [MD5Digest] → IO Bool
-checkDigestsOfFilesIfExisting file_paths old_digests =
-    flip runContT return
-    .
-    callCC
-    $ \abortWith →
-        mapM (liftIO . doesFileExist >=> flip unless (abortWith False)) file_paths
-        >>
-        liftIO (digestFiles file_paths) >>= return . (== old_digests)
+checkDigestsOfFilesIfExisting file_paths old_digests = runAbortT $
+    mapM (liftIO . doesFileExist >=> flip unless (abort False)) file_paths
+    >>
+    liftIO (digestFiles file_paths) >>= return . (== old_digests)
 -- @-node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
 -- @+node:gcross.20100624100717.2077:digestFile
 digestFile :: FilePath → IO MD5Digest

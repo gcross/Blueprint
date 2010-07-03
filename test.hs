@@ -65,8 +65,8 @@ import Text.StringTemplate.GenericStandard
 import System.IO
 import System.Random
 
-import Control.Monad.Exit
-import Control.Monad.Goto
+import Control.Monad.Trans.Abort
+import Control.Monad.Trans.Goto
 
 import Data.Record
 
@@ -1626,8 +1626,154 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100614121927.2369:Blueprint.Tools.Compilers.GHC
-    -- @+node:gcross.20100624100717.1917:Control.Monad.Goto
-    ,testGroup "Control.Monad.Goto"
+    -- @+node:gcross.20100630111926.1978:Control.Monad.Trans.Abort
+    ,testGroup "Control.Monad.Trans.Abort"
+        -- @    @+others
+        -- @+node:gcross.20100630111926.1979:Functor
+        [testGroup "Functor"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1980:Identity
+            [testGroup "Identity"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1981:without Abort
+                [testProperty "without Abort" $
+                    \(x :: Int) (y :: Int) → (== x+y) . runAbort . fmap (+y) . return $ x
+                -- @nonl
+                -- @-node:gcross.20100630111926.1981:without Abort
+                -- @+node:gcross.20100630111926.1982:with Abort
+                ,testProperty "with goto" $
+                    \(x :: Int) (y :: Int) → (== x) . runAbort . fmap (+y) . abort $ x
+                -- @nonl
+                -- @-node:gcross.20100630111926.1982:with Abort
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1980:Identity
+            -- @+node:gcross.20100630111926.1983:Maybe
+            ,testGroup "Maybe"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1984:without Abort
+                [testProperty "without Abort" $
+                    \(x :: Int) (y :: Int) → (== Just (x+y)) . runAbortT . fmap (+y) . lift . Just $ x
+                -- @nonl
+                -- @-node:gcross.20100630111926.1984:without Abort
+                -- @+node:gcross.20100630111926.1985:with Abort
+                ,testProperty "with Abort" $
+                    \(x :: Int) (y :: Int) → (== Just x) . runAbortT . fmap (+y) . (>>= abort) . lift . Just $ x
+                -- @nonl
+                -- @-node:gcross.20100630111926.1985:with Abort
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1983:Maybe
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1979:Functor
+        -- @+node:gcross.20100630111926.1986:Applicative
+        ,testGroup "Applicative"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1987:Identity
+            [testGroup "Identity"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1988:without Abort
+                [testProperty "without Abort" $
+                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> return x) == x+y
+                -- @nonl
+                -- @-node:gcross.20100630111926.1988:without Abort
+                -- @+node:gcross.20100630111926.1989:with Abort
+                ,testProperty "with Abort" $
+                    \(x :: Int) (y :: Int) → runAbort (return (+y) <*> abort x) == x
+                -- @nonl
+                -- @-node:gcross.20100630111926.1989:with Abort
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1987:Identity
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1986:Applicative
+        -- @+node:gcross.20100630111926.1994:Monad
+        ,testGroup "Monad"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1995:Maybe
+            [testGroup "Maybe"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1996:Just
+                [testGroup "Just"
+                    -- @    @+others
+                    -- @+node:gcross.20100630111926.1997:without Abort
+                    [testProperty "without Abort" $
+                        \(x :: Int) (y :: Int) → (== Just (x+y)) . runAbortT $ do
+                            a ← lift (Just x)
+                            b ← lift (Just y)
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.1997:without Abort
+                    -- @+node:gcross.20100630111926.1998:with Abort
+                    ,testProperty "with Abort" $
+                        \(x :: Int) (y :: Int) → (== Just x) . runAbortT $ do
+                            a ← lift (Just x)
+                            abort a
+                            b ← lift (Just y)
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.1998:with Abort
+                    -- @-others
+                    ]
+                -- @-node:gcross.20100630111926.1996:Just
+                -- @+node:gcross.20100630111926.1999:Nothing
+                ,testGroup "Nothing"
+                    -- @    @+others
+                    -- @+node:gcross.20100630111926.2000:without Abort
+                    [testProperty "without Abort" $
+                        \(x :: Int) (y :: Int) → (== Nothing) . runAbortT $ do
+                            a ← lift (Just x)
+                            b ← lift (Just y)
+                            lift Nothing
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.2000:without Abort
+                    -- @+node:gcross.20100630111926.2001:with Abort
+                    ,testProperty "with Abort" $
+                        \(x :: Int) (y :: Int) → (== Just x) . runAbortT $ do
+                            a ← lift (Just x)
+                            abort a
+                            b ← lift (Just y)
+                            lift Nothing
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.2001:with Abort
+                    -- @-others
+                    ]
+                -- @-node:gcross.20100630111926.1999:Nothing
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1995:Maybe
+            -- @+node:gcross.20100630111926.2002:State
+            ,testGroup "State"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.2003:without Abort
+                [testProperty "without Abort" $
+                    \(x :: Int) (y :: Int) → (== x+y) . flip execState x . runAbortT $ do
+                        lift (modify (+y))
+                -- @nonl
+                -- @-node:gcross.20100630111926.2003:without Abort
+                -- @+node:gcross.20100630111926.2004:with Abort
+                ,testProperty "with Abort" $
+                    \(x :: Int) (y :: Int) → (== x) . flip execState x . runAbortT $ do
+                        abort ()
+                        lift (modify (+y))
+                -- @nonl
+                -- @-node:gcross.20100630111926.2004:with Abort
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.2002:State
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1994:Monad
+        -- @-others
+        ]
+    -- @nonl
+    -- @-node:gcross.20100630111926.1978:Control.Monad.Trans.Abort
+    -- @+node:gcross.20100624100717.1917:Control.Monad.Trans.Goto
+    ,testGroup "Control.Monad.Trans.Goto"
         -- @    @+others
         -- @+node:gcross.20100624100717.1918:Functor
         [testGroup "Functor"
@@ -1780,142 +1926,7 @@ main = defaultMain
         -- @-node:gcross.20100624100717.1970:Monad
         -- @-others
         ]
-    -- @-node:gcross.20100624100717.1917:Control.Monad.Goto
-    -- @+node:gcross.20100630111926.1978:Control.Monad.Exit
-    ,testGroup "Control.Monad.Exit"
-        -- @    @+others
-        -- @+node:gcross.20100630111926.1979:Functor
-        [testGroup "Functor"
-            -- @    @+others
-            -- @+node:gcross.20100630111926.1980:Identity
-            [testGroup "Identity"
-                -- @    @+others
-                -- @+node:gcross.20100630111926.1981:without exit
-                [testProperty "without exit" $
-                    \(x :: Int) (y :: Int) → (== x+y) . runExit . fmap (+y) . return $ x
-                -- @-node:gcross.20100630111926.1981:without exit
-                -- @+node:gcross.20100630111926.1982:with exit
-                ,testProperty "with goto" $
-                    \(x :: Int) (y :: Int) → (== x) . runExit . fmap (+y) . exitWith $ x
-                -- @-node:gcross.20100630111926.1982:with exit
-                -- @-others
-                ]
-            -- @-node:gcross.20100630111926.1980:Identity
-            -- @+node:gcross.20100630111926.1983:Maybe
-            ,testGroup "Maybe"
-                -- @    @+others
-                -- @+node:gcross.20100630111926.1984:without exit
-                [testProperty "without exit" $
-                    \(x :: Int) (y :: Int) → (== Just (x+y)) . runExitT . fmap (+y) . lift . Just $ x
-                -- @-node:gcross.20100630111926.1984:without exit
-                -- @+node:gcross.20100630111926.1985:with exit
-                ,testProperty "with exit" $
-                    \(x :: Int) (y :: Int) → (== Just x) . runExitT . fmap (+y) . (>>= exitWith) . lift . Just $ x
-                -- @-node:gcross.20100630111926.1985:with exit
-                -- @-others
-                ]
-            -- @-node:gcross.20100630111926.1983:Maybe
-            -- @-others
-            ]
-        -- @-node:gcross.20100630111926.1979:Functor
-        -- @+node:gcross.20100630111926.1986:Applicative
-        ,testGroup "Applicative"
-            -- @    @+others
-            -- @+node:gcross.20100630111926.1987:Identity
-            [testGroup "Identity"
-                -- @    @+others
-                -- @+node:gcross.20100630111926.1988:without exit
-                [testProperty "without exit" $
-                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> return x) == x+y
-                -- @-node:gcross.20100630111926.1988:without exit
-                -- @+node:gcross.20100630111926.1989:with exit
-                ,testProperty "with exit" $
-                    \(x :: Int) (y :: Int) → runExit (return (+y) <*> exitWith x) == x
-                -- @-node:gcross.20100630111926.1989:with exit
-                -- @-others
-                ]
-            -- @-node:gcross.20100630111926.1987:Identity
-            -- @-others
-            ]
-        -- @-node:gcross.20100630111926.1986:Applicative
-        -- @+node:gcross.20100630111926.1994:Monad
-        ,testGroup "Monad"
-            -- @    @+others
-            -- @+node:gcross.20100630111926.1995:Maybe
-            [testGroup "Maybe"
-                -- @    @+others
-                -- @+node:gcross.20100630111926.1996:Just
-                [testGroup "Just"
-                    -- @    @+others
-                    -- @+node:gcross.20100630111926.1997:without exit
-                    [testProperty "without exit" $
-                        \(x :: Int) (y :: Int) → (== Just (x+y)) . runExitT $ do
-                            a ← lift (Just x)
-                            b ← lift (Just y)
-                            return (a+b)
-                    -- @-node:gcross.20100630111926.1997:without exit
-                    -- @+node:gcross.20100630111926.1998:with exit
-                    ,testProperty "with exit" $
-                        \(x :: Int) (y :: Int) → (== Just x) . runExitT $ do
-                            a ← lift (Just x)
-                            exitWith a
-                            b ← lift (Just y)
-                            return (a+b)
-                    -- @nonl
-                    -- @-node:gcross.20100630111926.1998:with exit
-                    -- @-others
-                    ]
-                -- @-node:gcross.20100630111926.1996:Just
-                -- @+node:gcross.20100630111926.1999:Nothing
-                ,testGroup "Nothing"
-                    -- @    @+others
-                    -- @+node:gcross.20100630111926.2000:without exit
-                    [testProperty "without exit" $
-                        \(x :: Int) (y :: Int) → (== Nothing) . runExitT $ do
-                            a ← lift (Just x)
-                            b ← lift (Just y)
-                            lift Nothing
-                            return (a+b)
-                    -- @-node:gcross.20100630111926.2000:without exit
-                    -- @+node:gcross.20100630111926.2001:with exit
-                    ,testProperty "with exit" $
-                        \(x :: Int) (y :: Int) → (== Just x) . runExitT $ do
-                            a ← lift (Just x)
-                            exitWith a
-                            b ← lift (Just y)
-                            lift Nothing
-                            return (a+b)
-                    -- @nonl
-                    -- @-node:gcross.20100630111926.2001:with exit
-                    -- @-others
-                    ]
-                -- @-node:gcross.20100630111926.1999:Nothing
-                -- @-others
-                ]
-            -- @-node:gcross.20100630111926.1995:Maybe
-            -- @+node:gcross.20100630111926.2002:State
-            ,testGroup "State"
-                -- @    @+others
-                -- @+node:gcross.20100630111926.2003:without exit
-                [testProperty "without exit" $
-                    \(x :: Int) (y :: Int) → (== x+y) . flip execState x . runExitT $ do
-                        lift (modify (+y))
-                -- @-node:gcross.20100630111926.2003:without exit
-                -- @+node:gcross.20100630111926.2004:with exit
-                ,testProperty "with exit" $
-                    \(x :: Int) (y :: Int) → (== x) . flip execState x . runExitT $ do
-                        exitWith ()
-                        lift (modify (+y))
-                -- @-node:gcross.20100630111926.2004:with exit
-                -- @-others
-                ]
-            -- @-node:gcross.20100630111926.2002:State
-            -- @-others
-            ]
-        -- @-node:gcross.20100630111926.1994:Monad
-        -- @-others
-        ]
-    -- @-node:gcross.20100630111926.1978:Control.Monad.Exit
+    -- @-node:gcross.20100624100717.1917:Control.Monad.Trans.Goto
     -- @+node:gcross.20100624100717.2151:Blueprint.Tools
     ,testGroup "Blueprint.Tools" $
         -- @    @+others
@@ -2409,5 +2420,6 @@ main = defaultMain
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl
     ]
+
 -- @-node:gcross.20100602152546.1280:@thin test.hs
 -- @-leo

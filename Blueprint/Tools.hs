@@ -16,9 +16,9 @@ module Blueprint.Tools where
 -- @+node:gcross.20100624100717.2134:<< Import needed modules >>
 import Control.Exception
 import Control.Monad
-import Control.Monad.Goto
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Goto
 import Control.Parallel.Strategies
 
 import Data.Binary
