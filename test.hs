@@ -65,6 +65,7 @@ import Text.StringTemplate.GenericStandard
 import System.IO
 import System.Random
 
+import Control.Monad.Exit
 import Control.Monad.Goto
 
 import Data.Record
@@ -1780,6 +1781,141 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100624100717.1917:Control.Monad.Goto
+    -- @+node:gcross.20100630111926.1978:Control.Monad.Exit
+    ,testGroup "Control.Monad.Exit"
+        -- @    @+others
+        -- @+node:gcross.20100630111926.1979:Functor
+        [testGroup "Functor"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1980:Identity
+            [testGroup "Identity"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1981:without exit
+                [testProperty "without exit" $
+                    \(x :: Int) (y :: Int) → (== x+y) . runExit . fmap (+y) . return $ x
+                -- @-node:gcross.20100630111926.1981:without exit
+                -- @+node:gcross.20100630111926.1982:with exit
+                ,testProperty "with goto" $
+                    \(x :: Int) (y :: Int) → (== x) . runExit . fmap (+y) . exitWith $ x
+                -- @-node:gcross.20100630111926.1982:with exit
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1980:Identity
+            -- @+node:gcross.20100630111926.1983:Maybe
+            ,testGroup "Maybe"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1984:without exit
+                [testProperty "without exit" $
+                    \(x :: Int) (y :: Int) → (== Just (x+y)) . runExitT . fmap (+y) . lift . Just $ x
+                -- @-node:gcross.20100630111926.1984:without exit
+                -- @+node:gcross.20100630111926.1985:with exit
+                ,testProperty "with exit" $
+                    \(x :: Int) (y :: Int) → (== Just x) . runExitT . fmap (+y) . (>>= exitWith) . lift . Just $ x
+                -- @-node:gcross.20100630111926.1985:with exit
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1983:Maybe
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1979:Functor
+        -- @+node:gcross.20100630111926.1986:Applicative
+        ,testGroup "Applicative"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1987:Identity
+            [testGroup "Identity"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1988:without exit
+                [testProperty "without exit" $
+                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> return x) == x+y
+                -- @-node:gcross.20100630111926.1988:without exit
+                -- @+node:gcross.20100630111926.1989:with exit
+                ,testProperty "with exit" $
+                    \(x :: Int) (y :: Int) → runExit (return (+y) <*> exitWith x) == x
+                -- @-node:gcross.20100630111926.1989:with exit
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1987:Identity
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1986:Applicative
+        -- @+node:gcross.20100630111926.1994:Monad
+        ,testGroup "Monad"
+            -- @    @+others
+            -- @+node:gcross.20100630111926.1995:Maybe
+            [testGroup "Maybe"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.1996:Just
+                [testGroup "Just"
+                    -- @    @+others
+                    -- @+node:gcross.20100630111926.1997:without exit
+                    [testProperty "without exit" $
+                        \(x :: Int) (y :: Int) → (== Just (x+y)) . runExitT $ do
+                            a ← lift (Just x)
+                            b ← lift (Just y)
+                            return (a+b)
+                    -- @-node:gcross.20100630111926.1997:without exit
+                    -- @+node:gcross.20100630111926.1998:with exit
+                    ,testProperty "with exit" $
+                        \(x :: Int) (y :: Int) → (== Just x) . runExitT $ do
+                            a ← lift (Just x)
+                            exitWith a
+                            b ← lift (Just y)
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.1998:with exit
+                    -- @-others
+                    ]
+                -- @-node:gcross.20100630111926.1996:Just
+                -- @+node:gcross.20100630111926.1999:Nothing
+                ,testGroup "Nothing"
+                    -- @    @+others
+                    -- @+node:gcross.20100630111926.2000:without exit
+                    [testProperty "without exit" $
+                        \(x :: Int) (y :: Int) → (== Nothing) . runExitT $ do
+                            a ← lift (Just x)
+                            b ← lift (Just y)
+                            lift Nothing
+                            return (a+b)
+                    -- @-node:gcross.20100630111926.2000:without exit
+                    -- @+node:gcross.20100630111926.2001:with exit
+                    ,testProperty "with exit" $
+                        \(x :: Int) (y :: Int) → (== Just x) . runExitT $ do
+                            a ← lift (Just x)
+                            exitWith a
+                            b ← lift (Just y)
+                            lift Nothing
+                            return (a+b)
+                    -- @nonl
+                    -- @-node:gcross.20100630111926.2001:with exit
+                    -- @-others
+                    ]
+                -- @-node:gcross.20100630111926.1999:Nothing
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.1995:Maybe
+            -- @+node:gcross.20100630111926.2002:State
+            ,testGroup "State"
+                -- @    @+others
+                -- @+node:gcross.20100630111926.2003:without exit
+                [testProperty "without exit" $
+                    \(x :: Int) (y :: Int) → (== x+y) . flip execState x . runExitT $ do
+                        lift (modify (+y))
+                -- @-node:gcross.20100630111926.2003:without exit
+                -- @+node:gcross.20100630111926.2004:with exit
+                ,testProperty "with exit" $
+                    \(x :: Int) (y :: Int) → (== x) . flip execState x . runExitT $ do
+                        exitWith ()
+                        lift (modify (+y))
+                -- @-node:gcross.20100630111926.2004:with exit
+                -- @-others
+                ]
+            -- @-node:gcross.20100630111926.2002:State
+            -- @-others
+            ]
+        -- @-node:gcross.20100630111926.1994:Monad
+        -- @-others
+        ]
+    -- @-node:gcross.20100630111926.1978:Control.Monad.Exit
     -- @+node:gcross.20100624100717.2151:Blueprint.Tools
     ,testGroup "Blueprint.Tools" $
         -- @    @+others

@@ -11,6 +11,7 @@
 <vnodes>
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
 <v t="gcross.20100624100717.1779"><vh>@path Control/Monad</vh>
+<v t="gcross.20100630111926.1935"><vh>@thin Exit.hs</vh></v>
 <v t="gcross.20100624100717.1785"><vh>@thin Goto.hs</vh></v>
 </v>
 <v t="gcross.20100609163522.1414"><vh>@path Data</vh>
