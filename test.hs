@@ -84,6 +84,7 @@ import Blueprint.Tools.Compilers.GHC
 import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
+import Blueprint.Path
 import Blueprint.Phases
 import qualified Blueprint.Phases.Configuration as Configuration
 import Blueprint.Tools
@@ -2420,6 +2421,5 @@ main = defaultMain
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl
     ]
-
 -- @-node:gcross.20100602152546.1280:@thin test.hs
 -- @-leo

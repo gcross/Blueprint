@@ -24,7 +24,7 @@ import Blueprint.Dependency
 import Blueprint.Identifier
 import Blueprint.Language
 import Blueprint.Language.Programming
--- @nonl
+import Blueprint.Path
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
 
@@ -43,6 +43,15 @@ instance ProgrammingLanguage Haskell where
 -- @nonl
 -- @-node:gcross.20100615082419.1707:Haskell
 -- @-node:gcross.20100615082419.1704:Languages
+-- @+node:gcross.20100630111926.2042:Types
+-- @+node:gcross.20100630111926.2043:HaskellSource
+data HaskellSource = HaskellSource
+    {   haskellSourceFilePath :: FilePath
+    ,   haskellSourcePath :: Path
+    ,   haskellSourceModule :: String
+    }
+-- @-node:gcross.20100630111926.2043:HaskellSource
+-- @-node:gcross.20100630111926.2042:Types
 -- @+node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
 extractDependenciesFromHaskellSource :: L.ByteString → [UnresolvedDependency]
@@ -61,6 +70,13 @@ extractDependenciesFromHaskellSource =
     .
     matchAllText import_regex
 -- @-node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
+-- @+node:gcross.20100630111926.2041:findAllHaskellSources
+findAllHaskellSources :: FilePath → IO [HaskellSource]
+findAllHaskellSources =
+    fmap (map (\(a,b) → HaskellSource a b (pathToDots b)))
+    .
+    findAllPathsWithExtensions [".hs"]
+-- @-node:gcross.20100630111926.2041:findAllHaskellSources
 -- @+node:gcross.20100628115452.1840:haskellModuleDependency
 haskellModuleDependency :: String → Dependency
 haskellModuleDependency = Dependency haskell_module_dependency_type
