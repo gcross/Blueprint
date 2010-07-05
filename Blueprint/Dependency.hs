@@ -42,7 +42,7 @@ type DependencyType = Identifier OfDependencyType
 data Dependency = Dependency
     {   dependencyType :: DependencyType
     ,   dependencyName :: String
-    } deriving (Show,Eq,Typeable); $(derive makeBinary ''Dependency)
+    } deriving (Show,Eq,Ord,Typeable); $(derive makeBinary ''Dependency)
 -- @-node:gcross.20100624100717.1721:Dependency
 -- @+node:gcross.20100624100717.1726:DependencyExporters
 data DependencyExporters = DependencyExporters
