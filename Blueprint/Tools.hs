@@ -5,6 +5,7 @@
 -- @+node:gcross.20100624100717.2133:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100624100717.2133:<< Language extensions >>
@@ -14,6 +15,7 @@ module Blueprint.Tools where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.2134:<< Import needed modules >>
+import Control.Arrow
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
@@ -24,6 +26,9 @@ import Control.Parallel.Strategies
 import Data.Binary
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
+import Data.Either
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Record
 import Data.Typeable
 import Data.Vec ((:.)(..))
@@ -63,6 +68,9 @@ instance Exception ProductionError
 -- @-node:gcross.20100630111926.1895:ProductionError
 -- @-node:gcross.20100630111926.1894:Exceptions
 -- @+node:gcross.20100624100717.2146:Types
+-- @+node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
+type AnalyzeAndRebuildJobRunner a = JobRunner JobId Record (CachedDependencies,a)
+-- @-node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
 -- @+node:gcross.20100624100717.2148:CachedDependencies
 data CachedDependencies = CachedDependencies
         {   cachedSourceDigests :: [MD5Digest]
@@ -72,9 +80,6 @@ data CachedDependencies = CachedDependencies
         ,   cachedProductDigests :: [MD5Digest]
         } deriving (Show,Eq);  $( derive makeBinary ''CachedDependencies )
 -- @-node:gcross.20100624100717.2148:CachedDependencies
--- @+node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
-type AnalyzeAndRebuildJobRunner a = JobRunner JobId Record (CachedDependencies,a)
--- @-node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
 -- @-node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100624100717.2137:analyzeDependenciesAndRebuildIfNecessary
@@ -197,6 +202,67 @@ analyzeDependenciesAndRebuildIfNecessary
                 cachedProductDigests
         in returnValuesAndCache values (cache,miscellaneous_information)
 -- @-node:gcross.20100624100717.2137:analyzeDependenciesAndRebuildIfNecessary
+-- @+node:gcross.20100705100731.1951:fetchAllDeferredDependenciesAndRebuildIfNecessary
+fetchAllDeferredDependenciesAndRebuildIfNecessary ::
+    (Binary a, Eq a) ⇒
+    (Dependency → Maybe JobId) →
+    (Bool → [Dependency] → JobTask JobId Record [Record]) →
+    a →
+    [Dependency] →
+    JobRunner JobId Record (Map Dependency (Maybe MD5Digest),a)
+fetchAllDeferredDependenciesAndRebuildIfNecessary
+    lookupDependencyJobId
+    build
+    miscellaneous_information
+    starting_dependencies
+    maybe_cache
+    =
+    go Map.empty starting_dependencies
+  where
+    go all_dependencies [] = do
+        let needs_to_be_rebuilt = 
+                case maybe_cache of
+                    Nothing → True
+                    Just cache → cache /= (all_dependencies,miscellaneous_information)
+        results ← build needs_to_be_rebuilt (Map.keys all_dependencies)
+        returnValuesAndCache results (all_dependencies,miscellaneous_information)
+    go seen_dependencies additional_dependencies = do
+        let (new_dependencies_without_job_ids,(new_dependencies_with_job_ids,job_ids)) =
+                second unzip
+                .
+                partitionEithers
+                .
+                map (\dependency →
+                    case lookupDependencyJobId dependency of
+                        Nothing → Left dependency
+                        Just job_id → Right (dependency,job_id)
+                )
+                .
+                filter (`Map.notMember` seen_dependencies)
+                $
+                additional_dependencies
+        results ← request job_ids
+        let new_seen_dependencies =
+                Map.unions
+                    [seen_dependencies
+                    ,Map.fromList
+                        [ (dependency,Nothing)
+                        | dependency ← new_dependencies_without_job_ids
+                        ]
+                    ,Map.fromList
+                        [ (dependency,Just digest)
+                        | dependency ← new_dependencies_with_job_ids
+                        | digest ← map getDigest results
+                        ]
+                    ]
+            new_additional_dependencies =
+                concat
+                .
+                map getDeferredDependencies
+                $
+                results
+        go new_seen_dependencies new_additional_dependencies
+-- @-node:gcross.20100705100731.1951:fetchAllDeferredDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     [FilePath] →
