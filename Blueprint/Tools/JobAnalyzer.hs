@@ -277,7 +277,7 @@ rerunTaskAndCacheResultOnlyIf ::
     ToolJobTask a →
     Bool →
     JobAnalyzer a
-rerunTaskAndCacheResultOnlyIf field _ False = fmap fromJust (readAndCache field)
+rerunTaskAndCacheResultOnlyIf field _ False = readRequiredAndCache field
 rerunTaskAndCacheResultOnlyIf field action True = do
     result ← lift action
     writeToCache field result
