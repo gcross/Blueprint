@@ -261,7 +261,7 @@ rebuildProductsIfNecessary
             maybe_old_digests ← asks (getField product_digests_field)
             case maybe_old_digests of
                 Nothing → return True
-                Just old_digests → lift (checkProducts old_digests)
+                Just old_digests → fmap not . lift . checkProducts $ old_digests
     )
     >>=
     rerunTaskAndCacheResultOnlyIf

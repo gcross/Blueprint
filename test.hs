@@ -2265,6 +2265,454 @@ main = defaultMain
             -- @-others
             ]
         -- @-node:gcross.20100706002630.1990:fetchDigestsAndCheckForChanges
+        -- @+node:gcross.20100706002630.1997:analyzeDependenciesAndRebuildIfNecessary
+        ,testGroup "analyzeDependenciesAndRebuildIfNecessary" $
+            let source_digests_field =
+                    field "source digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
+                        :: Field [MD5Digest]
+                implicit_dependencies_field =
+                    field "implicit dependencies" "65b0972e-c17f-426b-a00d-8cc8cb52dc4b"
+                        :: Field [UnresolvedDependency]
+                dependencies_and_digests_field =
+                    field "dependencies and digests" "4292b8d0-5d15-49de-8032-92be8e67680f"
+                        :: Field ([UnresolvedDependency],[MD5Digest])
+                product_digests_field =
+                    field "product digests" "101ba0a4-35a9-44f7-98c0-87d26027a375"
+                        :: Field [MD5Digest]
+                miscellaneous_information_field :: forall a. (Binary a, Typeable a) ⇒ Field a
+                miscellaneous_information_field = field "miscellaneous information" "b77f1940-ac94-4a22-980f-e0f52c26af28"  
+            in
+                -- @        @+others
+                -- @+node:gcross.20100706002630.1999:no cache
+                [testCase "no cache" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        scanner_called_ref ← newIORef False
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_called_ref True) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return False)
+                                undefined
+                                ()
+                                []
+                                []
+                        result ← requestJobResult job_server job_id
+                        cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            cache
+                -- @-node:gcross.20100706002630.1999:no cache
+                -- @+node:gcross.20100706133004.1984:no-op
+                ,testCase "no-op" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_ignored_ref ← newIORef True
+                        digester_called_ref ← newIORef False
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                                (liftIO (writeIORef builder_ignored_ref False) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_called_ref True) >> return True)
+                                undefined
+                                ()
+                                []
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_ignored_ref >>= assertBool "Was the builder ignored?"
+                        readIORef digester_called_ref >>= assertBool "Was the digester called?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1984:no-op
+                -- @+node:gcross.20100706133004.1986:modified sources
+                ,testCase "modified sources" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, product_digests)
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        source_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
+                        source_job_ids = [source_job_id]
+                        source_digest = md5 . L.pack $ "Source digest"
+                        source_digests = [source_digest]
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (source_digests_field, source_digests)
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_called_ref ← newIORef False
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server source_job_ids $
+                            const . returnValue . withFields $ ((_digest,source_digest):.())
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_called_ref True) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                                undefined
+                                ()
+                                source_job_ids
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_called_ref >>= assertBool "Was the scanner called?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1986:modified sources
+                -- @+node:gcross.20100706133004.1988:modified explicit dependencies
+                ,testCase "modified explicit dependencies" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],product_digests) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        dependency_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
+                        dependency_job_ids = [dependency_job_id]
+                        dependency_digest = md5 . L.pack $ "Dependency results"
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([test_unresolved_dependency],[dependency_digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server dependency_job_ids $
+                            const . returnValue . withFields $ ((_digest,dependency_digest):.())
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                                (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                                ()
+                                []
+                                [test_unresolved_dependency]
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [test_dependency_2])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1988:modified explicit dependencies
+                -- @+node:gcross.20100706133004.1990:modified explicit dependency digests
+                ,testCase "modified explicit dependency digests" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([test_unresolved_dependency],[product_digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        dependency_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
+                        dependency_job_ids = [dependency_job_id]
+                        dependency_digest = md5 . L.pack $ "Dependency results"
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([test_unresolved_dependency],[dependency_digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server dependency_job_ids $
+                            const . returnValue . withFields $ ((_digest,dependency_digest):.())
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                                (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                                ()
+                                []
+                                [test_unresolved_dependency]
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [test_dependency_2])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1990:modified explicit dependency digests
+                -- @+node:gcross.20100706133004.1992:modified implicit dependency digests
+                ,testCase "modified implicit dependency digests" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [test_unresolved_dependency])
+                         :. (dependencies_and_digests_field, ([test_unresolved_dependency],[product_digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        dependency_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "job"
+                        dependency_job_ids = [dependency_job_id]
+                        dependency_digest = md5 . L.pack $ "Dependency results"
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [test_unresolved_dependency])
+                         :. (dependencies_and_digests_field, ([test_unresolved_dependency],[dependency_digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server dependency_job_ids $
+                            const . returnValue . withFields $ ((_digest,dependency_digest):.())
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [test_unresolved_dependency])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                                (const . return . Right $ ResolvedDependencies [dependency_job_id] [test_dependency_2])
+                                ()
+                                []
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [test_dependency_2])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1992:modified implicit dependency digests
+                -- @+node:gcross.20100706133004.1994:modified miscellaneous information
+                ,testCase "modified miscellaneous information" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache, correct_cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field Bool, True)
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field Bool, False)
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_called_ref ← newIORef False
+                        digester_ignored_ref ← newIORef True
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_ignored_ref False) >> return True)
+                                undefined
+                                False
+                                []
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_ignored_ref >>= assertBool "Was the digester ignored?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1994:modified miscellaneous information
+                -- @+node:gcross.20100706133004.1996:modified products
+                ,testCase "modified products" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache, correct_cache :: SerializableRecord
+                        cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, [] :: [MD5Digest])
+                         :. () )
+                        correct_cache = withFields (
+                            (source_digests_field, [] :: [MD5Digest])
+                         :. (implicit_dependencies_field, [] :: [UnresolvedDependency])
+                         :. (dependencies_and_digests_field, ([],[]) :: ([UnresolvedDependency],[MD5Digest]))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        scanner_ignored_ref ← newIORef True
+                        builder_called_ref ← newIORef False
+                        digester_called_ref ← newIORef False
+                        submitJob job_server job_ids . runJobAnalyzer $
+                            analyzeImplicitDependenciesAndRebuildIfNecessary
+                                (liftIO (writeIORef scanner_ignored_ref False) >> return [])
+                                (liftIO (writeIORef builder_called_ref True) >> return product_digests)
+                                (const $ liftIO (writeIORef digester_called_ref True) >> return False)
+                                undefined
+                                ()
+                                []
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef scanner_ignored_ref >>= assertBool "Was the scanner ignored?"
+                        readIORef builder_called_ref >>= assertBool "Was the builder called?"
+                        readIORef digester_called_ref >>= assertBool "Was the digester called?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Are the deferred dependencies correct?"
+                            (Just [])
+                            (getField _deferred_dependencies result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @-node:gcross.20100706133004.1996:modified products
+                -- @-others
+                ]
+        -- @-node:gcross.20100706002630.1997:analyzeDependenciesAndRebuildIfNecessary
         -- @-others
         ]
     -- @-node:gcross.20100706002630.1965:Blueprint.Tools.JobAnalyzer
