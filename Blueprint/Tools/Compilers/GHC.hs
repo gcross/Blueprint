@@ -44,6 +44,7 @@ import Blueprint.Jobs
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.Tools
+import Blueprint.Tools.JobAnalyzer
 -- @-node:gcross.20100611224425.1612:<< Import needed modules >>
 -- @nl
 
@@ -207,7 +208,7 @@ createGHCCompileToObjectTask ::
     JobId →
     FilePath →
     JobId →
-    AnalyzeAndRebuildJobRunner [String]
+    JobAnalysisRunner
 
 createGHCCompileToObjectTask
     path_to_ghc
@@ -221,7 +222,9 @@ createGHCCompileToObjectTask
     interface_file_path
     interface_job_id
     = 
-    analyzeDependenciesAndRebuildIfNecessary
+    runJobAnalyzer
+    $
+    analyzeImplicitDependenciesAndRebuildIfNecessary
         scanner
         builder
         (liftIO . checkDigestsOfFilesIfExisting [object_file_path,interface_file_path])
@@ -276,7 +279,7 @@ createGHCLinkProgramTask ::
     (String → Maybe JobId) →
     [FilePath] →
     FilePath →
-    FetchAllDependenciesAndRebuildJobRunner [String]
+    JobAnalysisRunner
 createGHCLinkProgramTask
     path_to_ghc
     options_arguments
@@ -284,6 +287,8 @@ createGHCLinkProgramTask
     object_file_paths
     program_file_path
     =
+    runJobAnalyzer
+    $
     fetchAllDeferredDependenciesAndRebuildIfNecessary
         lookupDependencyJobIds
         (liftIO . checkDigestsOfFilesIfExisting [program_file_path])

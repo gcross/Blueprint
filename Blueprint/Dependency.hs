@@ -60,7 +60,7 @@ data ResolvedDependencies = ResolvedDependencies
 data UnresolvedDependency = UnresolvedDependency
     {   unresolvedDependencyIsExternal :: Maybe Bool
     ,   unresolvedDependency :: Dependency
-    } deriving (Show,Eq);  $( derive makeBinary ''UnresolvedDependency )
+    } deriving (Show,Eq,Typeable);  $( derive makeBinary ''UnresolvedDependency )
 -- @-node:gcross.20100624100717.1727:UnresolvedDependency
 -- @+node:gcross.20100624100717.2064:UnknownDependency
 data UnknownDependency = UnknownDependency

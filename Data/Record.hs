@@ -247,6 +247,16 @@ updateRecordWith x = (`mappend` toRecord x)
 withFields :: FieldsAndValues entity fields => fields -> Table entity
 withFields fields = setFields fields mempty
 -- @-node:gcross.20100609203325.1472:withFields
+-- @+node:gcross.20100705185804.1967:withField
+withField ::
+    (FieldValue entity value
+    ,Typeable entity
+    ) =>
+    Field value →
+    value →
+    Table entity
+withField field value = setField field value emptyTable
+-- @-node:gcross.20100705185804.1967:withField
 -- @+node:gcross.20100611224425.1724:uuid
 uuid :: String → UUID
 uuid = fromJust . UUID.fromString
