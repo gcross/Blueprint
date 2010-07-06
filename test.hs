@@ -88,6 +88,7 @@ import Blueprint.Path
 import Blueprint.Phases
 import qualified Blueprint.Phases.Configuration as Configuration
 import Blueprint.Tools
+import Blueprint.Tools.JobAnalyzer
 -- @nonl
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
 -- @nl
@@ -1929,7 +1930,7 @@ main = defaultMain
         ]
     -- @-node:gcross.20100624100717.1917:Control.Monad.Trans.Goto
     -- @+node:gcross.20100628115452.1875:Blueprint.Identifier
-    ,testGroup "Blueprint.Tools" $
+    ,testGroup "Blueprint.Identifier" $
         -- @    @+others
         -- @+node:gcross.20100628115452.1885:sortIntoLabeledBins
         [testGroup "sortIntoLabeledBins" $
@@ -1985,6 +1986,146 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100628115452.1875:Blueprint.Identifier
+    -- @+node:gcross.20100706002630.1965:Blueprint.Tools.JobAnalyzer
+    ,testGroup "Blueprint.Tools.JobAnalyzer" $
+        -- @    @+others
+        -- @+node:gcross.20100706002630.1968:writeToCache
+        [testCase "writeToCache" $
+            let job_id = Identifier UUID.nil "job"
+                job_ids = [job_id]
+                correct_cache :: SerializableRecord
+                correct_cache = withField _a 42
+            in withJobServer 1 Map.empty $ \job_server → do
+                submitJob job_server job_ids . runJobAnalyzer $ do
+                    writeToCache _a 42
+                    return [undefined]
+                _ ← requestJobResult job_server job_id
+                new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                assertEqual
+                    "Is the cache correct?"
+                    (encode correct_cache)
+                    new_cache
+        -- @-node:gcross.20100706002630.1968:writeToCache
+        -- @+node:gcross.20100706002630.1970:readAndCache
+        ,testCase "readAndCache" $
+            let job_id = Identifier UUID.nil "job"
+                job_ids = [job_id]
+                cache :: SerializableRecord
+                cache = withField _a 42
+            in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                submitJob job_server job_ids . runJobAnalyzer $ do
+                    maybe_a ← readAndCache _a
+                    case maybe_a of
+                        Nothing → return [emptyTable]
+                        Just a → return [withField _a a]
+                result ← requestJobResult job_server job_id
+                new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                assertEqual
+                    "Is the result correct?"
+                    (Just 42)
+                    (getField _a result)
+                assertEqual
+                    "Is the cache correct?"
+                    (encode cache)
+                    new_cache
+        -- @-node:gcross.20100706002630.1970:readAndCache
+        -- @+node:gcross.20100706002630.1972:readRequiredAndCache
+        ,testCase "readRequiredAndCache" $
+            let job_id = Identifier UUID.nil "job"
+                job_ids = [job_id]
+                cache :: SerializableRecord
+                cache = withField _a 42
+            in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                submitJob job_server job_ids . runJobAnalyzer $ do
+                    a ← readRequiredAndCache _a
+                    return [withField _a a]
+                result ← requestJobResult job_server job_id
+                new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                assertEqual
+                    "Is the result correct?"
+                    (Just 42)
+                    (getField _a result)
+                assertEqual
+                    "Is the cache correct?"
+                    (encode cache)
+                    new_cache
+        -- @-node:gcross.20100706002630.1972:readRequiredAndCache
+        -- @+node:gcross.20100706002630.1975:checkForChangesIn
+        ,testGroup "checkForChangesIn" $
+            -- @    @+others
+            -- @+node:gcross.20100706002630.1974:no cache
+            [testCase "no cache" $
+                let job_id = Identifier UUID.nil "job"
+                    job_ids = [job_id]
+                    correct_cache :: SerializableRecord
+                    correct_cache = withField _a 42
+                in withJobServer 1 Map.empty $ \job_server → do
+                    submitJob job_server job_ids . runJobAnalyzer $ do
+                        c ← checkForChangesIn _a 42
+                        return [withField _c c]
+                    result ← requestJobResult job_server job_id
+                    new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    assertEqual
+                        "Is the result correct?"
+                        (Just True)
+                        (getField _c result)
+                    assertEqual
+                        "Is the cache correct?"
+                        (encode correct_cache)
+                        new_cache
+            -- @-node:gcross.20100706002630.1974:no cache
+            -- @+node:gcross.20100706002630.1977:changed
+            ,testCase "changed" $
+                let job_id = Identifier UUID.nil "job"
+                    job_ids = [job_id]
+                    cache :: SerializableRecord
+                    cache = withField _a 24
+                    correct_cache :: SerializableRecord
+                    correct_cache = withField _a 42
+                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                    submitJob job_server job_ids . runJobAnalyzer $ do
+                        c ← checkForChangesIn _a 42
+                        return [withField _c c]
+                    result ← requestJobResult job_server job_id
+                    new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    assertEqual
+                        "Is the result correct?"
+                        (Just True)
+                        (getField _c result)
+                    assertEqual
+                        "Is the cache correct?"
+                        (encode correct_cache)
+                        new_cache
+            -- @-node:gcross.20100706002630.1977:changed
+            -- @+node:gcross.20100706002630.1979:unchanged
+            ,testCase "unchanged" $
+                let job_id = Identifier UUID.nil "job"
+                    job_ids = [job_id]
+                    cache :: SerializableRecord
+                    cache = withField _a 42
+                    correct_cache :: SerializableRecord
+                    correct_cache = withField _a 42
+                in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                    submitJob job_server job_ids . runJobAnalyzer $ do
+                        c ← checkForChangesIn _a 42
+                        return [withField _c c]
+                    result ← requestJobResult job_server job_id
+                    new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                    assertEqual
+                        "Is the result correct?"
+                        (Just False)
+                        (getField _c result)
+                    assertEqual
+                        "Is the cache correct?"
+                        (encode correct_cache)
+                        new_cache
+            -- @-node:gcross.20100706002630.1979:unchanged
+            -- @-others
+            ]
+        -- @-node:gcross.20100706002630.1975:checkForChangesIn
+        -- @-others
+        ]
+    -- @-node:gcross.20100706002630.1965:Blueprint.Tools.JobAnalyzer
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl

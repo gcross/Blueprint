@@ -141,8 +141,8 @@ checkForChangesIn field value = do
     maybe_old_value ← asks (getField field)
     return $
         case maybe_old_value of
-            Nothing → False
-            Just old_value → value == old_value
+            Nothing → True
+            Just old_value → value /= old_value
 -- @-node:gcross.20100705185804.2045:checkForChangesIn
 -- @+node:gcross.20100705185804.2041:checkForChangesInMiscellaneousInformation
 checkForChangesInMiscellaneousInformation ::
