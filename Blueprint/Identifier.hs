@@ -59,9 +59,9 @@ instance Show (Identifier a) where
 identifier :: String → String → Identifier a
 identifier = Identifier . uuid
 -- @-node:gcross.20100624100717.1739:identifier
--- @+node:gcross.20100628115452.1862:bin
-bin :: [(Identifier a, b)] → Map (Identifier a) [b]
-bin =
+-- @+node:gcross.20100628115452.1862:sortIntoLabeledBins
+sortIntoLabeledBins :: [(Identifier a, b)] → Map (Identifier a) [b]
+sortIntoLabeledBins =
     foldr
         (\(k,v) bins →
             flip (Map.insert k) bins
@@ -73,11 +73,11 @@ bin =
             bins
         )
         Map.empty
--- @-node:gcross.20100628115452.1862:bin
--- @+node:gcross.20100628115452.1896:getBin
-getBin :: Identifier a → Map (Identifier a) [b] → [b]
-getBin key = fromMaybe [] . Map.lookup key
--- @-node:gcross.20100628115452.1896:getBin
+-- @-node:gcross.20100628115452.1862:sortIntoLabeledBins
+-- @+node:gcross.20100628115452.1896:getContentsOfBinLabeledBy
+getContentsOfBinLabeledBy :: Identifier a → Map (Identifier a) [b] → [b]
+getContentsOfBinLabeledBy key = fromMaybe [] . Map.lookup key
+-- @-node:gcross.20100628115452.1896:getContentsOfBinLabeledBy
 -- @-node:gcross.20100624100717.1738:Functions
 -- @+node:gcross.20100628115452.1889:Values
 -- @+node:gcross.20100628115452.1890:null_identifier

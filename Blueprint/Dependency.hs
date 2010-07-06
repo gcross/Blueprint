@@ -82,7 +82,7 @@ data UnknownDependenciesError = UnknownDependenciesError [UnknownDependency] der
 
 instance Show UnknownDependenciesError where
     show (UnknownDependenciesError unknown_dependencies) =
-        concat
+        intercalate "\n"
         .
         map (\(UnknownDependency (Dependency{..}) maybe_unknown_dependency_exporters) →
             "Unable to find " ++ show dependencyType ++ " '" ++ dependencyName ++ "'" ++
@@ -148,9 +148,34 @@ extractAndConcatenateDependencies =
     .
     extractDependenciesOrError
 -- @-node:gcross.20100624100717.2073:extractAndConcatenateDependencies
--- @+node:gcross.20100628115452.1863:binDependencies
-binDependencies = bin . map (liftA2 (,) dependencyType dependencyName)
--- @-node:gcross.20100628115452.1863:binDependencies
+-- @+node:gcross.20100705150931.1950:separateDependenciesByType
+separateDependenciesByType :: String → [DependencyType] → [Dependency] → [[String]]
+separateDependenciesByType actor_name = go
+  where
+    go [] [] = []
+    go [] unrecognized_dependencies =
+        throw
+        .
+        UnrecognizedDependencyTypes actor_name
+        .
+        nub
+        .
+        map dependencyType 
+        $
+        unrecognized_dependencies
+    go (dependency_type:rest_dependency_types) dependencies =
+        uncurry (:)
+        .
+        (map dependencyName *** go rest_dependency_types)
+        .
+        partition (
+            (== dependency_type)
+            .
+            dependencyType
+        )
+        $
+        dependencies
+-- @-node:gcross.20100705150931.1950:separateDependenciesByType
 -- @-node:gcross.20100624100717.2066:Functions
 -- @-others
 -- @-node:gcross.20100624100717.1713:@thin Dependency.hs

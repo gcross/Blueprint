@@ -27,6 +27,7 @@ import Data.Binary
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Either
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Record
@@ -66,11 +67,40 @@ instance Show ProductionError where
 
 instance Exception ProductionError
 -- @-node:gcross.20100630111926.1895:ProductionError
+-- @+node:gcross.20100705150931.1953:UnknownObjects
+data UnknownObjects = UnknownObjects [String] deriving Typeable
+
+instance Show UnknownObjects where
+    show (UnknownObjects unknown_objects) =
+        ("The following objects are unrecognized:" ++)
+        .
+        intercalate "\n\t"
+        $
+        unknown_objects
+
+instance Exception UnknownObjects
+-- @-node:gcross.20100705150931.1953:UnknownObjects
+-- @+node:gcross.20100705150931.1955:UnknownRuntimes
+data UnrecognizedRuntimes = UnrecognizedRuntimes String [String] deriving Typeable
+
+instance Show UnrecognizedRuntimes where
+    show (UnrecognizedRuntimes actor_name unrecognized_runtimes) =
+        (("The following run-times are unrecognized by " ++ actor_name) ++)
+        .
+        intercalate "\n\t"
+        $
+        unrecognized_runtimes
+
+instance Exception UnrecognizedRuntimes
+-- @-node:gcross.20100705150931.1955:UnknownRuntimes
 -- @-node:gcross.20100630111926.1894:Exceptions
 -- @+node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
 type AnalyzeAndRebuildJobRunner a = JobRunner JobId Record (CachedDependencies,a)
 -- @-node:gcross.20100630111926.1896:AnalyzeAndRebuildJobRunner
+-- @+node:gcross.20100705132935.1955:FetchAllDependenciesAndRebuildJobRunner
+type FetchAllDependenciesAndRebuildJobRunner a = JobRunner JobId Record (Map Dependency (Maybe MD5Digest),[MD5Digest],a)
+-- @-node:gcross.20100705132935.1955:FetchAllDependenciesAndRebuildJobRunner
 -- @+node:gcross.20100624100717.2148:CachedDependencies
 data CachedDependencies = CachedDependencies
         {   cachedSourceDigests :: [MD5Digest]
@@ -144,13 +174,57 @@ analyzeDependenciesAndRebuildIfNecessary
         lift (declareVictory cache deferred_dependencies)
 
   where
+    -- @    @+others
+    -- @+node:gcross.20100705150931.1973:declareVictory
+    declareVictory (cache@CachedDependencies{..}) deferred_dependencies =
+        let values =
+                map (\digest →
+                    withFields (
+                        (_digest,digest)
+                     :. (_deferred_dependencies,deferred_dependencies)
+                     :. ()
+                    )
+                )
+                $
+                cachedProductDigests
+        in returnValuesAndCache values (cache,miscellaneous_information)
+    -- @nonl
+    -- @-node:gcross.20100705150931.1973:declareVictory
+    -- @+node:gcross.20100705150931.1969:digestSources
     digestSources =
         fmap (map getDigest)
         .
         request
         $
         source_dependency_job_ids
-
+    -- @nonl
+    -- @-node:gcross.20100705150931.1969:digestSources
+    -- @+node:gcross.20100705150931.1972:rebuild
+    rebuild source_digests implicit_dependencies dependency_digests deferred_dependencies = do
+        product_digests ← builder
+        declareVictory
+            CachedDependencies
+            {   cachedSourceDigests = source_digests
+            ,   cachedExplicitDependencies = explicit_dependencies
+            ,   cachedImplicitDependencies = implicit_dependencies
+            ,   cachedDependencyDigests = dependency_digests
+            ,   cachedProductDigests = product_digests
+            }
+            deferred_dependencies
+    -- @nonl
+    -- @-node:gcross.20100705150931.1972:rebuild
+    -- @+node:gcross.20100705150931.1971:rescanAndRebuild
+    rescanAndRebuild source_digests = do
+        implicit_dependencies ← scanner
+        (dependency_digests,deferred_dependencies) ← resolveAllDependencies implicit_dependencies
+        rebuild
+            source_digests
+            implicit_dependencies
+            dependency_digests
+            deferred_dependencies
+    -- @nonl
+    -- @-node:gcross.20100705150931.1971:rescanAndRebuild
+    -- @+node:gcross.20100705150931.1970:resolveAllDependencies
     resolveAllDependencies implicit_dependencies = do
         ResolvedDependencies{..} ←
                 fmap extractAndConcatenateDependencies
@@ -167,78 +241,89 @@ analyzeDependenciesAndRebuildIfNecessary
             $
             resolvedImmediateDependencies
         return (dependency_digests,resolvedDeferredDependencies)
+    -- @nonl
+    -- @-node:gcross.20100705150931.1970:resolveAllDependencies
+    -- @-others
 
-    rescanAndRebuild source_digests = do
-        implicit_dependencies ← scanner
-        (dependency_digests,deferred_dependencies) ← resolveAllDependencies implicit_dependencies
-        rebuild
-            source_digests
-            implicit_dependencies
-            dependency_digests
-            deferred_dependencies
-
-    rebuild source_digests implicit_dependencies dependency_digests deferred_dependencies = do
-        product_digests ← builder
-        declareVictory
-            CachedDependencies
-            {   cachedSourceDigests = source_digests
-            ,   cachedExplicitDependencies = explicit_dependencies
-            ,   cachedImplicitDependencies = implicit_dependencies
-            ,   cachedDependencyDigests = dependency_digests
-            ,   cachedProductDigests = product_digests
-            }
-            deferred_dependencies
-
-    declareVictory (cache@CachedDependencies{..}) deferred_dependencies =
-        let values =
-                map (\digest →
-                    withFields (
-                        (_digest,digest)
-                     :. (_deferred_dependencies,deferred_dependencies)
-                     :. ()
-                    )
-                )
-                $
-                cachedProductDigests
-        in returnValuesAndCache values (cache,miscellaneous_information)
 -- @-node:gcross.20100624100717.2137:analyzeDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705100731.1951:fetchAllDeferredDependenciesAndRebuildIfNecessary
 fetchAllDeferredDependenciesAndRebuildIfNecessary ::
     (Binary a, Eq a) ⇒
-    (Dependency → Maybe JobId) →
-    (Bool → [Dependency] → JobTask JobId Record [Record]) →
+    ([Dependency] → [(Dependency,Maybe JobId)]) →
+    ([MD5Digest] → JobTask JobId Record Bool) →
+    ([Dependency] → JobTask JobId Record [MD5Digest]) →
     a →
     [Dependency] →
-    JobRunner JobId Record (Map Dependency (Maybe MD5Digest),a)
+    JobRunner JobId Record (Map Dependency (Maybe MD5Digest),[MD5Digest],a)
 fetchAllDeferredDependenciesAndRebuildIfNecessary
-    lookupDependencyJobId
-    build
+    lookupDependencyJobIds
+    checkProducts
+    builder
     miscellaneous_information
     starting_dependencies
     maybe_cache
-    =
-    go Map.empty starting_dependencies
+ = runGotoT $ do
+    -- Scan recursively for all dependencies
+    all_dependencies ← lift $ fetchAllDependencies Map.empty starting_dependencies
+    let rebuildIt =
+            goto
+            .
+            lift
+            .
+            rebuild
+            $
+            all_dependencies
+
+    -- See if we have cached results from a previous build;  if not, then build the product.
+    (cached_dependencies,cached_product_digests,cached_miscellaneous_information) ←
+        maybe rebuildIt return maybe_cache
+
+    -- Check if anything on which the build depends has changed
+    unless (
+        and [all_dependencies == cached_dependencies
+            ,miscellaneous_information == cached_miscellaneous_information
+            ]
+        ) $ rebuildIt
+
+    -- Check whether the product files either don't exist or have been corrupted
+    lift (checkProducts cached_product_digests) >>= flip unless rebuildIt
+
+    -- If we reach here, then nothing more needs to be done. 
+    lift (declareVictory all_dependencies cached_product_digests)
   where
-    go all_dependencies [] = do
-        let needs_to_be_rebuilt = 
-                case maybe_cache of
-                    Nothing → True
-                    Just cache → cache /= (all_dependencies,miscellaneous_information)
-        results ← build needs_to_be_rebuilt (Map.keys all_dependencies)
-        returnValuesAndCache results (all_dependencies,miscellaneous_information)
-    go seen_dependencies additional_dependencies = do
+    -- @    @+others
+    -- @+node:gcross.20100705150931.1977:declareVictory
+    declareVictory dependencies product_digests =
+        let values =
+                map (\digest →
+                    withFields (
+                        (_digest,digest)
+                     :. ()
+                    )
+                )
+                $
+                product_digests
+        in returnValuesAndCache values (dependencies,product_digests,miscellaneous_information)
+    -- @-node:gcross.20100705150931.1977:declareVictory
+    -- @+node:gcross.20100705150931.1965:fetchAllDependencies
+    fetchAllDependencies all_dependencies [] = return all_dependencies
+    fetchAllDependencies seen_dependencies additional_dependencies = do
         let (new_dependencies_without_job_ids,(new_dependencies_with_job_ids,job_ids)) =
                 second unzip
                 .
                 partitionEithers
                 .
-                map (\dependency →
-                    case lookupDependencyJobId dependency of
+                map (\(dependency,maybe_job_id) →
+                    case maybe_job_id of
                         Nothing → Left dependency
                         Just job_id → Right (dependency,job_id)
                 )
                 .
+                lookupDependencyJobIds
+                .
                 filter (`Map.notMember` seen_dependencies)
+                .
+                nub
                 $
                 additional_dependencies
         results ← request job_ids
@@ -261,7 +346,13 @@ fetchAllDeferredDependenciesAndRebuildIfNecessary
                 map getDeferredDependencies
                 $
                 results
-        go new_seen_dependencies new_additional_dependencies
+        fetchAllDependencies new_seen_dependencies new_additional_dependencies
+    -- @nonl
+    -- @-node:gcross.20100705150931.1965:fetchAllDependencies
+    -- @+node:gcross.20100705150931.1975:rebuild
+    rebuild dependencies = builder (Map.keys dependencies) >>= declareVictory dependencies
+    -- @-node:gcross.20100705150931.1975:rebuild
+    -- @-others
 -- @-node:gcross.20100705100731.1951:fetchAllDeferredDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
@@ -294,9 +385,9 @@ runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100630111926.1884:Dependency Types
--- @+node:gcross.20100630111926.1885:runtime_dependency_type
 runtime_dependency_type = identifier "a4d4ac42-4ae6-4afd-90b1-9984589b5360" "run-time"
--- @-node:gcross.20100630111926.1885:runtime_dependency_type
+object_dependency_type = identifier "b14f6d22-7d47-48ff-887f-d17cff428f22" "object"
+library_dependency_type = identifier "946cec33-e3ba-42da-a4c7-bced83710e9f" "library"
 -- @-node:gcross.20100630111926.1884:Dependency Types
 -- @-others
 -- @-node:gcross.20100624100717.2132:@thin Tools.hs

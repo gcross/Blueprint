@@ -2363,8 +2363,8 @@ main = defaultMain
     -- @+node:gcross.20100628115452.1875:Blueprint.Identifier
     ,testGroup "Blueprint.Tools" $
         -- @    @+others
-        -- @+node:gcross.20100628115452.1885:bin
-        [testGroup "bin" $
+        -- @+node:gcross.20100628115452.1885:sortIntoLabeledBins
+        [testGroup "sortIntoLabeledBins" $
             -- @    @+others
             -- @+node:gcross.20100628115452.1886:trivial
             [testCase "trivial" $
@@ -2372,7 +2372,7 @@ main = defaultMain
                     "Is the resulting map correct?"
                     (Map.empty :: Map (Identifier ()) [()])
                 .
-                bin
+                sortIntoLabeledBins
                 $
                 []
             -- @-node:gcross.20100628115452.1886:trivial
@@ -2382,7 +2382,7 @@ main = defaultMain
                     "Is the resulting map correct?"
                     (Map.singleton test_identifier [()])
                 .
-                bin
+                sortIntoLabeledBins
                 $
                 [(test_identifier,())]
             -- @-node:gcross.20100628115452.1888:singleton
@@ -2398,7 +2398,7 @@ main = defaultMain
                     choose (1,100)
                     >>=
                     flip vectorOf (liftA2 (,) (elements identifiers) (arbitrary :: Gen Int))
-                let binned_data = bin random_data
+                let binned_data = sortIntoLabeledBins random_data
                 return
                     .
                     all (
@@ -2413,7 +2413,7 @@ main = defaultMain
             -- @-node:gcross.20100628115452.1894:random data
             -- @-others
             ]
-        -- @-node:gcross.20100628115452.1885:bin
+        -- @-node:gcross.20100628115452.1885:sortIntoLabeledBins
         -- @-others
         ]
     -- @-node:gcross.20100628115452.1875:Blueprint.Identifier
