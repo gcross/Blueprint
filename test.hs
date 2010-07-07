@@ -2749,18 +2749,18 @@ main = defaultMain
                          :. () )
                     in withJobServer 1 Map.empty $ \job_server → do
                         builder_invoked_ref ← newIORef False
-                        checkProducts_invoked_ref ← newIORef False
+                        checkIfProductsMatch_invoked_ref ← newIORef False
                         submitJob job_server [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 undefined
-                                (const $ liftIO (writeIORef checkProducts_invoked_ref True) >> return False)
+                                (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return False)
                                 (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
                                 ()
                                 []
                         result ← requestJobResult job_server job_id
                         cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
                         readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?"
-                        readIORef checkProducts_invoked_ref >>= assertBool "Was the digester invoked correctly?" . not
+                        readIORef checkIfProductsMatch_invoked_ref >>= assertBool "Was the digester invoked correctly?" . not
                         assertEqual
                             "Is the digest correct?"
                             (Just product_digest)
@@ -2769,6 +2769,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             cache
+                -- @nonl
                 -- @-node:gcross.20100706194512.2002:no cache
                 -- @-others
                 ]

@@ -61,7 +61,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary ::
 analyzeImplicitDependenciesAndRebuildIfNecessary
     scanner
     builder
-    checkProducts
+    checkIfProductsMatch
     resolveDependency
     miscellaneous_information
     source_dependency_job_ids
@@ -110,7 +110,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     product_digests ←
         rebuildProductsIfNecessary
             builder
-            checkProducts
+            checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
 
     -- Return the results
@@ -129,6 +129,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     source_digests_field = field "source digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
     implicit_dependencies_field = field "implicit dependencies" "65b0972e-c17f-426b-a00d-8cc8cb52dc4b"
     dependencies_and_digests_field = field "dependencies and digests" "4292b8d0-5d15-49de-8032-92be8e67680f"
+-- @nonl
 -- @-node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2045:checkForChangesIn
 checkForChangesIn ::
@@ -165,7 +166,7 @@ fetchAllDeferredDependenciesAndRebuildIfNecessary ::
     JobAnalyzer [Record]
 fetchAllDeferredDependenciesAndRebuildIfNecessary
     lookupDependencyJobIds
-    checkProducts
+    checkIfProductsMatch
     builder
     miscellaneous_information
     starting_dependencies
@@ -190,7 +191,7 @@ fetchAllDeferredDependenciesAndRebuildIfNecessary
     product_digests ←
         rebuildProductsIfNecessary
             (builder . Map.keys $ dependencies_and_digests)
-            checkProducts
+            checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
 
     -- Return the results
@@ -206,6 +207,7 @@ fetchAllDeferredDependenciesAndRebuildIfNecessary
         product_digests
   where
     dependencies_and_digests_field = field "dependencies and digests" "e5fef247-53b8-47e8-9a01-ab1bec67a599"
+-- @nonl
 -- @-node:gcross.20100705185804.2039:fetchAllDeferredDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2044:fetchDigestsAndCheckForChanges
 fetchDigestsAndCheckForChanges ::
@@ -253,7 +255,7 @@ rebuildProductsIfNecessary ::
     JobAnalyzer [MD5Digest]
 rebuildProductsIfNecessary
     builder
-    checkProducts
+    checkIfProductsMatch
     always_rebuild
   = (if always_rebuild
         then return True
@@ -261,7 +263,7 @@ rebuildProductsIfNecessary
             maybe_old_digests ← asks (getField product_digests_field)
             case maybe_old_digests of
                 Nothing → return True
-                Just old_digests → fmap not . lift . checkProducts $ old_digests
+                Just old_digests → fmap not . lift . checkIfProductsMatch $ old_digests
     )
     >>=
     rerunTaskAndCacheResultOnlyIf
