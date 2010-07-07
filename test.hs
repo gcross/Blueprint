@@ -2723,6 +2723,56 @@ main = defaultMain
                 -- @-others
                 ]
         -- @-node:gcross.20100706002630.1997:analyzeDependenciesAndRebuildIfNecessary
+        -- @+node:gcross.20100706194512.2000:fetchAllDeferredDependenciesAndRebuildIfNecessary
+        ,testGroup "fetchAllDeferredDependenciesAndRebuildIfNecessary" $
+            let dependencies_and_digests_field =
+                    field "dependencies and digests" "e5fef247-53b8-47e8-9a01-ab1bec67a599"
+                        :: Field (Map Dependency (Maybe MD5Digest))
+                product_digests_field =
+                    field "product digests" "101ba0a4-35a9-44f7-98c0-87d26027a375"
+                        :: Field [MD5Digest]
+                miscellaneous_information_field :: forall a. (Binary a, Typeable a) ⇒ Field a
+                miscellaneous_information_field = field "miscellaneous information" "b77f1940-ac94-4a22-980f-e0f52c26af28"  
+            in
+                -- @        @+others
+                -- @+node:gcross.20100706194512.2002:no cache
+                [testCase "no cache" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        builder_invoked_ref ← newIORef False
+                        checkProducts_invoked_ref ← newIORef False
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            fetchAllDeferredDependenciesAndRebuildIfNecessary
+                                undefined
+                                (const $ liftIO (writeIORef checkProducts_invoked_ref True) >> return False)
+                                (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
+                                ()
+                                []
+                        result ← requestJobResult job_server job_id
+                        cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?"
+                        readIORef checkProducts_invoked_ref >>= assertBool "Was the digester invoked correctly?" . not
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            cache
+                -- @-node:gcross.20100706194512.2002:no cache
+                -- @-others
+                ]
+        -- @-node:gcross.20100706194512.2000:fetchAllDeferredDependenciesAndRebuildIfNecessary
         -- @-others
         ]
     -- @-node:gcross.20100706002630.1965:Blueprint.Tools.JobAnalyzer
