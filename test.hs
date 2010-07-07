@@ -167,7 +167,7 @@ _digests = field "digests" "0F58880E-962B-4AA3-97A5-FB08F2026EE5" :: Field [MD5D
 test_dependency_type :: DependencyType
 test_dependency_type = identifier "b1a70c20-95ae-4a2e-805e-5c15cb430a61" "test"
 
-test_dependency, test_dependency_1, test_dependency_2 :: Dependency
+test_dependency, test_dependency_1, test_dependency_2, test_dependency_3, test_dependency_4 :: Dependency
 test_dependency =
     Dependency
     {   dependencyName = "test"
@@ -181,6 +181,16 @@ test_dependency_1 =
 test_dependency_2 = 
     Dependency
     {   dependencyName = "test 2"
+    ,   dependencyType = test_dependency_type
+    }
+test_dependency_3 =
+    Dependency
+    {   dependencyName = "test 3"
+    ,   dependencyType = test_dependency_type
+    }
+test_dependency_4 = 
+    Dependency
+    {   dependencyName = "test 4"
     ,   dependencyType = test_dependency_type
     }
 
@@ -2716,6 +2726,182 @@ main = defaultMain
         -- @-others
         ]
     -- @-node:gcross.20100706002630.1965:Blueprint.Tools.JobAnalyzer
+    -- @+node:gcross.20100706194512.1989:Blueprint.Tools
+    ,testGroup "Blueprint.Tools" $
+        -- @    @+others
+        -- @+node:gcross.20100706194512.1990:fetchAllDeferredDependencies
+        [testGroup "fetchAllDeferredDependencies" $
+            let result_field =
+                    field "result" "876378B7-6148-4B59-A287-48F46DB873A6"
+                        :: Field (Map Dependency (Maybe MD5Digest))
+            in
+                -- @        @+others
+                -- @+node:gcross.20100706194512.1991:trivial
+                [testCase "trivial" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        submitJob job_server job_ids . const $
+                            fetchAllDeferredDependencies
+                                undefined
+                                []
+                            >>=
+                            returnValue . withField result_field
+                        result ← fmap (fromJust . getField result_field) $ requestJobResult job_server job_id
+                        assertEqual
+                            "Is the result correct?"
+                            Map.empty
+                            result
+                -- @-node:gcross.20100706194512.1991:trivial
+                -- @+node:gcross.20100706194512.1993:dependencies without job ids
+                ,testCase "dependencies without job ids" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        known_dependencies = Map.empty :: Map Dependency JobId  
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        submitJob job_server job_ids . const $
+                            fetchAllDeferredDependencies
+                                (map $ id &&& flip Map.lookup known_dependencies)
+                                [test_dependency_1,test_dependency_2]
+                            >>=
+                            returnValue . withField result_field
+                        result ← fmap (fromJust . getField result_field) $ requestJobResult job_server job_id
+                        assertEqual
+                            "Is the result correct?"
+                            (Map.fromList
+                                [(test_dependency_1,Nothing)
+                                ,(test_dependency_2,Nothing)
+                                ]
+                            )
+                            result
+                -- @-node:gcross.20100706194512.1993:dependencies without job ids
+                -- @+node:gcross.20100706194512.1995:single dependency with job id
+                ,testCase "single dependency with job id" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+
+                        dependency_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "dependency job"
+                        dependency_job_ids = [dependency_job_id]
+                        dependency_digest = md5 . L.pack $ "Dependency results"
+
+                        known_dependencies = Map.fromList [(test_dependency_1,dependency_job_id)] 
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        submitJob job_server dependency_job_ids $
+                            const . returnValue . withFields $ ((_digest,dependency_digest):.())
+                        submitJob job_server job_ids . const $
+                            fetchAllDeferredDependencies
+                                (map $ id &&& flip Map.lookup known_dependencies)
+                                [test_dependency_1]
+                            >>=
+                            returnValue . withField result_field
+                        result ← fmap (fromJust . getField result_field) $ requestJobResult job_server job_id
+                        assertEqual
+                            "Is the result correct?"
+                            (Map.fromList
+                                [(test_dependency_1,Just dependency_digest)
+                                ]
+                            )
+                            result
+                -- @-node:gcross.20100706194512.1995:single dependency with job id
+                -- @+node:gcross.20100706194512.1997:single dependency with subdependency
+                ,testCase "single dependency with job id" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+
+                        dependency_job_id = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "dependency job"
+                        dependency_job_ids = [dependency_job_id]
+                        dependency_digest = md5 . L.pack $ "Dependency results"
+
+                        known_dependencies = Map.fromList [(test_dependency_1,dependency_job_id)] 
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        submitJob job_server dependency_job_ids . const . returnValue . withFields $ (
+                                (_digest,dependency_digest)
+                             :. (_deferred_dependencies,[test_dependency_2])
+                             :. ()
+                            )
+                        submitJob job_server job_ids . const $
+                            fetchAllDeferredDependencies
+                                (map $ id &&& flip Map.lookup known_dependencies)
+                                [test_dependency_1]
+                            >>=
+                            returnValue . withField result_field
+                        result ← fmap (fromJust . getField result_field) $ requestJobResult job_server job_id
+                        assertEqual
+                            "Is the result correct?"
+                            (Map.fromList
+                                [(test_dependency_1,Just dependency_digest)
+                                ,(test_dependency_2,Nothing)
+                                ]
+                            )
+                            result
+                -- @-node:gcross.20100706194512.1997:single dependency with subdependency
+                -- @+node:gcross.20100706194512.1999:diamond dependencies
+                ,testCase "diamond dependencies" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+
+                        dependency_job_id_1 = identifier "4be9942a-adee-40a2-9914-2070ca3ae90f" "dependency job 1"
+                        dependency_job_id_2 = identifier "0688B52A-0F30-4D3A-912B-C71B0DEEF078" "dependency job 2"
+                        dependency_job_id_3 = identifier "FC756D88-750B-4535-88C9-58DC035E4037" "dependency job 3"
+                        dependency_job_id_4 = identifier "4CE1E824-78FD-4E6E-8FD3-B993A0AD135D" "dependency job 4"
+                        dependency_job_id_5 = identifier "3CDF66C7-94E8-487A-BF7E-3A677AB24BBA" "dependency job 5"
+                        dependency_digest_1 = md5 . L.pack $ "Dependency results 1"
+                        dependency_digest_2 = md5 . L.pack $ "Dependency results 2"
+                        dependency_digest_3 = md5 . L.pack $ "Dependency results 3"
+                        dependency_digest_4 = md5 . L.pack $ "Dependency results 4"
+
+                        known_dependencies = Map.fromList
+                            [(test_dependency_1,dependency_job_id_1)
+                            ,(test_dependency_2,dependency_job_id_2)
+                            ,(test_dependency_3,dependency_job_id_3)
+                            ,(test_dependency_4,dependency_job_id_4)
+                            ]
+                    in withJobServer 1 Map.empty $ \job_server → do
+                        submitJob job_server [dependency_job_id_1] . const . returnValue . withFields $ (
+                                (_digest,dependency_digest_1)
+                             :. (_deferred_dependencies,[test_dependency_2,test_dependency_3])
+                             :. ()
+                            )
+                        submitJob job_server [dependency_job_id_2] . const . returnValue . withFields $ (
+                                (_digest,dependency_digest_2)
+                             :. (_deferred_dependencies,[test_dependency_4])
+                             :. ()
+                            )
+                        submitJob job_server [dependency_job_id_3] . const . returnValue . withFields $ (
+                                (_digest,dependency_digest_3)
+                             :. (_deferred_dependencies,[test_dependency_4])
+                             :. ()
+                            )
+                        submitJob job_server [dependency_job_id_4] . const . returnValue . withFields $ (
+                                (_digest,dependency_digest_4)
+                             :. (_deferred_dependencies,[test_dependency])
+                             :. ()
+                            )
+                        submitJob job_server job_ids . const $
+                            fetchAllDeferredDependencies
+                                (map $ id &&& flip Map.lookup known_dependencies)
+                                [test_dependency_1]
+                            >>=
+                            returnValue . withField result_field
+                        result ← fmap (fromJust . getField result_field) $ requestJobResult job_server job_id
+                        assertEqual
+                            "Is the result correct?"
+                            (Map.fromList
+                                [(test_dependency_1,Just dependency_digest_1)
+                                ,(test_dependency_2,Just dependency_digest_2)
+                                ,(test_dependency_3,Just dependency_digest_3)
+                                ,(test_dependency_4,Just dependency_digest_4)
+                                ,(test_dependency  ,Nothing)
+                                ]
+                            )
+                            result
+                -- @-node:gcross.20100706194512.1999:diamond dependencies
+                -- @-others
+                ]
+        -- @-node:gcross.20100706194512.1990:fetchAllDeferredDependencies
+        -- @-others
+        ]
+    -- @-node:gcross.20100706194512.1989:Blueprint.Tools
     -- @-others
     -- @-node:gcross.20100602152546.1870:<< Tests >>
     -- @nl
