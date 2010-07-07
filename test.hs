@@ -2771,6 +2771,163 @@ main = defaultMain
                             cache
                 -- @nonl
                 -- @-node:gcross.20100706194512.2002:no cache
+                -- @+node:gcross.20100706194512.2006:no-op
+                ,testCase "no-op" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode correct_cache)) $ \job_server → do
+                        builder_invoked_ref ← newIORef False
+                        checkIfProductsMatch_invoked_ref ← newIORef False
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            fetchAllDeferredDependenciesAndRebuildIfNecessary
+                                undefined
+                                (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
+                                (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
+                                ()
+                                []
+                        result ← requestJobResult job_server job_id
+                        cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?" . not
+                        readIORef checkIfProductsMatch_invoked_ref >>= assertBool "Was the digester invoked correctly?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            cache
+                -- @nonl
+                -- @-node:gcross.20100706194512.2006:no-op
+                -- @+node:gcross.20100706194512.2008:modified dependencies
+                ,testCase "modified dependencies" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (dependencies_and_digests_field, Map.singleton test_dependency Nothing :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        known_dependencies = Map.empty :: Map Dependency JobId
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        builder_invoked_ref ← newIORef False
+                        checkIfProductsMatch_invoked_ref ← newIORef False
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            fetchAllDeferredDependenciesAndRebuildIfNecessary
+                                (map $ id &&& flip Map.lookup known_dependencies)
+                                (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
+                                (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
+                                ()
+                                [test_dependency]
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?"
+                        readIORef checkIfProductsMatch_invoked_ref >>= assertBool "Was the digester invoked correctly?" . not
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @nonl
+                -- @-node:gcross.20100706194512.2008:modified dependencies
+                -- @+node:gcross.20100706194512.2010:modified miscellaneous information
+                ,testCase "modified miscellaneous information" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        cache :: SerializableRecord
+                        cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field Bool, False)
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field Bool, True)
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
+                        builder_invoked_ref ← newIORef False
+                        checkIfProductsMatch_invoked_ref ← newIORef False
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            fetchAllDeferredDependenciesAndRebuildIfNecessary
+                                undefined
+                                (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
+                                (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
+                                True
+                                []
+                        result ← requestJobResult job_server job_id
+                        new_cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?"
+                        readIORef checkIfProductsMatch_invoked_ref >>= assertBool "Was the digester invoked correctly?" . not
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            new_cache
+                -- @nonl
+                -- @-node:gcross.20100706194512.2010:modified miscellaneous information
+                -- @+node:gcross.20100706194512.2012:modified products
+                ,testCase "modified products" $
+                    let job_id = Identifier UUID.nil "job"
+                        job_ids = [job_id]
+                        product_digest = md5 . L.pack $ "Job results"
+                        product_digests = [product_digest]
+                        correct_cache :: SerializableRecord
+                        correct_cache = withFields (
+                            (dependencies_and_digests_field, Map.empty :: Map Dependency (Maybe MD5Digest))
+                         :. (miscellaneous_information_field :: Field (), ())
+                         :. (product_digests_field, product_digests)
+                         :. () )
+                    in withJobServer 1 (Map.singleton job_ids (encode correct_cache)) $ \job_server → do
+                        builder_invoked_ref ← newIORef False
+                        checkIfProductsMatch_invoked_ref ← newIORef False
+                        submitJob job_server [job_id] . runJobAnalyzer $
+                            fetchAllDeferredDependenciesAndRebuildIfNecessary
+                                undefined
+                                (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return False)
+                                (const $ liftIO (writeIORef builder_invoked_ref True) >> return product_digests)
+                                ()
+                                []
+                        result ← requestJobResult job_server job_id
+                        cache ← fmap (fromJust . Map.lookup job_ids) . requestJobCache $ job_server
+                        readIORef builder_invoked_ref >>= assertBool "Was the builder invoked correctly?"
+                        readIORef checkIfProductsMatch_invoked_ref >>= assertBool "Was the digester invoked correctly?"
+                        assertEqual
+                            "Is the digest correct?"
+                            (Just product_digest)
+                            (getField _digest result)
+                        assertEqual
+                            "Is the cache correct?"
+                            (encode correct_cache)
+                            cache
+                -- @nonl
+                -- @-node:gcross.20100706194512.2012:modified products
                 -- @-others
                 ]
         -- @-node:gcross.20100706194512.2000:fetchAllDeferredDependenciesAndRebuildIfNecessary
