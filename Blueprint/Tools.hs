@@ -98,6 +98,10 @@ type ToolJobRunner cache = JobRunner JobId Record cache
 -- @-node:gcross.20100705185804.2005:ToolJobRunner
 -- @-node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100624100717.2135:Functions
+-- @+node:gcross.20100708102250.2005:createDigestTask
+createDigestTask :: FilePath → ToolJobRunner ()
+createDigestTask file_path _ = liftIO (digestFile file_path) >>= returnValue . withField _digest
+-- @-node:gcross.20100708102250.2005:createDigestTask
 -- @+node:gcross.20100705185804.1978:fetchDigestsFor
 fetchDigestsFor :: [JobId] → ToolJobTask [MD5Digest]
 fetchDigestsFor = fmap (map getDigest) . request
