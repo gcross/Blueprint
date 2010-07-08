@@ -102,35 +102,6 @@ type ToolJobRunner cache = JobRunner JobId Record cache
 fetchDigestsFor :: [JobId] → ToolJobTask [MD5Digest]
 fetchDigestsFor = fmap (map getDigest) . request
 -- @-node:gcross.20100705185804.1978:fetchDigestsFor
--- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
-runProductionCommandAndDigestOutputs ::
-    [FilePath] →
-    [FilePath] →
-    String →
-    [String] →
-    IO [MD5Digest]
-runProductionCommandAndDigestOutputs
-    mandatory_product_filepaths
-    optional_product_filepaths
-    command
-    arguments
-  = do
-    mapM_ (createDirectoryIfMissing True . takeDirectory) $
-        mandatory_product_filepaths ++ optional_product_filepaths
-    (exit_code,_,output) ←
-        readProcessWithExitCode
-            command
-            arguments
-            ""
-    when (exit_code /= ExitSuccess) . throwIO $
-        ProductionCommandFailed (unwords (command:arguments)) output
-    mandatory_products_not_existing ←
-        filterM (fmap not . doesFileExist) mandatory_product_filepaths
-    when (not . null $ mandatory_products_not_existing) . throwIO $
-        FailedToProduceMandatoryOutputs mandatory_products_not_existing
-    existing_optional_products ← filterM doesFileExist optional_product_filepaths
-    digestFiles (mandatory_product_filepaths ++ optional_product_filepaths)
--- @-node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 -- @+node:gcross.20100705185804.1961:fetchAllDeferredDependencies
 fetchAllDeferredDependencies ::
     ([Dependency] → [(Dependency,Maybe JobId)]) →
@@ -182,6 +153,35 @@ fetchAllDeferredDependencies lookupDependencyJobIds =
         go new_seen_dependencies new_additional_dependencies
 -- @nonl
 -- @-node:gcross.20100705185804.1961:fetchAllDeferredDependencies
+-- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
+runProductionCommandAndDigestOutputs ::
+    [FilePath] →
+    [FilePath] →
+    String →
+    [String] →
+    IO [MD5Digest]
+runProductionCommandAndDigestOutputs
+    mandatory_product_filepaths
+    optional_product_filepaths
+    command
+    arguments
+  = do
+    mapM_ (createDirectoryIfMissing True . takeDirectory) $
+        mandatory_product_filepaths ++ optional_product_filepaths
+    (exit_code,_,output) ←
+        readProcessWithExitCode
+            command
+            arguments
+            ""
+    when (exit_code /= ExitSuccess) . throwIO $
+        ProductionCommandFailed (unwords (command:arguments)) output
+    mandatory_products_not_existing ←
+        filterM (fmap not . doesFileExist) mandatory_product_filepaths
+    when (not . null $ mandatory_products_not_existing) . throwIO $
+        FailedToProduceMandatoryOutputs mandatory_products_not_existing
+    existing_optional_products ← filterM doesFileExist optional_product_filepaths
+    digestFiles (mandatory_product_filepaths ++ optional_product_filepaths)
+-- @-node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100630111926.1884:Dependency Types
 runtime_dependency_type = identifier "a4d4ac42-4ae6-4afd-90b1-9984589b5360" "run-time"
