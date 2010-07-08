@@ -51,11 +51,11 @@
 </v>
 <v t="gcross.20100614121927.1659"><vh>@thin Miscellaneous.hs</vh></v>
 <v t="gcross.20100602141408.1273"><vh>@thin Options.hs</vh></v>
-<v t="gcross.20100630111926.2023"><vh>@thin Path.hs</vh></v>
 <v t="gcross.20100613184558.1624"><vh>@path Phases</vh>
 <v t="gcross.20100613184558.1629"><vh>@thin Configuration.hs</vh></v>
 </v>
 <v t="gcross.20100613184558.1617"><vh>@thin Phases.hs</vh></v>
+<v t="gcross.20100630111926.2023"><vh>@thin SourceFile.hs</vh></v>
 <v t="gcross.20100624100717.2132"><vh>@thin Tools.hs</vh></v>
 <v t="gcross.20100611224425.1603"><vh>@path Tools</vh>
 <v t="gcross.20100611224425.1700"><vh>@thin Compilers.hs</vh></v>

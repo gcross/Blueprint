@@ -84,7 +84,7 @@ import Blueprint.Tools.Compilers.GHC
 import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
-import Blueprint.Path
+import Blueprint.SourceFile
 import Blueprint.Phases
 import qualified Blueprint.Phases.Configuration as Configuration
 import Blueprint.Tools

@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1683:<< Language extensions >>
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1683:<< Language extensions >>
 -- @nl
@@ -22,9 +23,10 @@ import Text.Regex.PCRE.String
 import Data.Record
 import Blueprint.Dependency
 import Blueprint.Identifier
+import Blueprint.Jobs
 import Blueprint.Language
 import Blueprint.Language.Programming
-import Blueprint.Path
+import Blueprint.SourceFile
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl
 
@@ -47,8 +49,9 @@ instance ProgrammingLanguage Haskell where
 -- @+node:gcross.20100630111926.2043:HaskellSource
 data HaskellSource = HaskellSource
     {   haskellSourceFilePath :: FilePath
-    ,   haskellSourcePath :: Path
-    ,   haskellSourceModule :: String
+    ,   haskellSourceHierarchalPath :: HierarchalPath
+    ,   haskellSourceDigestJobId :: JobId
+    ,   haskellSourceModuleName :: String
     }
 -- @-node:gcross.20100630111926.2043:HaskellSource
 -- @-node:gcross.20100630111926.2042:Types
@@ -70,13 +73,19 @@ extractDependenciesFromHaskellSource =
     .
     matchAllText import_regex
 -- @-node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
--- @+node:gcross.20100630111926.2041:findAllHaskellSources
-findAllHaskellSources :: FilePath → IO [HaskellSource]
-findAllHaskellSources =
-    fmap (map (\(a,b) → HaskellSource a b (pathToDots b)))
-    .
-    findAllPathsWithExtensions [".hs"]
--- @-node:gcross.20100630111926.2041:findAllHaskellSources
+-- @+node:gcross.20100630111926.2041:extractHaskellSources
+extractHaskellSources :: [SourceFile] → [HaskellSource]
+extractHaskellSources source_files =
+    [ HaskellSource
+      {   haskellSourceFilePath = sourceFilePath
+      ,   haskellSourceHierarchalPath = sourceFileHierarchalPath
+      ,   haskellSourceDigestJobId = sourceFileDigestJobId
+      ,   haskellSourceModuleName = hiararchalPathToDots sourceFileHierarchalPath
+      }
+    | SourceFile{..} ← source_files
+    , sourceFileExtension == ".hs"
+    ]
+-- @-node:gcross.20100630111926.2041:extractHaskellSources
 -- @+node:gcross.20100628115452.1840:haskellModuleDependency
 haskellModuleDependency :: String → Dependency
 haskellModuleDependency = Dependency haskell_module_dependency_type
