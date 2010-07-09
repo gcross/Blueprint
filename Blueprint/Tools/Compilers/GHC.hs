@@ -174,6 +174,18 @@ computeBuiltModule object_subdirectory interface_subdirectory HaskellSource{..} 
     interface_file_path = interface_subdirectory </> haskell_module_path <.> "o"
     display_name = "Compile " ++ haskellSourceModuleName
 -- @-node:gcross.20100708192404.2001:computeBuiltModule
+-- @+node:gcross.20100630111926.1868:findPackagesExposingModule
+findPackagesExposingModule :: FilePath -> String -> IO [String]
+findPackagesExposingModule path_to_ghc_pkg module_name =
+    fmap words
+    .
+    readProcess path_to_ghc_pkg ["--simple-output","find-module",module_name]
+    $
+    ""
+-- @-node:gcross.20100630111926.1868:findPackagesExposingModule
+-- @+node:gcross.20100708215239.2093:interfaceJobId
+interfaceJobId = identifierInNamespace interface_namespace
+-- @-node:gcross.20100708215239.2093:interfaceJobId
 -- @+node:gcross.20100630111926.1863:resolveGHCModuleDependencies
 resolveModuleDependency :: FilePath → KnownModules → DependencyResolver
 resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
@@ -198,18 +210,6 @@ resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
   where
     Dependency{..} = unresolvedDependency
 -- @-node:gcross.20100630111926.1863:resolveGHCModuleDependencies
--- @+node:gcross.20100630111926.1868:findPackagesExposingModule
-findPackagesExposingModule :: FilePath -> String -> IO [String]
-findPackagesExposingModule path_to_ghc_pkg module_name =
-    fmap words
-    .
-    readProcess path_to_ghc_pkg ["--simple-output","find-module",module_name]
-    $
-    ""
--- @-node:gcross.20100630111926.1868:findPackagesExposingModule
--- @+node:gcross.20100708215239.2093:interfaceJobId
-interfaceJobId = identifierInNamespace interface_namespace
--- @-node:gcross.20100708215239.2093:interfaceJobId
 -- @-node:gcross.20100630111926.1860:dependency resolution
 -- @+node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1872:queryPackage
