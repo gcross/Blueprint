@@ -13,6 +13,7 @@ module Blueprint.Tools.Compilers.GHC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1612:<< Import needed modules >>
+import Control.Applicative
 import Control.Arrow
 import Control.Exception
 import Control.Monad.IO.Class
@@ -156,9 +157,32 @@ computeGHCRuntimeDependencyArguments runtime_dependencies =
 -- @-node:gcross.20100705150931.1961:computeGHCObjectDependencyArguments
 -- @-node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100630111926.1860:dependency resolution
--- @+node:gcross.20100708192404.2001:computeBuiltModule
-computeBuiltModule :: FilePath → FilePath → HaskellSource → BuiltModule
-computeBuiltModule object_subdirectory interface_subdirectory HaskellSource{..} =
+-- @+node:gcross.20100708102250.2756:builtModulesToKnownModules
+builtModulesToKnownModules :: [BuiltModule] → KnownModules
+builtModulesToKnownModules =
+    Map.fromList
+    .
+    map (
+        builtModuleName
+        &&&
+        liftA2 ResolvedDependencies
+            ((:[]) . builtModuleInterfaceJobId)
+            ((:[]) . objectDependency . builtModuleObjectFilePath)
+    )
+
+-- @-node:gcross.20100708102250.2756:builtModulesToKnownModules
+-- @+node:gcross.20100630111926.1868:findPackagesExposingModule
+findPackagesExposingModule :: FilePath -> String -> IO [String]
+findPackagesExposingModule path_to_ghc_pkg module_name =
+    fmap words
+    .
+    readProcess path_to_ghc_pkg ["--simple-output","find-module",module_name]
+    $
+    ""
+-- @-node:gcross.20100630111926.1868:findPackagesExposingModule
+-- @+node:gcross.20100708192404.2001:haskellSourceToBuiltModule
+haskellSourceToBuiltModule :: FilePath → FilePath → HaskellSource → BuiltModule
+haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSource{..} =
     BuiltModule
     {   builtModuleName = haskellSourceModuleName
     ,   builtModuleSourceFilePath = haskellSourceFilePath
@@ -173,16 +197,7 @@ computeBuiltModule object_subdirectory interface_subdirectory HaskellSource{..} 
     object_file_path = object_subdirectory </> haskell_module_path <.> "o"
     interface_file_path = interface_subdirectory </> haskell_module_path <.> "o"
     display_name = "Compile " ++ haskellSourceModuleName
--- @-node:gcross.20100708192404.2001:computeBuiltModule
--- @+node:gcross.20100630111926.1868:findPackagesExposingModule
-findPackagesExposingModule :: FilePath -> String -> IO [String]
-findPackagesExposingModule path_to_ghc_pkg module_name =
-    fmap words
-    .
-    readProcess path_to_ghc_pkg ["--simple-output","find-module",module_name]
-    $
-    ""
--- @-node:gcross.20100630111926.1868:findPackagesExposingModule
+-- @-node:gcross.20100708192404.2001:haskellSourceToBuiltModule
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
@@ -236,12 +251,7 @@ createGHCCompileToObjectTask ::
     FilePath →
     KnownModules →
     [String] →
-    FilePath →
-    JobId →
-    FilePath →
-    JobId →
-    FilePath →
-    JobId →
+    BuiltModule →
     JobAnalysisRunner
 
 createGHCCompileToObjectTask
@@ -249,12 +259,7 @@ createGHCCompileToObjectTask
     path_to_ghc_pkg
     known_modules
     options_arguments
-    source_file_path
-    source_job_id
-    object_file_path
-    object_job_id
-    interface_file_path
-    interface_job_id
+    BuiltModule{..}
     =
     runJobAnalyzer
     .
@@ -263,10 +268,10 @@ createGHCCompileToObjectTask
     analyzeImplicitDependenciesAndRebuildIfNecessary
         scanner
         builder
-        (liftIO . checkDigestsOfFilesIfExisting [object_file_path,interface_file_path])
+        (liftIO . checkDigestsOfFilesIfExisting [builtModuleObjectFilePath,builtModuleInterfaceFilePath])
         (resolveModuleDependency path_to_ghc_pkg known_modules)
         ghc_arguments
-        [source_job_id]
+        [builtModuleSourceJobId]
         [ghc_runtime_unresolved_dependency]
   where
     -- @    @+others
@@ -274,15 +279,15 @@ createGHCCompileToObjectTask
     builder = liftIO $ do
         noticeM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Compiling "
-            ++ source_file_path ++
+            ++ builtModuleSourceFilePath ++
             " --> "
-            ++ object_file_path ++
+            ++ builtModuleObjectFilePath ++
             " / "
-            ++ interface_file_path
+            ++ builtModuleInterfaceFilePath
         infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
         runProductionCommandAndDigestOutputs
-            [object_file_path,interface_file_path]
+            [builtModuleObjectFilePath,builtModuleInterfaceFilePath]
             []
             path_to_ghc
             ghc_arguments
@@ -291,12 +296,12 @@ createGHCCompileToObjectTask
     ghc_arguments =
         computeGHCCompileToObjectArguments
             options_arguments
-            source_file_path
-            object_file_path
-            interface_file_path
+            builtModuleSourceFilePath
+            builtModuleObjectFilePath
+            builtModuleInterfaceFilePath
     -- @-node:gcross.20100705150931.1978:ghc_arguments
     -- @+node:gcross.20100708102250.2008:postprocessX
-    postprocessInterface = addDeferredDependency (objectDependency object_file_path)
+    postprocessInterface = addDeferredDependency (objectDependency builtModuleObjectFilePath)
     postprocessObject = addDeferredDependency ghc_runtime_dependency
     -- @-node:gcross.20100708102250.2008:postprocessX
     -- @+node:gcross.20100705150931.1979:scanner
@@ -307,8 +312,8 @@ createGHCCompileToObjectTask
         .
         L.readFile
         $
-        source_file_path
-    -- @nonl
+        builtModuleSourceFilePath
+
     -- @-node:gcross.20100705150931.1979:scanner
     -- @-others
 -- @-node:gcross.20100630111926.1874:createGHCCompileToObjectTask
