@@ -221,8 +221,10 @@ createGHCCompileToObjectTask
     object_job_id
     interface_file_path
     interface_job_id
-    = 
+    =
     runJobAnalyzer
+    .
+    fmap (zipWith ($) [postprocessInterface,postprocessObject])
     $
     analyzeImplicitDependenciesAndRebuildIfNecessary
         scanner
@@ -259,6 +261,10 @@ createGHCCompileToObjectTask
             object_file_path
             interface_file_path
     -- @-node:gcross.20100705150931.1978:ghc_arguments
+    -- @+node:gcross.20100708102250.2008:postprocessX
+    postprocessInterface = addDeferredDependency (objectDependency object_file_path)
+    postprocessObject = addDeferredDependency ghc_runtime_dependency
+    -- @-node:gcross.20100708102250.2008:postprocessX
     -- @+node:gcross.20100705150931.1979:scanner
     scanner =
         fmap extractDependenciesFromHaskellSource

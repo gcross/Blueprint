@@ -157,6 +157,10 @@ fetchAllDeferredDependencies lookupDependencyJobIds =
         go new_seen_dependencies new_additional_dependencies
 -- @nonl
 -- @-node:gcross.20100705185804.1961:fetchAllDeferredDependencies
+-- @+node:gcross.20100708102250.2007:objectDependency
+objectDependency :: String → Dependency
+objectDependency = Dependency object_dependency_type
+-- @-node:gcross.20100708102250.2007:objectDependency
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     [FilePath] →
