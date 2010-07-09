@@ -12,6 +12,8 @@ module Blueprint.Identifier where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.1733:<< Import needed modules >>
+import qualified Codec.Binary.UTF8.String as UTF8
+
 import Control.Monad
 
 import Data.Binary
@@ -23,6 +25,7 @@ import Data.Record (uuid)
 import Data.Typeable
 import Data.UUID
 import qualified Data.UUID as UUID
+import Data.UUID.V5 (generateNamed)
 -- @-node:gcross.20100624100717.1733:<< Import needed modules >>
 -- @nl
 
@@ -59,6 +62,13 @@ instance Show (Identifier a) where
 identifier :: String → String → Identifier a
 identifier = Identifier . uuid
 -- @-node:gcross.20100624100717.1739:identifier
+-- @+node:gcross.20100708215239.2096:identifierInNamespace
+identifierInNamespace :: UUID → String → String → Identifier a
+identifierInNamespace namespace name_in_namespace display_name =
+    Identifier
+        (generateNamed namespace . UTF8.encode $ name_in_namespace)
+        display_name
+-- @-node:gcross.20100708215239.2096:identifierInNamespace
 -- @+node:gcross.20100628115452.1862:sortIntoLabeledBins
 sortIntoLabeledBins :: [(Identifier a, b)] → Map (Identifier a) [b]
 sortIntoLabeledBins =

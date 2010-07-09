@@ -161,6 +161,10 @@ fetchAllDeferredDependencies lookupDependencyJobIds =
 objectDependency :: String → Dependency
 objectDependency = Dependency object_dependency_type
 -- @-node:gcross.20100708102250.2007:objectDependency
+-- @+node:gcross.20100708215239.2091:objectJobId
+objectJobId :: FilePath → String → JobId
+objectJobId = identifierInNamespace object_namespace
+-- @-node:gcross.20100708215239.2091:objectJobId
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     [FilePath] →
@@ -193,9 +197,12 @@ runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100630111926.1884:Dependency Types
 runtime_dependency_type = identifier "a4d4ac42-4ae6-4afd-90b1-9984589b5360" "run-time"
-object_dependency_type = identifier "b14f6d22-7d47-48ff-887f-d17cff428f22" "object"
+object_dependency_type = Identifier object_namespace "object"
 library_dependency_type = identifier "946cec33-e3ba-42da-a4c7-bced83710e9f" "library"
 -- @-node:gcross.20100630111926.1884:Dependency Types
+-- @+node:gcross.20100708215239.2090:Namespaces
+object_namespace = uuid "b14f6d22-7d47-48ff-887f-d17cff428f22"
+-- @-node:gcross.20100708215239.2090:Namespaces
 -- @-others
 -- @-node:gcross.20100624100717.2132:@thin Tools.hs
 -- @-leo

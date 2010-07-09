@@ -12,7 +12,6 @@ module Blueprint.SourceFile where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100630111926.2025:<< Import needed modules >>
-import Codec.Binary.UTF8.String
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.List
 
@@ -66,10 +65,14 @@ getAllSourceFilesIn = runListT . go Seq.empty
                     ,   sourceFileDigestJobId = computeJobIdOfSourceFileDigest item_path
                     }
 -- @-node:gcross.20100708102250.1998:getAllSourceFilesIn
--- @+node:gcross.20100708102250.2001:hiararchalPathToDots
-hiararchalPathToDots :: HierarchalPath → String
-hiararchalPathToDots = intercalate "." . Fold.toList
--- @-node:gcross.20100708102250.2001:hiararchalPathToDots
+-- @+node:gcross.20100708102250.2001:hierarchalPathToDots
+hierarchalPathToDots :: HierarchalPath → String
+hierarchalPathToDots = intercalate "." . Fold.toList
+-- @-node:gcross.20100708102250.2001:hierarchalPathToDots
+-- @+node:gcross.20100708215239.2087:hierarchalPathToFilePath
+hierarchalPathToFilePath :: HierarchalPath → String
+hierarchalPathToFilePath = joinPath . Fold.toList
+-- @-node:gcross.20100708215239.2087:hierarchalPathToFilePath
 -- @+node:gcross.20100708102250.1999:prependParentToHierarchalPath
 prependParentToHierarchalPath :: Seq String → SourceFile → SourceFile
 prependParentToHierarchalPath parent source_file@SourceFile{sourceFileHierarchalPath} =
@@ -80,9 +83,10 @@ prependParentToHierarchalPath parent source_file@SourceFile{sourceFileHierarchal
 -- @+node:gcross.20100708102250.2004:computeJobIdOfSourceFileDigest
 computeJobIdOfSourceFileDigest :: FilePath → JobId
 computeJobIdOfSourceFileDigest file_path =
-    Identifier
-        (generateNamed digest_source_file_namespace . encode $ file_path)
-        ("Digesting " ++ file_path)
+    identifierInNamespace
+        digest_source_file_namespace
+        file_path
+        ("Digest " ++ file_path)
 -- @-node:gcross.20100708102250.2004:computeJobIdOfSourceFileDigest
 -- @-node:gcross.20100708102250.1997:Functions
 -- @+node:gcross.20100708102250.2002:Values

@@ -30,6 +30,7 @@ import qualified Data.Set as Set
 import Data.Typeable
 
 import System.Exit
+import System.FilePath
 import System.Log.Logger
 import System.Process
 
@@ -43,6 +44,7 @@ import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
+import Blueprint.SourceFile
 import Blueprint.Tools
 import Blueprint.Tools.JobAnalyzer
 -- @-node:gcross.20100611224425.1612:<< Import needed modules >>
@@ -53,6 +55,17 @@ import Blueprint.Tools.JobAnalyzer
 -- @+node:gcross.20100630111926.1862:KnownModules
 type KnownModules = Map String ResolvedDependencies
 -- @-node:gcross.20100630111926.1862:KnownModules
+-- @+node:gcross.20100708215239.2085:BuiltModule
+data BuiltModule = BuiltModule
+    {   builtModuleName :: String
+    ,   builtModuleSourceFilePath :: FilePath
+    ,   builtModuleSourceJobId :: JobId
+    ,   builtModuleObjectFilePath :: FilePath
+    ,   builtModuleObjectJobId :: JobId
+    ,   builtModuleInterfaceFilePath :: FilePath
+    ,   builtModuleInterfaceJobId :: JobId
+    }
+-- @-node:gcross.20100708215239.2085:BuiltModule
 -- @+node:gcross.20100630111926.1875:GHCOptions
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
@@ -143,6 +156,24 @@ computeGHCRuntimeDependencyArguments runtime_dependencies =
 -- @-node:gcross.20100705150931.1961:computeGHCObjectDependencyArguments
 -- @-node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100630111926.1860:dependency resolution
+-- @+node:gcross.20100708192404.2001:computeBuiltModule
+computeBuiltModule :: FilePath → FilePath → HaskellSource → BuiltModule
+computeBuiltModule object_subdirectory interface_subdirectory HaskellSource{..} =
+    BuiltModule
+    {   builtModuleName = haskellSourceModuleName
+    ,   builtModuleSourceFilePath = haskellSourceFilePath
+    ,   builtModuleSourceJobId = haskellSourceDigestJobId
+    ,   builtModuleObjectFilePath = object_file_path
+    ,   builtModuleObjectJobId = objectJobId object_file_path display_name
+    ,   builtModuleInterfaceFilePath = interface_file_path
+    ,   builtModuleInterfaceJobId = interfaceJobId interface_file_path display_name
+    }
+  where
+    haskell_module_path = hierarchalPathToFilePath haskellSourceHierarchalPath
+    object_file_path = object_subdirectory </> haskell_module_path <.> "o"
+    interface_file_path = interface_subdirectory </> haskell_module_path <.> "o"
+    display_name = "Compile " ++ haskellSourceModuleName
+-- @-node:gcross.20100708192404.2001:computeBuiltModule
 -- @+node:gcross.20100630111926.1863:resolveGHCModuleDependencies
 resolveModuleDependency :: FilePath → KnownModules → DependencyResolver
 resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
@@ -176,6 +207,9 @@ findPackagesExposingModule path_to_ghc_pkg module_name =
     $
     ""
 -- @-node:gcross.20100630111926.1868:findPackagesExposingModule
+-- @+node:gcross.20100708215239.2093:interfaceJobId
+interfaceJobId = identifierInNamespace interface_namespace
+-- @-node:gcross.20100708215239.2093:interfaceJobId
 -- @-node:gcross.20100630111926.1860:dependency resolution
 -- @+node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1872:queryPackage
@@ -363,6 +397,9 @@ createGHCLinkProgramTask
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramTask
 -- @-node:gcross.20100630111926.1873:tasks
 -- @-node:gcross.20100628115452.1853:Functions
+-- @+node:gcross.20100708215239.2092:Namespaces
+interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
+-- @-node:gcross.20100708215239.2092:Namespaces
 -- @+node:gcross.20100611224425.1613:Values
 -- @+node:gcross.20100705150931.1962:ghc_linker_actor_name
 ghc_linker_actor_name = "the GHC linker"

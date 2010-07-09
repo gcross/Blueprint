@@ -54,6 +54,9 @@ data HaskellSource = HaskellSource
     ,   haskellSourceModuleName :: String
     }
 -- @-node:gcross.20100630111926.2043:HaskellSource
+-- @+node:gcross.20100708192404.2002:HaskellSources
+type HaskellSources = [HaskellSource]
+-- @-node:gcross.20100708192404.2002:HaskellSources
 -- @-node:gcross.20100630111926.2042:Types
 -- @+node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
@@ -80,7 +83,7 @@ extractHaskellSources source_files =
       {   haskellSourceFilePath = sourceFilePath
       ,   haskellSourceHierarchalPath = sourceFileHierarchalPath
       ,   haskellSourceDigestJobId = sourceFileDigestJobId
-      ,   haskellSourceModuleName = hiararchalPathToDots sourceFileHierarchalPath
+      ,   haskellSourceModuleName = hierarchalPathToDots sourceFileHierarchalPath
       }
     | SourceFile{..} ← source_files
     , sourceFileExtension == ".hs"

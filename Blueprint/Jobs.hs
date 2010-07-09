@@ -65,7 +65,10 @@ import Blueprint.IOTask
 -- @+node:gcross.20100613184558.1652:Helper functions
 -- @+node:gcross.20100613184558.1651:showLabels
 showLabels :: Show label ⇒ [label] → String
-showLabels = ("["++) . (++ "]") . intercalate ", " . nub . map show
+showLabels labels =
+    case nub . map show $ labels of
+        [string] → "'" ++ string ++ "'"
+        strings → ("["++) . (++ "]") . intercalate ", " $ strings
 -- @-node:gcross.20100613184558.1651:showLabels
 -- @-node:gcross.20100613184558.1652:Helper functions
 -- @+node:gcross.20100604204549.1370:ConflictingJobException
@@ -96,7 +99,7 @@ instance Show CombinedException where
         intercalate (replicate 72 '=' ++ "\n")
         .
         map (\(names,exception) →
-            "Error executing job " ++ show names ++ ":\n" ++ show exception
+            "Error executing job " ++ showLabels names ++ ":\n" ++ show exception
         )
         $
         exceptions
