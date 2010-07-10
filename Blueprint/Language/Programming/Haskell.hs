@@ -58,6 +58,13 @@ data HaskellSource = HaskellSource
 type HaskellSources = [HaskellSource]
 -- @-node:gcross.20100708192404.2002:HaskellSources
 -- @-node:gcross.20100630111926.2042:Types
+-- @+node:gcross.20100709210816.2101:Instances
+-- @+node:gcross.20100709210816.2102:Show HaskellSource
+instance Show HaskellSource where
+    show HaskellSource{..} =
+        haskellSourceModuleName ++ " @ " ++ haskellSourceFilePath
+-- @-node:gcross.20100709210816.2102:Show HaskellSource
+-- @-node:gcross.20100709210816.2101:Instances
 -- @+node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
 extractDependenciesFromHaskellSource :: L.ByteString → [UnresolvedDependency]

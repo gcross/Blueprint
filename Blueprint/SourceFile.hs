@@ -52,7 +52,14 @@ getAllSourceFilesIn = runListT . go Seq.empty
   where
     go :: Seq String → FilePath → ListT IO SourceFile
     go parent directory_path = do
-        item_path ← ListT . getDirectoryContents $ directory_path
+        item_path ←
+            fmap (directory_path </>)
+            .
+            ListT
+            .
+            fmap (filter (`notElem` [".",".."]))
+            .
+            getDirectoryContents $ directory_path
         let hierarchal_path = parent |> (takeBaseName item_path)
         is_directory ← lift (doesDirectoryExist item_path)
         if is_directory

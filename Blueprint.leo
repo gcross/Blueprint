@@ -10,6 +10,7 @@
 <find_panel_settings/>
 <vnodes>
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
+<v t="gcross.20100709210816.2097"><vh>@thin build-test.hs</vh></v>
 <v t="gcross.20100624100717.1779"><vh>@path Control/Monad/Trans</vh>
 <v t="gcross.20100630111926.1935"><vh>@thin Abort.hs</vh></v>
 <v t="gcross.20100624100717.1785"><vh>@thin Goto.hs</vh></v>
