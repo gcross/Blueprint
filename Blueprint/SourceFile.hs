@@ -72,6 +72,13 @@ getAllSourceFilesIn = runListT . go Seq.empty
                     ,   sourceFileDigestJobId = computeJobIdOfSourceFileDigest item_path
                     }
 -- @-node:gcross.20100708102250.1998:getAllSourceFilesIn
+-- @+node:gcross.20100709210816.2104:getAllSourceFilesAndPrependParentIn
+getAllSourceFilesAndPrependParentIn :: Seq String → FilePath → IO [SourceFile]
+getAllSourceFilesAndPrependParentIn parent =
+    fmap (map . prependParentToHierarchalPath $ parent)
+    .
+    getAllSourceFilesIn
+-- @-node:gcross.20100709210816.2104:getAllSourceFilesAndPrependParentIn
 -- @+node:gcross.20100708102250.2001:hierarchalPathToDots
 hierarchalPathToDots :: HierarchalPath → String
 hierarchalPathToDots = intercalate "." . Fold.toList

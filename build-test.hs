@@ -25,11 +25,7 @@ main = do
         fmap (extractHaskellSources . concat)
         .
         mapM (\subdirectory →
-            fmap (map . prependParentToHierarchalPath . Seq.singleton $ subdirectory)
-            .
-            getAllSourceFilesIn
-            $
-            subdirectory
+            getAllSourceFilesAndPrependParentIn (Seq.singleton subdirectory) subdirectory
         )
         $
         ["Blueprint","Control","Data"] 
