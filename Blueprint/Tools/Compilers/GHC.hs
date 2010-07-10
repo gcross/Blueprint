@@ -38,7 +38,6 @@ import System.Process
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
-import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Identifier

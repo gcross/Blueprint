@@ -19,13 +19,6 @@
 <v t="gcross.20100609163522.1415"><vh>@thin Record.hs</vh></v>
 </v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
-<v t="gcross.20100611224425.1646"><vh>@thin Configuration.hs</vh></v>
-<v t="gcross.20100610134550.1477"><vh>@path Configuration</vh>
-<v t="gcross.20100610134550.1486"><vh>@path Libraries</vh>
-<v t="gcross.20100610134550.1478"><vh>@thin LAPACK.hs</vh></v>
-</v>
-<v t="gcross.20100611224425.1545"><vh>@thin Tools.hs</vh></v>
-</v>
 <v t="gcross.20100624100717.1713"><vh>@thin Dependency.hs</vh></v>
 <v t="gcross.20100624100717.2080"><vh>@path Fields</vh>
 <v t="gcross.20100624100717.2122"><vh>@thin DeferredDependencies.hs</vh></v>
@@ -77,8 +70,6 @@
 <t tx="gcross.20100521181123.1261"></t>
 <t tx="gcross.20100602141408.1272"></t>
 <t tx="gcross.20100609163522.1414"></t>
-<t tx="gcross.20100610134550.1477"></t>
-<t tx="gcross.20100610134550.1486"></t>
 <t tx="gcross.20100611224425.1587"></t>
 <t tx="gcross.20100611224425.1603"></t>
 <t tx="gcross.20100611224425.1604"></t>
