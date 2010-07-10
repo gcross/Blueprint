@@ -271,6 +271,28 @@ resolvePackages path_to_ghc_pkg =
     .
     mapM (MaybeT . uncurry (findPackageSatisfyingVersionRequirement path_to_ghc_pkg))
 -- @-node:gcross.20100709210816.2208:resolvePackages
+-- @+node:gcross.20100709210816.2209:fetchKnownModulesFromPackages
+fetchKnownModulesFromPackage :: FilePath → String → IO (Maybe KnownModules)
+fetchKnownModulesFromPackage path_to_ghc_pkg package_id =
+    runMaybeT
+    .
+    fmap (Map.fromList . map (,resolution))
+    .
+    MaybeT
+    .
+    fetchPackageModules path_to_ghc_pkg
+    $
+    package_id
+  where
+    resolution =
+        ResolvedDependencies []
+        .
+        (:[])
+        .
+        haskellPackageDependency
+        $
+        package_id
+-- @-node:gcross.20100709210816.2209:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
