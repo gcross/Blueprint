@@ -24,6 +24,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Digest.Pure.MD5
 import Data.Typeable
 import Data.UUID
+import Data.Version
 
 import Debug.Trace
 
@@ -33,6 +34,8 @@ import System.FilePath
 import System.IO
 import System.Process
 import System.Random
+
+import Text.ParserCombinators.ReadP
 -- @-node:gcross.20100614121927.1661:<< Import needed modules >>
 -- @nl
 
@@ -99,6 +102,10 @@ readProcessByteString program arguments input = do
         ExitSuccess → return output
         ExitFailure error_code → throwIO $ ProgramFailed error_code (S.unpack output)
 -- @-node:gcross.20100614121927.2360:readProcessByteString
+-- @+node:gcross.20100709210816.2203:readVersion
+readVersion :: String -> Version
+readVersion = fst . last . readP_to_S parseVersion
+-- @-node:gcross.20100709210816.2203:readVersion
 -- @-node:gcross.20100614121927.1662:Functions
 -- @-others
 -- @-node:gcross.20100614121927.1659:@thin Miscellaneous.hs

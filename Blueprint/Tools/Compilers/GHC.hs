@@ -5,6 +5,7 @@
 -- @+node:gcross.20100611224425.1611:<< Language extensions >>
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1611:<< Language extensions >>
 -- @nl
@@ -16,7 +17,9 @@ module Blueprint.Tools.Compilers.GHC where
 import Control.Applicative
 import Control.Arrow
 import Control.Exception
+import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Maybe
 
 import qualified Data.ByteString.Lazy as L
 import Data.Either
@@ -29,6 +32,7 @@ import Data.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
+import Data.Version
 
 import System.Exit
 import System.FilePath
@@ -249,24 +253,44 @@ fetchPackageModules :: FilePath -> String -> IO (Maybe [String])
 fetchPackageModules path_to_ghc qualified_package_name =
     queryPackage path_to_ghc "exposed-modules" qualified_package_name
 -- @-node:gcross.20100630111926.1870:fetchPackageModules
+-- @+node:gcross.20100709210816.2201:findPackageSatisfyingVersionRequirement
+findPackageSatisfyingVersionRequirement :: FilePath → String → (Version → Bool) → IO (Maybe String)
+findPackageSatisfyingVersionRequirement path_to_ghc_pkg package_name checkVersion = runMaybeT $
+    MaybeT (queryPackage path_to_ghc_pkg "version" package_name)
+    >>=
+    MaybeT . return . find checkVersion . map readVersion
+    >>=
+    MaybeT . queryPackage path_to_ghc_pkg "id" . ((package_name ++ "-") ++) . showVersion
+    >>=
+    (\ids → case ids of {[] → mzero; id:_ → return id})
+-- @-node:gcross.20100709210816.2201:findPackageSatisfyingVersionRequirement
+-- @+node:gcross.20100709210816.2208:resolvePackages
+resolvePackages :: FilePath → [(String,Version → Bool)] → IO (Maybe [String])
+resolvePackages path_to_ghc_pkg =
+    runMaybeT
+    .
+    mapM (MaybeT . uncurry (findPackageSatisfyingVersionRequirement path_to_ghc_pkg))
+-- @-node:gcross.20100709210816.2208:resolvePackages
 -- @-node:gcross.20100630111926.1869:package queries
--- @+node:gcross.20100630111926.1873:tasks
--- @+node:gcross.20100630111926.1874:createGHCCompileToObjectTask
-createGHCCompileToObjectTask ::
+-- @+node:gcross.20100630111926.1873:jobs
+-- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
+createGHCCompileToObjectJob ::
     FilePath →
     FilePath →
     KnownModules →
     [String] →
     BuiltModule →
-    JobAnalysisRunner
+    ToolJob
 
-createGHCCompileToObjectTask
+createGHCCompileToObjectJob
     path_to_ghc
     path_to_ghc_pkg
     known_modules
     options_arguments
     BuiltModule{..}
     =
+    Job [builtModuleObjectJobId,builtModuleInterfaceJobId]
+    .
     runJobAnalyzer
     .
     fmap (zipWith ($) [postprocessInterface,postprocessObject])
