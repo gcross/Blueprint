@@ -72,6 +72,13 @@ newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
 -- @-node:gcross.20100630111926.1875:GHCOptions
 -- @-node:gcross.20100630111926.1861:Types
+-- @+node:gcross.20100709210816.2105:Instances
+-- @+node:gcross.20100709210816.2106:BuiltModule
+instance Show BuiltModule where
+    show BuiltModule{..} =
+        builtModuleName ++ ": " ++ builtModuleSourceFilePath ++ " -> " ++ builtModuleObjectFilePath ++ ", " ++ builtModuleInterfaceFilePath
+-- @-node:gcross.20100709210816.2106:BuiltModule
+-- @-node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100628115452.1859:compilation/linking arguments
 -- @+node:gcross.20100628115452.1854:computeGHCCompileToObjectArguments
