@@ -153,19 +153,19 @@ data JobStatus label result =
   | Succeeded [result]
   | Failed (IntMap SomeException) CombinedException
 -- @-node:gcross.20100624100717.1753:JobStatus
--- @+node:gcross.20100604204549.1368:Job
-data Job label result = 
+-- @+node:gcross.20100604204549.1368:JobQueueEntry
+data JobQueueEntry label result = 
     ∀ cache. Binary cache => JobSubmission [label] (JobRunner label result cache) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest label (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [label] ByteString))
   | ∀ cache. Binary cache => JobTask Int (JobTaskResult label result cache)
--- @-node:gcross.20100604204549.1368:Job
+-- @-node:gcross.20100604204549.1368:JobQueueEntry
 -- @+node:gcross.20100624100717.1743:JobRunner
 type JobRunner label result cache = Maybe cache → JobTaskResult label result cache
 -- @-node:gcross.20100624100717.1743:JobRunner
 -- @+node:gcross.20100607083309.1398:JobServer
-data JobServer label result = JobServer (Chan (Job label result)) [ThreadId]
+data JobServer label result = JobServer (Chan (JobQueueEntry label result)) [ThreadId]
 -- @-node:gcross.20100607083309.1398:JobServer
 -- @+node:gcross.20100624100717.1755:PausedJob
 data PausedJob label result = ∀ cache. Binary cache => PausedJob
@@ -180,9 +180,9 @@ data JobServerState label result = JobServerState
     ,   serverJobIds_ :: Map label (Int,Int)
     ,   serverJobKeys_ :: IntMap [label]
     ,   serverJobStatuses_ :: IntMap (JobStatus label result)
-    ,   serverJobQueue_ :: Chan (Job label result)
+    ,   serverJobQueue_ :: Chan (JobQueueEntry label result)
     ,   serverPausedJobs_ :: IntMap (PausedJob label result)
-    ,   serverIOTaskQueue_ :: Chan (IOTask (Job label result))
+    ,   serverIOTaskQueue_ :: Chan (IOTask (JobQueueEntry label result))
     ,   serverJobCache_ :: Map [label] ByteString
     }
 
@@ -473,17 +473,17 @@ addJobResultListener job_id result_number destination_var =
     serverJobStatuses %:
         (IntMap.adjust (\(Running dependent_job_ids listeners) → Running dependent_job_ids ((result_number,destination_var):listeners)) job_id)
 -- @-node:gcross.20100607083309.1418:addJobResultListener
--- @+node:gcross.20100604204549.7659:processJob
-processJob ::
+-- @+node:gcross.20100604204549.7659:processJobQueueEntry
+processJobQueueEntry ::
     (Ord label
     ,Show label
     ,Typeable label
     ) =>
-    Job label result →
+    JobQueueEntry label result →
     StateT (JobServerState label result) IO ()
 -- @+others
 -- @+node:gcross.20100604204549.7660:JobSubmission
-processJob (JobSubmission names computeTaskFromCache thread_id) = do
+processJobQueueEntry (JobSubmission names computeTaskFromCache thread_id) = do
     server_job_ids ← get serverJobIds
     case filter (flip Map.member server_job_ids) names of
         [] → do
@@ -512,7 +512,7 @@ processJob (JobSubmission names computeTaskFromCache thread_id) = do
 -- @nonl
 -- @-node:gcross.20100604204549.7660:JobSubmission
 -- @+node:gcross.20100604204549.7661:ExternalRequest
-processJob (ExternalRequest name destination_var) = do
+processJobQueueEntry (ExternalRequest name destination_var) = do
     maybe_id ← fmap (Map.lookup name) (get serverJobIds)
     case maybe_id of
         Nothing →
@@ -559,15 +559,15 @@ processJob (ExternalRequest name destination_var) = do
                     exception
 -- @-node:gcross.20100604204549.7661:ExternalRequest
 -- @+node:gcross.20100607205618.1425:ExternalRequestForCache
-processJob (ExternalRequestForCache destination_var) =
+processJobQueueEntry (ExternalRequestForCache destination_var) =
     get serverJobCache >>= liftIO . putMVar destination_var
 -- @-node:gcross.20100607205618.1425:ExternalRequestForCache
 -- @+node:gcross.20100604204549.7665:JobFailure
-processJob (JobFailure job_id exceptions) =
+processJobQueueEntry (JobFailure job_id exceptions) =
     failJobWithExceptions job_id exceptions
 -- @-node:gcross.20100604204549.7665:JobFailure
 -- @+node:gcross.20100604204549.7662:JobTask
-processJob (JobTask job_id task) =
+processJobQueueEntry (JobTask job_id task) =
     flip M.catch (failJobWithExceptions job_id . IntMap.singleton job_id)
     $
     case task of
@@ -745,8 +745,7 @@ processJob (JobTask job_id task) =
         -- @-others
 -- @-node:gcross.20100604204549.7662:JobTask
 -- @-others
--- @nonl
--- @-node:gcross.20100604204549.7659:processJob
+-- @-node:gcross.20100604204549.7659:processJobQueueEntry
 -- @+node:gcross.20100607083309.1402:runJobServer
 runJobServer ::
     (Ord label
@@ -756,7 +755,7 @@ runJobServer ::
     StateT (JobServerState label result) IO ()
 runJobServer =
     (forever $
-        get serverJobQueue >>= liftIO . readChan >>= processJob
+        get serverJobQueue >>= liftIO . readChan >>= processJobQueueEntry
     ) `M.catch` (
         \e → unless (e == ThreadKilled) . liftIO . throwIO $ e
     ) `M.catch` (
