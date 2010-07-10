@@ -650,7 +650,7 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607083309.1479:return cached value (Nothing)
             [testCase "return cached value (Nothing)" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job"] $ \maybe_cached_value →
+                submitJob job_server . Job ["job"] $ \maybe_cached_value →
                     returnValue maybe_cached_value
                 requestJobResult job_server "job"
                     >>=
@@ -664,7 +664,7 @@ main = defaultMain
             ,testCase "read/write MVar" . withJobServer 1 Map.empty $ \job_server → do
                 in_var ← newEmptyMVar
                 out_var ← newEmptyMVar
-                submitJob job_server ["job"] . const $
+                submitJob job_server . Job ["job"] . const $
                     liftIO $ do
                         value ← takeMVar in_var
                         putMVar out_var (value+1)
@@ -680,7 +680,7 @@ main = defaultMain
                 -- @    @+others
                 -- @+node:gcross.20100607083309.1482:self
                 [testCase "self" . withJobServer 1 Map.empty $ \job_server → do
-                    submitJob job_server ["job"] . const $ do
+                    submitJob job_server . Job ["job"] . const $ do
                         request ["non-existent job"]
                         returnValue ()
                     assertThrows
@@ -691,7 +691,7 @@ main = defaultMain
                 -- @-node:gcross.20100607083309.1482:self
                 -- @+node:gcross.20100607083309.1483:cyclic dependency
                 ,testCase "cyclic dependency" . withJobServer 1 Map.empty $ \job_server → do
-                    submitJob job_server ["job"] . const $ do
+                    submitJob job_server . Job ["job"] . const $ do
                         request ["job"]
                         returnValue ()
                     assertThrows
@@ -705,7 +705,7 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1481:bad requests
             -- @+node:gcross.20100607083309.1484:IO thrown exception
             ,testCase "IO thrown exception" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job"] . const $
+                submitJob job_server . Job ["job"] . const $
                     liftIO $ do
                         throwIO TestException
                         returnValue ()
@@ -717,7 +717,7 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1484:IO thrown exception
             -- @+node:gcross.20100607205618.1445:multiple results
             ,testCase "multiple results" . withJobServer 0 Map.empty $ \job_server → do
-                submitJob job_server ["job1","job2"] . const $
+                submitJob job_server . Job ["job1","job2"] . const $
                     returnValues [1,2]
                 requestJobResult job_server "job1"
                     >>=
@@ -733,7 +733,7 @@ main = defaultMain
             -- @-node:gcross.20100607205618.1445:multiple results
             -- @+node:gcross.20100607205618.1447:too many results
             ,testCase "too many results" . withJobServer 0 Map.empty $ \job_server → do
-                submitJob job_server ["job"] . const $
+                submitJob job_server . Job ["job"] . const $
                     returnValues [1,2::Int]
                 assertThrows
                     (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 2 1)])
@@ -742,7 +742,7 @@ main = defaultMain
             -- @-node:gcross.20100607205618.1447:too many results
             -- @+node:gcross.20100607205618.1449:too few results
             ,testCase "too few results" . withJobServer 0 Map.empty $ \job_server → do
-                submitJob job_server ["job"] . const $
+                submitJob job_server . Job ["job"] . const $
                     returnValues ([] :: [()])
                 assertThrows
                     (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 0 1)])
@@ -757,9 +757,9 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607083309.1489:simple request
             [testCase "simple request" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job1"] . const $
+                submitJob job_server . Job ["job1"] . const $
                     returnValue 1
-                submitJob job_server ["job2"] . const $
+                submitJob job_server . Job ["job2"] . const $
                     request ["job1"] >>= returnValue . head
                 requestJobResult job_server "job2"
                     >>=
@@ -771,9 +771,9 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1489:simple request
             -- @+node:gcross.20100607205618.1451:simple request, multiple results
             ,testCase "simple request, multiple results" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job1A","job1B"] . const $
+                submitJob job_server . Job ["job1A","job1B"] . const $
                     returnValues [1,2]
-                submitJob job_server ["job2"] . const $
+                submitJob job_server . Job ["job2"] . const $
                     request ["job1B"] >>= returnValue . head
                 requestJobResult job_server "job2"
                     >>=
@@ -785,10 +785,10 @@ main = defaultMain
             -- @+node:gcross.20100607083309.1490:cyclic request
             ,testCase "cyclic request" . withJobServer 1 Map.empty $ \job_server → do
                 dummy ← newEmptyMVar
-                submitJob job_server ["job1"] . const $ do
+                submitJob job_server . Job ["job1"] . const $ do
                     liftIO $ takeMVar dummy
                     request ["job2"] >>= returnValue . head
-                submitJob job_server ["job2"] . const $ do
+                submitJob job_server . Job ["job2"] . const $ do
                     request ["job1"] >>= returnValue . head
                 putMVar dummy ()
                 result ← try (requestJobResult job_server "job2")
@@ -800,10 +800,10 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1490:cyclic request
             -- @+node:gcross.20100607083309.1448:exception
             ,testCase "exception" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job1"] . const $ do
+                submitJob job_server . Job ["job1"] . const $ do
                     throw TestException
                     returnValue ()
-                submitJob job_server ["job2"] . const $
+                submitJob job_server . Job ["job2"] . const $
                     request ["job1"] >>= returnValue . head
                 assertThrows
                     (CombinedException [(["job1"],toException TestException)])
@@ -815,15 +815,15 @@ main = defaultMain
             ,testCase "IO tasks run in parallel" . withJobServer 2 Map.empty $ \job_server → do
                 chan1 ← newChan
                 chan2 ← newChan
-                submitJob job_server ["job1"] . const $
+                submitJob job_server . Job ["job1"] . const $
                     liftIO $ (writeChan chan2 2 >> readChan chan1)
                     >>=
                     returnValue
-                submitJob job_server ["job2"] . const $ 
+                submitJob job_server . Job ["job2"] . const $ 
                     liftIO $ (writeChan chan1 1 >> readChan chan2)
                     >>=
                     returnValue
-                submitJob job_server ["job3"] . const $ 
+                submitJob job_server . Job ["job3"] . const $ 
                     request ["job1","job2"]
                     >>=
                     returnValue . sum
@@ -849,15 +849,15 @@ main = defaultMain
             ,testCase "IO tasks limited to slaves" . withJobServer 1 Map.empty $ \job_server → do
                 chan1 ← newChan
                 chan2 ← newChan
-                submitJob job_server ["job1"] . const $
+                submitJob job_server . Job ["job1"] . const $
                     liftIO $ (writeChan chan2 (2 :: Int) >> readChan chan1)
                     >>=
                     returnValue
-                submitJob job_server ["job2"] . const $ 
+                submitJob job_server . Job ["job2"] . const $ 
                     liftIO $ (writeChan chan1 1 >> readChan chan2)
                     >>=
                     returnValue
-                submitJob job_server ["job3"] . const $ 
+                submitJob job_server . Job ["job3"] . const $ 
                     request ["job1","job2"]
                     >>=
                     returnValue . sum
@@ -881,13 +881,13 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607205618.1418:diamond dependency
             [testCase "diamond dependency" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job1"] . const $
+                submitJob job_server . Job ["job1"] . const $
                     returnValue 1
-                submitJob job_server ["job2"] . const $
+                submitJob job_server . Job ["job2"] . const $
                     request ["job1"] >>= returnValue . head
-                submitJob job_server ["job3"] . const $
+                submitJob job_server . Job ["job3"] . const $
                     request ["job1"] >>= returnValue . head
-                submitJob job_server ["job4"] . const $
+                submitJob job_server . Job ["job4"] . const $
                     request ["job2","job3"] >>= returnValue . sum
                 requestJobResult job_server "job4"
                     >>=
@@ -900,15 +900,15 @@ main = defaultMain
             -- @+node:gcross.20100607205618.1420:cyclic diamond dependency
             ,testCase "cyclic diamond dependency" . withJobServer 1 Map.empty $ \job_server → do
                 dummy ← newEmptyMVar
-                submitJob job_server ["job1"] . const $ do
+                submitJob job_server . Job ["job1"] . const $ do
                     liftIO . takeMVar $ dummy
                     request ["job4"]
                     returnValue (1 :: Int)
-                submitJob job_server ["job2"] . const $
+                submitJob job_server . Job ["job2"] . const $
                     request ["job1"] >>= returnValue . head
-                submitJob job_server ["job3"] . const $
+                submitJob job_server . Job ["job3"] . const $
                     request ["job1"] >>= returnValue . head
-                submitJob job_server ["job4"] . const $
+                submitJob job_server . Job ["job4"] . const $
                     request ["job2","job3"] >>= returnValue . sum
                 putMVar dummy ()
                 result ← try (requestJobResult job_server "job4")
@@ -931,7 +931,7 @@ main = defaultMain
                     ]
                 )
               $ \job_server → do
-                submitJob job_server ["job"] $ \maybe_cached_value →
+                submitJob job_server . Job ["job"] $ \maybe_cached_value →
                     returnValueAndCache maybe_cached_value 2
                 requestJobResult job_server "job"
                     >>=
@@ -945,7 +945,7 @@ main = defaultMain
             -- @-node:gcross.20100607205618.1432:return cached value
             -- @+node:gcross.20100607205618.1440:add cached value
             ,testCase "add cached value" . withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server ["job"] $ \maybe_cached_value →
+                submitJob job_server . Job ["job"] $ \maybe_cached_value →
                     returnValueAndCache maybe_cached_value (2 :: Int)
                 requestJobResult job_server "job"
                     >>=
@@ -964,7 +964,7 @@ main = defaultMain
                     ]
                 )
               $ \job_server → do
-                submitJob job_server ["job"] $ \maybe_cached_value → do
+                submitJob job_server . Job ["job"] $ \maybe_cached_value → do
                     throw TestException
                     returnValueAndCache () (2 :: Int)
                 assertThrows
@@ -2009,7 +2009,7 @@ main = defaultMain
                 correct_cache :: SerializableRecord
                 correct_cache = withField _a 42
             in withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server job_ids . runJobAnalyzer $ do
+                submitJob job_server . Job job_ids . runJobAnalyzer $ do
                     writeToCache _a 42
                     return [undefined]
                 _ ← requestJobResult job_server job_id
@@ -2026,7 +2026,7 @@ main = defaultMain
                 cache :: SerializableRecord
                 cache = withField _a 42
             in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                submitJob job_server job_ids . runJobAnalyzer $ do
+                submitJob job_server . Job job_ids . runJobAnalyzer $ do
                     maybe_a ← readAndCache _a
                     case maybe_a of
                         Nothing → return [emptyTable]
@@ -2049,7 +2049,7 @@ main = defaultMain
                 cache :: SerializableRecord
                 cache = withField _a 42
             in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                submitJob job_server job_ids . runJobAnalyzer $ do
+                submitJob job_server . Job job_ids . runJobAnalyzer $ do
                     a ← readRequiredAndCache _a
                     return [withField _a a]
                 result ← requestJobResult job_server job_id
@@ -2073,7 +2073,7 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 Map.empty $ \job_server → do
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
                         return [withField _c c]
                     result ← requestJobResult job_server job_id
@@ -2086,6 +2086,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1974:no cache
             -- @+node:gcross.20100706002630.1977:changed
             ,testCase "changed" $
@@ -2096,7 +2097,7 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
                         return [withField _c c]
                     result ← requestJobResult job_server job_id
@@ -2109,6 +2110,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1977:changed
             -- @+node:gcross.20100706002630.1979:unchanged
             ,testCase "unchanged" $
@@ -2119,7 +2121,7 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
                         return [withField _c c]
                     result ← requestJobResult job_server job_id
@@ -2132,6 +2134,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1979:unchanged
             -- @-others
             ]
@@ -2143,7 +2146,7 @@ main = defaultMain
                 correct_cache :: SerializableRecord
                 correct_cache = withField _a 42
             in withJobServer 1 Map.empty $ \job_server → do
-                submitJob job_server job_ids . runJobAnalyzer $ do
+                submitJob job_server . Job job_ids . runJobAnalyzer $ do
                     a ← runTaskAndCacheResult _a (return 42)
                     return [withField _a a]
                 result ← requestJobResult job_server job_id
@@ -2156,6 +2159,7 @@ main = defaultMain
                     "Is the cache correct?"
                     (encode correct_cache)
                     new_cache
+        -- @nonl
         -- @-node:gcross.20100706002630.1981:runTaskAndCacheResult
         -- @+node:gcross.20100706002630.1982:rerunTaskAndCacheResultOnlyIf
         ,testGroup "rerunTaskAndCacheResultOnlyIf" $
@@ -2169,7 +2173,7 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         a ← rerunTaskAndCacheResultOnlyIf _a (return 42) True
                         return [withField _a a]
                     result ← requestJobResult job_server job_id
@@ -2182,6 +2186,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1984:True
             -- @+node:gcross.20100706002630.1986:False
             ,testCase "False" $
@@ -2192,7 +2197,7 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 24
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         a ← rerunTaskAndCacheResultOnlyIf _a (return 42) False
                         return [withField _a a]
                     result ← requestJobResult job_server job_id
@@ -2205,6 +2210,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1986:False
             -- @-others
             ]
@@ -2226,9 +2232,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _digests [source_digest]
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server source_job_ids $
+                    submitJob job_server . Job source_job_ids $
                         const . returnValue . withFields $ ((_digest,source_digest):.())
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         bool ← fetchDigestsAndCheckForChanges _digests [source_job_id]
                         return [withField _bool bool]
                     result ← requestJobResult job_server job_id
@@ -2241,6 +2247,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1991:no changes
             -- @+node:gcross.20100706002630.1994:changes
             ,testCase "changes" $
@@ -2256,9 +2263,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _digests [source_digest]
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
-                    submitJob job_server source_job_ids $
+                    submitJob job_server . Job source_job_ids $
                         const . returnValue . withFields $ ((_digest,source_digest):.())
-                    submitJob job_server job_ids . runJobAnalyzer $ do
+                    submitJob job_server . Job job_ids . runJobAnalyzer $ do
                         bool ← fetchDigestsAndCheckForChanges _digests [source_job_id]
                         return [withField _bool bool]
                     result ← requestJobResult job_server job_id
@@ -2271,6 +2278,7 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
+            -- @nonl
             -- @-node:gcross.20100706002630.1994:changes
             -- @-others
             ]
@@ -2311,7 +2319,7 @@ main = defaultMain
                         scanner_called_ref ← newIORef False
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_called_ref True) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2356,7 +2364,7 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_ignored_ref ← newIORef True
                         digester_called_ref ← newIORef False
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                                 (liftIO (writeIORef builder_ignored_ref False) >> return product_digests)
@@ -2382,6 +2390,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1984:no-op
                 -- @+node:gcross.20100706133004.1986:modified sources
                 ,testCase "modified sources" $
@@ -2413,9 +2422,9 @@ main = defaultMain
                         scanner_called_ref ← newIORef False
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server source_job_ids $
+                        submitJob job_server . Job source_job_ids $
                             const . returnValue . withFields $ ((_digest,source_digest):.())
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_called_ref True) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2441,6 +2450,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1986:modified sources
                 -- @+node:gcross.20100706133004.1988:modified explicit dependencies
                 ,testCase "modified explicit dependencies" $
@@ -2471,9 +2481,9 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server dependency_job_ids $
+                        submitJob job_server . Job dependency_job_ids $
                             const . returnValue . withFields $ ((_digest,dependency_digest):.())
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2499,6 +2509,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1988:modified explicit dependencies
                 -- @+node:gcross.20100706133004.1990:modified explicit dependency digests
                 ,testCase "modified explicit dependency digests" $
@@ -2529,9 +2540,9 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server dependency_job_ids $
+                        submitJob job_server . Job dependency_job_ids $
                             const . returnValue . withFields $ ((_digest,dependency_digest):.())
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2557,6 +2568,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1990:modified explicit dependency digests
                 -- @+node:gcross.20100706133004.1992:modified implicit dependency digests
                 ,testCase "modified implicit dependency digests" $
@@ -2587,9 +2599,9 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server dependency_job_ids $
+                        submitJob job_server . Job dependency_job_ids $
                             const . returnValue . withFields $ ((_digest,dependency_digest):.())
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [test_unresolved_dependency])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2615,6 +2627,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1992:modified implicit dependency digests
                 -- @+node:gcross.20100706133004.1994:modified miscellaneous information
                 ,testCase "modified miscellaneous information" $
@@ -2641,7 +2654,7 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_called_ref ← newIORef False
                         digester_ignored_ref ← newIORef True
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2667,6 +2680,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1994:modified miscellaneous information
                 -- @+node:gcross.20100706133004.1996:modified products
                 ,testCase "modified products" $
@@ -2693,7 +2707,7 @@ main = defaultMain
                         scanner_ignored_ref ← newIORef True
                         builder_called_ref ← newIORef False
                         digester_called_ref ← newIORef False
-                        submitJob job_server job_ids . runJobAnalyzer $
+                        submitJob job_server . Job job_ids . runJobAnalyzer $
                             analyzeImplicitDependenciesAndRebuildIfNecessary
                                 (liftIO (writeIORef scanner_ignored_ref False) >> return [])
                                 (liftIO (writeIORef builder_called_ref True) >> return product_digests)
@@ -2719,6 +2733,7 @@ main = defaultMain
                             "Is the cache correct?"
                             (encode correct_cache)
                             new_cache
+                -- @nonl
                 -- @-node:gcross.20100706133004.1996:modified products
                 -- @-others
                 ]
@@ -2750,7 +2765,7 @@ main = defaultMain
                     in withJobServer 1 Map.empty $ \job_server → do
                         builder_invoked_ref ← newIORef False
                         checkIfProductsMatch_invoked_ref ← newIORef False
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 undefined
                                 (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return False)
@@ -2786,7 +2801,7 @@ main = defaultMain
                     in withJobServer 1 (Map.singleton job_ids (encode correct_cache)) $ \job_server → do
                         builder_invoked_ref ← newIORef False
                         checkIfProductsMatch_invoked_ref ← newIORef False
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 undefined
                                 (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
@@ -2829,7 +2844,7 @@ main = defaultMain
                     in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
                         builder_invoked_ref ← newIORef False
                         checkIfProductsMatch_invoked_ref ← newIORef False
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 (map $ id &&& flip Map.lookup known_dependencies)
                                 (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
@@ -2871,7 +2886,7 @@ main = defaultMain
                     in withJobServer 1 (Map.singleton job_ids (encode cache)) $ \job_server → do
                         builder_invoked_ref ← newIORef False
                         checkIfProductsMatch_invoked_ref ← newIORef False
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 undefined
                                 (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return True)
@@ -2907,7 +2922,7 @@ main = defaultMain
                     in withJobServer 1 (Map.singleton job_ids (encode correct_cache)) $ \job_server → do
                         builder_invoked_ref ← newIORef False
                         checkIfProductsMatch_invoked_ref ← newIORef False
-                        submitJob job_server [job_id] . runJobAnalyzer $
+                        submitJob job_server . Job [job_id] . runJobAnalyzer $
                             fetchAllDeferredDependenciesAndRebuildIfNecessary
                                 undefined
                                 (const $ liftIO (writeIORef checkIfProductsMatch_invoked_ref True) >> return False)
@@ -2949,7 +2964,7 @@ main = defaultMain
                     let job_id = Identifier UUID.nil "job"
                         job_ids = [job_id]
                     in withJobServer 1 Map.empty $ \job_server → do
-                        submitJob job_server job_ids . const $
+                        submitJob job_server . Job job_ids . const $
                             fetchAllDeferredDependencies
                                 undefined
                                 []
@@ -2967,7 +2982,7 @@ main = defaultMain
                         job_ids = [job_id]
                         known_dependencies = Map.empty :: Map Dependency JobId  
                     in withJobServer 1 Map.empty $ \job_server → do
-                        submitJob job_server job_ids . const $
+                        submitJob job_server . Job job_ids . const $
                             fetchAllDeferredDependencies
                                 (map $ id &&& flip Map.lookup known_dependencies)
                                 [test_dependency_1,test_dependency_2]
@@ -2994,9 +3009,9 @@ main = defaultMain
 
                         known_dependencies = Map.fromList [(test_dependency_1,dependency_job_id)] 
                     in withJobServer 1 Map.empty $ \job_server → do
-                        submitJob job_server dependency_job_ids $
+                        submitJob job_server . Job dependency_job_ids $
                             const . returnValue . withFields $ ((_digest,dependency_digest):.())
-                        submitJob job_server job_ids . const $
+                        submitJob job_server . Job job_ids . const $
                             fetchAllDeferredDependencies
                                 (map $ id &&& flip Map.lookup known_dependencies)
                                 [test_dependency_1]
@@ -3022,12 +3037,12 @@ main = defaultMain
 
                         known_dependencies = Map.fromList [(test_dependency_1,dependency_job_id)] 
                     in withJobServer 1 Map.empty $ \job_server → do
-                        submitJob job_server dependency_job_ids . const . returnValue . withFields $ (
+                        submitJob job_server . Job dependency_job_ids . const . returnValue . withFields $ (
                                 (_digest,dependency_digest)
                              :. (_deferred_dependencies,[test_dependency_2])
                              :. ()
                             )
-                        submitJob job_server job_ids . const $
+                        submitJob job_server . Job job_ids . const $
                             fetchAllDeferredDependencies
                                 (map $ id &&& flip Map.lookup known_dependencies)
                                 [test_dependency_1]
@@ -3065,27 +3080,27 @@ main = defaultMain
                             ,(test_dependency_4,dependency_job_id_4)
                             ]
                     in withJobServer 1 Map.empty $ \job_server → do
-                        submitJob job_server [dependency_job_id_1] . const . returnValue . withFields $ (
+                        submitJob job_server . Job [dependency_job_id_1] . const . returnValue . withFields $ (
                                 (_digest,dependency_digest_1)
                              :. (_deferred_dependencies,[test_dependency_2,test_dependency_3])
                              :. ()
                             )
-                        submitJob job_server [dependency_job_id_2] . const . returnValue . withFields $ (
+                        submitJob job_server . Job [dependency_job_id_2] . const . returnValue . withFields $ (
                                 (_digest,dependency_digest_2)
                              :. (_deferred_dependencies,[test_dependency_4])
                              :. ()
                             )
-                        submitJob job_server [dependency_job_id_3] . const . returnValue . withFields $ (
+                        submitJob job_server . Job [dependency_job_id_3] . const . returnValue . withFields $ (
                                 (_digest,dependency_digest_3)
                              :. (_deferred_dependencies,[test_dependency_4])
                              :. ()
                             )
-                        submitJob job_server [dependency_job_id_4] . const . returnValue . withFields $ (
+                        submitJob job_server . Job [dependency_job_id_4] . const . returnValue . withFields $ (
                                 (_digest,dependency_digest_4)
                              :. (_deferred_dependencies,[test_dependency])
                              :. ()
                             )
-                        submitJob job_server job_ids . const $
+                        submitJob job_server . Job job_ids . const $
                             fetchAllDeferredDependencies
                                 (map $ id &&& flip Map.lookup known_dependencies)
                                 [test_dependency_1]

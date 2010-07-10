@@ -127,6 +127,13 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
+-- @+node:gcross.20100709210816.2107:Job
+data Job label result cache = Job
+    {   jobNames :: [label]
+    ,   jobTask :: JobRunner label result cache
+    }
+-- @nonl
+-- @-node:gcross.20100709210816.2107:Job
 -- @+node:gcross.20100624100717.2145:JobId
 data OfJob deriving Typeable
 type JobId = Identifier OfJob
@@ -155,7 +162,7 @@ data JobStatus label result =
 -- @-node:gcross.20100624100717.1753:JobStatus
 -- @+node:gcross.20100604204549.1368:JobQueueEntry
 data JobQueueEntry label result = 
-    ∀ cache. Binary cache => JobSubmission [label] (JobRunner label result cache) ThreadId
+    ∀ cache. Binary cache => JobSubmission (Job label result cache) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest label (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [label] ByteString))
@@ -280,11 +287,10 @@ withJobServer number_of_io_slaves starting_cache thunk =
 submitJob ::
     Binary cache =>
     JobServer label result →
-    [label] →
-    JobRunner label result cache →
+    Job label result cache →
     IO ()
-submitJob (JobServer job_queue _) names job =
-    myThreadId >>= writeChan job_queue . JobSubmission names job
+submitJob (JobServer job_queue _) job =
+    myThreadId >>= writeChan job_queue . JobSubmission job
 -- @-node:gcross.20100607083309.1406:submitJob
 -- @+node:gcross.20100607083309.1409:requestJobResult
 requestJobResult :: JobServer label result → label → IO result
@@ -483,7 +489,7 @@ processJobQueueEntry ::
     StateT (JobServerState label result) IO ()
 -- @+others
 -- @+node:gcross.20100604204549.7660:JobSubmission
-processJobQueueEntry (JobSubmission names computeTaskFromCache thread_id) = do
+processJobQueueEntry (JobSubmission (Job names computeTaskFromCache) thread_id) = do
     server_job_ids ← get serverJobIds
     case filter (flip Map.member server_job_ids) names of
         [] → do
