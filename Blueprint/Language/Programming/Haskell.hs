@@ -100,6 +100,10 @@ extractHaskellSources source_files =
 haskellModuleDependency :: String → Dependency
 haskellModuleDependency = Dependency haskell_module_dependency_type
 -- @-node:gcross.20100628115452.1840:haskellModuleDependency
+-- @+node:gcross.20100709210816.2211:haskellPackageDependency
+haskellPackageDependency :: String → Dependency
+haskellPackageDependency = Dependency haskell_package_dependency_type
+-- @-node:gcross.20100709210816.2211:haskellPackageDependency
 -- @-node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100611224425.1689:Values
 -- @+node:gcross.20100611224425.1708:regular expression

@@ -54,7 +54,7 @@ data DependencyExporters = DependencyExporters
 data ResolvedDependencies = ResolvedDependencies
     {   resolvedImmediateDependencies :: [JobId]
     ,   resolvedDeferredDependencies :: [Dependency]
-    }
+    } deriving Show
 -- @-node:gcross.20100624100717.1741:ResolvedDependencies
 -- @+node:gcross.20100624100717.1727:UnresolvedDependency
 data UnresolvedDependency = UnresolvedDependency
@@ -83,6 +83,8 @@ data UnknownDependenciesError = UnknownDependenciesError [UnknownDependency] der
 instance Show UnknownDependenciesError where
     show (UnknownDependenciesError unknown_dependencies) =
         intercalate "\n"
+        .
+        nub
         .
         map (\(UnknownDependency (Dependency{..}) maybe_unknown_dependency_exporters) →
             "Unable to find " ++ show dependencyType ++ " '" ++ dependencyName ++ "'" ++

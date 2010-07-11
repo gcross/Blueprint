@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100630111926.2024:<< Language extensions >>
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100630111926.2024:<< Language extensions >>
 -- @nl
@@ -12,6 +13,7 @@ module Blueprint.SourceFile where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100630111926.2025:<< Import needed modules >>
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.List
 
@@ -26,8 +28,10 @@ import Data.UUID.V5
 import System.Directory
 import System.FilePath
 
+import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Jobs
+import Blueprint.Miscellaneous
 -- @-node:gcross.20100630111926.2025:<< Import needed modules >>
 -- @nl
 
@@ -102,6 +106,17 @@ computeJobIdOfSourceFileDigest file_path =
         file_path
         ("Digest " ++ file_path)
 -- @-node:gcross.20100708102250.2004:computeJobIdOfSourceFileDigest
+-- @+node:gcross.20100709210816.2113:createSourceFileDigestJob
+createSourceFileDigestJob :: SourceFile → Job JobId Record ()
+createSourceFileDigestJob SourceFile{..} =
+    Job [sourceFileDigestJobId]
+    $
+    const (
+        liftIO (digestFile sourceFilePath)
+        >>=
+        returnValue . withField _digest
+    )
+-- @-node:gcross.20100709210816.2113:createSourceFileDigestJob
 -- @-node:gcross.20100708102250.1997:Functions
 -- @+node:gcross.20100708102250.2002:Values
 -- @+node:gcross.20100708102250.2003:digest_source_file_namespace

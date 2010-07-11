@@ -28,6 +28,7 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -211,7 +212,7 @@ haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSou
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
--- @+node:gcross.20100630111926.1863:resolveGHCModuleDependencies
+-- @+node:gcross.20100630111926.1863:resolveModuleDependencies
 resolveModuleDependency :: FilePath → KnownModules → DependencyResolver
 resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
   | dependencyType == haskell_module_dependency_type
@@ -228,13 +229,14 @@ resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
                 Just
                 .
                 DependencyExporters haskell_package_dependency_type
+        Just resolution → return . Right $ resolution
   | dependencyType == runtime_dependency_type
     = return . Right $ ResolvedDependencies [] [unresolvedDependency]      
   | otherwise
     = throw $ UnrecognizedDependencyType "the GHC compiler" dependencyType
   where
     Dependency{..} = unresolvedDependency
--- @-node:gcross.20100630111926.1863:resolveGHCModuleDependencies
+-- @-node:gcross.20100630111926.1863:resolveModuleDependencies
 -- @-node:gcross.20100630111926.1860:dependency resolution
 -- @+node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1872:queryPackage
@@ -253,25 +255,35 @@ fetchPackageModules :: FilePath -> String -> IO (Maybe [String])
 fetchPackageModules path_to_ghc qualified_package_name =
     queryPackage path_to_ghc "exposed-modules" qualified_package_name
 -- @-node:gcross.20100630111926.1870:fetchPackageModules
--- @+node:gcross.20100709210816.2201:findPackageSatisfyingVersionRequirement
-findPackageSatisfyingVersionRequirement :: FilePath → String → (Version → Bool) → IO (Maybe String)
-findPackageSatisfyingVersionRequirement path_to_ghc_pkg package_name checkVersion = runMaybeT $
-    MaybeT (queryPackage path_to_ghc_pkg "version" package_name)
-    >>=
-    MaybeT . return . find checkVersion . map readVersion
-    >>=
-    MaybeT . queryPackage path_to_ghc_pkg "id" . ((package_name ++ "-") ++) . showVersion
-    >>=
-    (\ids → case ids of {[] → mzero; id:_ → return id})
--- @-node:gcross.20100709210816.2201:findPackageSatisfyingVersionRequirement
+-- @+node:gcross.20100709210816.2201:resolvePackage
+resolvePackage :: FilePath → String → (Version → Bool) → IO (Either [Version] String)
+resolvePackage path_to_ghc_pkg package_name checkVersion =
+    fmap (
+        (\versions →
+            case find checkVersion versions of
+                Nothing → Left versions
+                Just version → Right (package_name ++ "-" ++ showVersion version)
+        )
+        .
+        map readVersion
+        .
+        fromMaybe []
+    ) (queryPackage path_to_ghc_pkg "version" package_name)
+-- @-node:gcross.20100709210816.2201:resolvePackage
 -- @+node:gcross.20100709210816.2208:resolvePackages
-resolvePackages :: FilePath → [(String,Version → Bool)] → IO (Maybe [String])
+resolvePackages :: FilePath → [(String,Version → Bool)] → IO (Either [(String,[Version])] [String])
 resolvePackages path_to_ghc_pkg =
-    runMaybeT
+    fmap (\resolutions →
+        case partitionEithers resolutions of
+            ([],package_ids) → Right package_ids
+            (unresolved,_) → Left unresolved
+    )
     .
-    mapM (MaybeT . uncurry (findPackageSatisfyingVersionRequirement path_to_ghc_pkg))
+    mapM (\(package_name,checkVersion) →
+        fmap (mapLeft (package_name,)) (resolvePackage path_to_ghc_pkg package_name checkVersion)
+    )
 -- @-node:gcross.20100709210816.2208:resolvePackages
--- @+node:gcross.20100709210816.2209:fetchKnownModulesFromPackages
+-- @+node:gcross.20100709210816.2209:fetchKnownModulesFromPackage
 fetchKnownModulesFromPackage :: FilePath → String → IO (Maybe KnownModules)
 fetchKnownModulesFromPackage path_to_ghc_pkg package_id =
     runMaybeT
@@ -292,7 +304,16 @@ fetchKnownModulesFromPackage path_to_ghc_pkg package_id =
         haskellPackageDependency
         $
         package_id
--- @-node:gcross.20100709210816.2209:fetchKnownModulesFromPackages
+-- @-node:gcross.20100709210816.2209:fetchKnownModulesFromPackage
+-- @+node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
+fetchKnownModulesFromPackages :: FilePath → [String] → IO (Maybe KnownModules)
+fetchKnownModulesFromPackages path_to_ghc_pkg =
+    runMaybeT
+    .
+    fmap mconcat
+    .
+    mapM (MaybeT . fetchKnownModulesFromPackage path_to_ghc_pkg)
+-- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
@@ -368,7 +389,7 @@ createGHCCompileToObjectJob
 
     -- @-node:gcross.20100705150931.1979:scanner
     -- @-others
--- @-node:gcross.20100630111926.1874:createGHCCompileToObjectTask
+-- @-node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 -- @+node:gcross.20100705132935.1938:createGHCLinkProgramTask
 createGHCLinkProgramTask ::
     FilePath →
@@ -452,7 +473,7 @@ createGHCLinkProgramTask
     -- @-node:gcross.20100705150931.1982:my_actor_name
     -- @-others
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramTask
--- @-node:gcross.20100630111926.1873:tasks
+-- @-node:gcross.20100630111926.1873:jobs
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"

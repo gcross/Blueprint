@@ -89,19 +89,18 @@ instance Exception UnrecognizedRuntimes
 -- @-node:gcross.20100705150931.1955:UnknownRuntimes
 -- @-node:gcross.20100630111926.1894:Exceptions
 -- @+node:gcross.20100624100717.2146:Types
--- @+node:gcross.20100705185804.1971:ToolJobTask
+-- @+node:gcross.20100705185804.1971:ToolJob
+type ToolJob = Job JobId Record SerializableRecord
+-- @-node:gcross.20100705185804.1971:ToolJob
+-- @+node:gcross.20100709210816.2111:ToolJobTask
 type ToolJobTask result = JobTask JobId Record result
--- @-node:gcross.20100705185804.1971:ToolJobTask
+-- @-node:gcross.20100709210816.2111:ToolJobTask
 -- @+node:gcross.20100705185804.2005:ToolJobRunner
 type ToolJobRunner cache = JobRunner JobId Record cache
 
 -- @-node:gcross.20100705185804.2005:ToolJobRunner
 -- @-node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100624100717.2135:Functions
--- @+node:gcross.20100708102250.2005:createDigestTask
-createDigestTask :: FilePath → ToolJobRunner ()
-createDigestTask file_path _ = liftIO (digestFile file_path) >>= returnValue . withField _digest
--- @-node:gcross.20100708102250.2005:createDigestTask
 -- @+node:gcross.20100705185804.1978:fetchDigestsFor
 fetchDigestsFor :: [JobId] → ToolJobTask [MD5Digest]
 fetchDigestsFor = fmap (map getDigest) . request
