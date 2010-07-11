@@ -71,6 +71,13 @@ data BuiltModule = BuiltModule
     ,   builtModuleInterfaceJobId :: JobId
     }
 -- @-node:gcross.20100708215239.2085:BuiltModule
+-- @+node:gcross.20100709210816.2222:BuiltProgram
+data BuiltProgram = BuiltProgram
+    {   builtProgramFilePath :: FilePath
+    ,   builtProgramObjectFilePaths :: [FilePath]
+    ,   builtProgramJobId :: JobId
+    }
+-- @-node:gcross.20100709210816.2222:BuiltProgram
 -- @+node:gcross.20100630111926.1875:GHCOptions
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
@@ -130,18 +137,17 @@ computeGHCLinkDependencyArguments =
     concat
     .
     zipWith ($)
-        [computeGHCRuntimeDependencyArguments
-        ,computeGHCPackageDependencyArguments
-        ,computeGHCLibraryDependencyArguments
-        ,computeGHCObjectDependencyArguments
-        ]
+        (map snd dependency_types_and_processors)
     .
     separateDependenciesByType
         "the GHC linker"
-        [runtime_dependency_type
-        ,library_dependency_type
-        ,object_dependency_type
-        ,haskell_package_dependency_type
+        (map fst dependency_types_and_processors)
+  where
+    dependency_types_and_processors =
+        [(runtime_dependency_type,computeGHCRuntimeDependencyArguments)
+        ,(haskell_package_dependency_type,computeGHCPackageDependencyArguments)
+        ,(library_dependency_type,computeGHCLibraryDependencyArguments)
+        ,(object_dependency_type,computeGHCObjectDependencyArguments)
         ]
 -- @-node:gcross.20100628115452.1895:computeGHCLinkDependencyArguments
 -- @+node:gcross.20100705150931.1957:computeGHCLibraryDependencyArguments
@@ -182,6 +188,15 @@ builtModulesToKnownModules =
     )
 
 -- @-node:gcross.20100708102250.2756:builtModulesToKnownModules
+-- @+node:gcross.20100709210816.2221:buildModulesToObjectLookup
+buildModulesToObjectLookup :: [BuiltModule] → (String → Maybe JobId)
+buildModulesToObjectLookup =
+    flip Map.lookup
+    .
+    Map.fromList
+    .
+    map (builtModuleObjectFilePath &&& builtModuleObjectJobId)
+-- @-node:gcross.20100709210816.2221:buildModulesToObjectLookup
 -- @+node:gcross.20100630111926.1868:findPackagesExposingModule
 findPackagesExposingModule :: FilePath -> String -> IO [String]
 findPackagesExposingModule path_to_ghc_pkg module_name =
@@ -237,6 +252,15 @@ resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
   where
     Dependency{..} = unresolvedDependency
 -- @-node:gcross.20100630111926.1863:resolveModuleDependencies
+-- @+node:gcross.20100709210816.2223:builtProgram
+builtProgram :: FilePath → [FilePath] → BuiltProgram
+builtProgram program_file_path program_object_file_paths =
+    BuiltProgram
+    {   builtProgramFilePath = program_file_path
+    ,   builtProgramObjectFilePaths = program_object_file_paths
+    ,   builtProgramJobId = programJobId program_file_path ("Linking " ++ program_file_path)
+    }
+-- @-node:gcross.20100709210816.2223:builtProgram
 -- @-node:gcross.20100630111926.1860:dependency resolution
 -- @+node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1872:queryPackage
@@ -390,29 +414,29 @@ createGHCCompileToObjectJob
     -- @-node:gcross.20100705150931.1979:scanner
     -- @-others
 -- @-node:gcross.20100630111926.1874:createGHCCompileToObjectJob
--- @+node:gcross.20100705132935.1938:createGHCLinkProgramTask
-createGHCLinkProgramTask ::
+-- @+node:gcross.20100705132935.1938:createGHCLinkProgramJob
+createGHCLinkProgramJob ::
     FilePath →
     [String] →
     (String → Maybe JobId) →
-    [FilePath] →
-    FilePath →
-    JobAnalysisRunner
-createGHCLinkProgramTask
+    BuiltProgram →
+    ToolJob
+createGHCLinkProgramJob
     path_to_ghc
     options_arguments
     lookupObjectJobId
-    object_file_paths
-    program_file_path
+    BuiltProgram{..}
     =
+    Job [builtProgramJobId]
+    .
     runJobAnalyzer
     $
     fetchAllDeferredDependenciesAndRebuildIfNecessary
         lookupDependencyJobIds
-        (liftIO . checkDigestsOfFilesIfExisting [program_file_path])
+        (liftIO . checkDigestsOfFilesIfExisting [builtProgramFilePath])
         builder
         options_arguments
-        (map (Dependency object_dependency_type) object_file_paths)
+        (map (Dependency object_dependency_type) builtProgramObjectFilePaths)
   where
     -- @    @+others
     -- @+node:gcross.20100705150931.1943:builder
@@ -421,14 +445,14 @@ createGHCLinkProgramTask
                 computeGHCLinkToProgramArguments
                     options_arguments
                     dependencies
-                    program_file_path
+                    builtProgramFilePath
         noticeM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Linking program "
-            ++ program_file_path
+            ++ builtProgramFilePath
         infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
         runProductionCommandAndDigestOutputs
-            [program_file_path]
+            [builtProgramFilePath]
             []
             path_to_ghc
             ghc_arguments
@@ -472,7 +496,7 @@ createGHCLinkProgramTask
     -- @nonl
     -- @-node:gcross.20100705150931.1982:my_actor_name
     -- @-others
--- @-node:gcross.20100705132935.1938:createGHCLinkProgramTask
+-- @-node:gcross.20100705132935.1938:createGHCLinkProgramJob
 -- @-node:gcross.20100630111926.1873:jobs
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100708215239.2092:Namespaces

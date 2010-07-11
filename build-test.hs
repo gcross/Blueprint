@@ -107,10 +107,18 @@ main = do
                     known_modules
                     options_arguments
             ) built_modules
+        lookupObjectJobId = buildModulesToObjectLookup built_modules
+        built_program = builtProgram "test" . (:[]) . builtModuleObjectFilePath . head $ built_modules
     withJobServer 4 Map.empty $ \job_server → do
         mapM_ (submitJob job_server . createSourceFileDigestJob) sources
         mapM_ (submitJob job_server) compilation_jobs
-        object_result ← requestJobResult job_server . builtModuleObjectJobId . head $ built_modules
+        submitJob job_server $
+            createGHCLinkProgramJob
+                path_to_ghc
+                []
+                lookupObjectJobId
+                built_program
+        object_result ← requestJobResult job_server . builtProgramJobId $ built_program
         putStrLn . show . getDeferredDependencies $ object_result
 -- @-node:gcross.20100709210816.2100:main
 -- @+node:gcross.20100709210816.2217:betweenVersions

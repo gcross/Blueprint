@@ -164,6 +164,10 @@ objectDependency = Dependency object_dependency_type
 objectJobId :: FilePath → String → JobId
 objectJobId = identifierInNamespace object_namespace
 -- @-node:gcross.20100708215239.2091:objectJobId
+-- @+node:gcross.20100709210816.2220:programJobId
+programJobId :: FilePath → String → JobId
+programJobId = identifierInNamespace program_namespace
+-- @-node:gcross.20100709210816.2220:programJobId
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     [FilePath] →
@@ -201,6 +205,7 @@ library_dependency_type = identifier "946cec33-e3ba-42da-a4c7-bced83710e9f" "lib
 -- @-node:gcross.20100630111926.1884:Dependency Types
 -- @+node:gcross.20100708215239.2090:Namespaces
 object_namespace = uuid "b14f6d22-7d47-48ff-887f-d17cff428f22"
+program_namespace = uuid "EC5D2F7C-6A68-4FC7-A5BA-8A0E51917351"
 -- @-node:gcross.20100708215239.2090:Namespaces
 -- @-others
 -- @-node:gcross.20100624100717.2132:@thin Tools.hs
