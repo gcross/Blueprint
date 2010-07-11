@@ -29,6 +29,7 @@ import Control.Exception
 import Control.Monad
 import qualified Control.Monad.CatchIO as M
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Reader (ReaderT(..))
 import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Parallel
 import Control.Parallel.Strategies
@@ -195,6 +196,9 @@ data JobServerState label result = JobServerState
 
 $( deriveAccessors ''JobServerState )
 -- @-node:gcross.20100604204549.1375:JobServerState
+-- @+node:gcross.20100709210816.2224:JobServerMonad
+type JobServerMonad label result = ReaderT (JobServer label result) IO
+-- @-node:gcross.20100709210816.2224:JobServerMonad
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask
@@ -275,39 +279,54 @@ withJobServer ::
     ) =>
     Int →
     Map [label] ByteString →
-    (JobServer label result → IO a) →
+    JobServerMonad label result a →
     IO a
 withJobServer number_of_io_slaves starting_cache thunk =
     bracket
         (startJobServer number_of_io_slaves starting_cache)
         killJobServer
-        thunk
+        (runReaderT thunk)
 -- @-node:gcross.20100607083309.1470:withJobServer
--- @+node:gcross.20100607083309.1406:submitJob
-submitJob ::
+-- @+node:gcross.20100607083309.1406:submitJobToServer
+submitJobToServer ::
     Binary cache =>
     JobServer label result →
     Job label result cache →
     IO ()
-submitJob (JobServer job_queue _) job =
+submitJobToServer (JobServer job_queue _) job =
     myThreadId >>= writeChan job_queue . JobSubmission job
--- @-node:gcross.20100607083309.1406:submitJob
--- @+node:gcross.20100607083309.1409:requestJobResult
-requestJobResult :: JobServer label result → label → IO result
-requestJobResult (JobServer job_queue _) requested_job_name = do
+-- @-node:gcross.20100607083309.1406:submitJobToServer
+-- @+node:gcross.20100709210816.2230:submitJob
+submitJob ::
+    Binary cache =>
+    Job label result cache →
+    JobServerMonad label result ()
+submitJob = ReaderT . flip submitJobToServer
+-- @-node:gcross.20100709210816.2230:submitJob
+-- @+node:gcross.20100607083309.1409:requestJobResultFromServer
+requestJobResultFromServer :: JobServer label result → label → IO result
+requestJobResultFromServer (JobServer job_queue _) requested_job_name = do
     result_var ← newEmptyMVar
     writeChan job_queue $ ExternalRequest requested_job_name result_var
     result ← takeMVar result_var
     case result of
         Left exception → throwIO exception
         Right value → return value
--- @-node:gcross.20100607083309.1409:requestJobResult
--- @+node:gcross.20100607205618.1429:requestJobCache
-requestJobCache :: JobServer label result → IO (Map [label] ByteString)
-requestJobCache (JobServer job_queue _) = do
+-- @-node:gcross.20100607083309.1409:requestJobResultFromServer
+-- @+node:gcross.20100709210816.2226:requestJobResult
+requestJobResult :: label → JobServerMonad label result result
+requestJobResult = ReaderT . flip requestJobResultFromServer
+-- @-node:gcross.20100709210816.2226:requestJobResult
+-- @+node:gcross.20100709210816.2228:requestJobCacheFromServer
+requestJobCacheFromServer :: JobServer label result → IO (Map [label] ByteString)
+requestJobCacheFromServer (JobServer job_queue _) = do
     result_var ← newEmptyMVar
     writeChan job_queue $ ExternalRequestForCache result_var
     takeMVar result_var
+-- @-node:gcross.20100709210816.2228:requestJobCacheFromServer
+-- @+node:gcross.20100607205618.1429:requestJobCache
+requestJobCache :: JobServerMonad label result (Map [label] ByteString)
+requestJobCache = ReaderT requestJobCacheFromServer
 -- @-node:gcross.20100607205618.1429:requestJobCache
 -- @+node:gcross.20100607083309.1414:returnValuesAndCache
 returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
