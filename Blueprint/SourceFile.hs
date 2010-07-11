@@ -68,13 +68,7 @@ getAllSourceFilesIn = runListT . go Seq.empty
         is_directory ← lift (doesDirectoryExist item_path)
         if is_directory
             then go hierarchal_path item_path
-            else return $
-                    SourceFile
-                    {   sourceFilePath = item_path
-                    ,   sourceFileHierarchalPath = hierarchal_path
-                    ,   sourceFileExtension = takeExtensions item_path
-                    ,   sourceFileDigestJobId = computeJobIdOfSourceFileDigest item_path
-                    }
+            else return (sourceFile item_path hierarchal_path)
 -- @-node:gcross.20100708102250.1998:getAllSourceFilesIn
 -- @+node:gcross.20100709210816.2104:getAllSourceFilesAndPrependParentIn
 getAllSourceFilesAndPrependParentIn :: Seq String → FilePath → IO [SourceFile]
@@ -117,6 +111,16 @@ createSourceFileDigestJob SourceFile{..} =
         returnValue . withField _digest
     )
 -- @-node:gcross.20100709210816.2113:createSourceFileDigestJob
+-- @+node:gcross.20100709210816.2218:sourceFile
+sourceFile :: FilePath → HierarchalPath → SourceFile
+sourceFile file_path hierarchal_path =
+    SourceFile
+    {   sourceFilePath = file_path
+    ,   sourceFileHierarchalPath = hierarchal_path
+    ,   sourceFileExtension = takeExtensions file_path
+    ,   sourceFileDigestJobId = computeJobIdOfSourceFileDigest file_path
+    }
+-- @-node:gcross.20100709210816.2218:sourceFile
 -- @-node:gcross.20100708102250.1997:Functions
 -- @+node:gcross.20100708102250.2002:Values
 -- @+node:gcross.20100708102250.2003:digest_source_file_namespace
