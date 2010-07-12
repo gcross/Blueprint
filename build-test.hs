@@ -15,12 +15,14 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
+import Data.Binary
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Sequence as Seq
 import Data.Version
 
+import System.Directory
 import System.Exit
 import System.Log.Logger
 
@@ -98,7 +100,7 @@ main = do
             (builtModulesToKnownModules built_modules)
             `mappend`
             known_package_modules
-        options_arguments = []
+        options_arguments = computeGHCInterfaceDirectoryArguments "interface"
         compilation_jobs = 
             map (
                 createGHCCompileToObjectJob
@@ -109,7 +111,14 @@ main = do
             ) built_modules
         lookupObjectJobId = buildModulesToObjectLookup built_modules
         built_program = builtProgram "test" . (:[]) . builtModuleObjectFilePath . head $ built_modules
-    object_result ← withJobServer 4 Map.empty $ do
+    cache ←
+        doesFileExist "cache"
+        >>=
+        \cache_exists →
+            if cache_exists
+                then decodeFile "cache"
+                else return Map.empty
+    cache ← withJobServer 4 cache $ do
         mapM_ (submitJob . createSourceFileDigestJob) sources
         mapM_ submitJob compilation_jobs
         submitJob $
@@ -119,7 +128,8 @@ main = do
                 lookupObjectJobId
                 built_program
         requestJobResult . builtProgramJobId $ built_program
-    putStrLn . show . getDeferredDependencies $ object_result
+        requestJobCache
+    encodeFile "cache" cache
 -- @-node:gcross.20100709210816.2100:main
 -- @+node:gcross.20100709210816.2217:betweenVersions
 betweenVersions lower upper = liftA2 (&&) (>= readVersion lower) (< readVersion upper)

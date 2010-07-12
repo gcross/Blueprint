@@ -498,6 +498,16 @@ createGHCLinkProgramJob
     -- @-others
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramJob
 -- @-node:gcross.20100630111926.1873:jobs
+-- @+node:gcross.20100709210816.2233:options
+-- @+node:gcross.20100709210816.2234:computeGHCInterfaceDirectoryArguments
+computeGHCInterfaceDirectoryArguments :: FilePath → [String]
+computeGHCInterfaceDirectoryArguments = (:[]) . ("-i" ++)
+-- @-node:gcross.20100709210816.2234:computeGHCInterfaceDirectoryArguments
+-- @+node:gcross.20100709210816.2235:computeGHCPackageNameArguments
+computeGHCCompileAsPackageNameArguments :: String → [String]
+computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
+-- @-node:gcross.20100709210816.2235:computeGHCPackageNameArguments
+-- @-node:gcross.20100709210816.2233:options
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
