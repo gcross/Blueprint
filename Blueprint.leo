@@ -19,6 +19,9 @@
 <v t="gcross.20100609163522.1415"><vh>@thin Record.hs</vh></v>
 </v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
+<v t="gcross.20100830091258.2021"><vh>@path Configuration</vh>
+<v t="gcross.20100830091258.2004"><vh>@thin Tools.hs</vh></v>
+</v>
 <v t="gcross.20100624100717.1713"><vh>@thin Dependency.hs</vh></v>
 <v t="gcross.20100624100717.2080"><vh>@path Fields</vh>
 <v t="gcross.20100624100717.2122"><vh>@thin DeferredDependencies.hs</vh></v>
@@ -90,5 +93,6 @@ module Blueprint.Module where
 <t tx="gcross.20100616175443.1685"></t>
 <t tx="gcross.20100624100717.1779"></t>
 <t tx="gcross.20100624100717.2080"></t>
+<t tx="gcross.20100830091258.2021"></t>
 </tnodes>
 </leo_file>

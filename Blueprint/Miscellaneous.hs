@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100614121927.1660:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100614121927.1660:<< Language extensions >>
@@ -22,6 +23,7 @@ import Control.Parallel.Strategies
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Digest.Pure.MD5
+import Data.Maybe
 import Data.Typeable
 import Data.UUID
 import Data.Version
@@ -36,6 +38,7 @@ import System.Process
 import System.Random
 
 import Text.ParserCombinators.ReadP
+import Text.Regex.Base
 -- @-node:gcross.20100614121927.1661:<< Import needed modules >>
 -- @nl
 
@@ -57,6 +60,10 @@ deriving instance Typeable MD5Digest
 -- @-node:gcross.20100624100717.2143:Typeable MD5Digest
 -- @-node:gcross.20100624100717.2142:Instances
 -- @+node:gcross.20100614121927.1662:Functions
+-- @+node:gcross.20100830091258.2038:addExe
+addExe :: String → String
+addExe = id
+-- @-node:gcross.20100830091258.2038:addExe
 -- @+node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
 checkDigestsOfFilesIfExisting :: [FilePath] → [MD5Digest] → IO Bool
 checkDigestsOfFilesIfExisting file_paths old_digests = runAbortT $
@@ -76,13 +83,17 @@ digestFiles = mapM digestFile
 -- @+node:gcross.20100614121927.2357:echo
 echo x = trace (show x) x
 -- @-node:gcross.20100614121927.2357:echo
--- @+node:gcross.20100614121927.1663:withTemporaryFile
-withTemporaryFile :: String → (FilePath → IO a) → IO a
-withTemporaryFile extension thunk = do
-    directory ← getTemporaryDirectory
-    filepath ← fmap ((directory </>) . (<.> extension) . show) (randomIO :: IO UUID)
-    (thunk filepath) `finally` (doesFileExist filepath >>= flip when (removeFile filepath))
--- @-node:gcross.20100614121927.1663:withTemporaryFile
+-- @+node:gcross.20100830091258.2026:extractVersion
+extractVersion ::
+    RegexLike regex String =>
+    regex →
+    String →
+    Maybe Version
+extractVersion regex string =
+    case mrSubList (match regex string) of
+        v:[] → tryReadVersion v
+        _ → Nothing
+-- @-node:gcross.20100830091258.2026:extractVersion
 -- @+node:gcross.20100614121927.2360:readProcessByteString
 readProcessByteString :: FilePath → [String] → String → IO S.ByteString
 readProcessByteString program arguments input = do
@@ -104,8 +115,23 @@ readProcessByteString program arguments input = do
 -- @-node:gcross.20100614121927.2360:readProcessByteString
 -- @+node:gcross.20100709210816.2203:readVersion
 readVersion :: String -> Version
-readVersion = fst . last . readP_to_S parseVersion
+readVersion = fromJust . tryReadVersion
 -- @-node:gcross.20100709210816.2203:readVersion
+-- @+node:gcross.20100830091258.2024:tryReadVersion
+tryReadVersion :: String → Maybe Version
+tryReadVersion string =
+    case readP_to_S parseVersion string of 
+        [] → Nothing 
+        parses → (Just . fst . last) parses
+
+-- @-node:gcross.20100830091258.2024:tryReadVersion
+-- @+node:gcross.20100614121927.1663:withTemporaryFile
+withTemporaryFile :: String → (FilePath → IO a) → IO a
+withTemporaryFile extension thunk = do
+    directory ← getTemporaryDirectory
+    filepath ← fmap ((directory </>) . (<.> extension) . show) (randomIO :: IO UUID)
+    (thunk filepath) `finally` (doesFileExist filepath >>= flip when (removeFile filepath))
+-- @-node:gcross.20100614121927.1663:withTemporaryFile
 -- @-node:gcross.20100614121927.1662:Functions
 -- @-others
 -- @-node:gcross.20100614121927.1659:@thin Miscellaneous.hs

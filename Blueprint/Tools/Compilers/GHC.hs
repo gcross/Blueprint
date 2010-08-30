@@ -3,7 +3,10 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1611:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -35,6 +38,7 @@ import qualified Data.Set as Set
 import Data.Typeable
 import Data.Version
 
+import System.Directory
 import System.Exit
 import System.FilePath
 import System.Log.Logger
@@ -43,6 +47,7 @@ import System.Process
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
+import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Identifier
@@ -78,6 +83,14 @@ data BuiltProgram = BuiltProgram
     ,   builtProgramJobId :: JobId
     }
 -- @-node:gcross.20100709210816.2222:BuiltProgram
+-- @+node:gcross.20100830091258.2027:GHC
+data GHC = GHC
+    {   ghcVersion :: Version
+    ,   ghcPath :: FilePath
+    ,   ghcPkgPath :: FilePath
+    } deriving Typeable
+
+-- @-node:gcross.20100830091258.2027:GHC
 -- @+node:gcross.20100630111926.1875:GHCOptions
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
@@ -130,6 +143,25 @@ computeGHCLinkToProgramArguments
         ]
 -- @-node:gcross.20100628115452.1858:computeGHCLinkToProgramArguments
 -- @-node:gcross.20100628115452.1859:compilation/linking arguments
+-- @+node:gcross.20100830091258.2028:configuration
+-- @+node:gcross.20100830091258.2029:lookForGHCInPaths
+lookForGHCInPaths :: [FilePath] → IO [GHC]
+lookForGHCInPaths paths =
+    fmap (
+        map (\(path,version) → GHC version (path </> "ghc") (path </> "ghc-pkg"))
+        .
+        Map.toList
+    )
+    .
+    liftIO
+    $
+    (
+        liftM2 Map.intersection
+            (lookForVersionedProgramInPaths ghc_program paths)
+            (lookForVersionedProgramInPaths ghc_pkg_program paths)
+    )
+-- @-node:gcross.20100830091258.2029:lookForGHCInPaths
+-- @-node:gcross.20100830091258.2028:configuration
 -- @+node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100628115452.1895:computeGHCLinkDependencyArguments
 computeGHCLinkDependencyArguments :: [Dependency] → [String]
@@ -340,6 +372,19 @@ fetchKnownModulesFromPackages path_to_ghc_pkg =
 -- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
+-- @+node:gcross.20100830091258.2033:createFindGHCJobRunner
+createFindGHCJobRunner ::
+    [FilePath] →
+    JobRunner JobId Record ([FilePath],[GHC])
+createFindGHCJobRunner search_paths maybe_old_search_paths
+  | Just (old_cache@(old_search_paths,ghcs)) ← maybe_old_search_paths
+  , old_search_paths == search_paths
+    = returnValueAndCache (withField _ghcs ghcs) old_cache
+  | otherwise
+    =   liftIO (lookForGHCInPaths search_paths)
+        >>=
+        \ghcs → returnValueAndCache (withField _ghcs ghcs) (search_paths,ghcs)
+-- @-node:gcross.20100830091258.2033:createFindGHCJobRunner
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
@@ -509,6 +554,15 @@ computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
 -- @-node:gcross.20100709210816.2235:computeGHCPackageNameArguments
 -- @-node:gcross.20100709210816.2233:options
 -- @-node:gcross.20100628115452.1853:Functions
+-- @+node:gcross.20100830091258.2039:Fields
+-- @+node:gcross.20100830091258.2040:ghcs
+_ghcs :: Field [GHC]
+_ghcs = field "GHC locations" "ed3130c9-a484-406f-bee0-8016de867d9f"
+
+getGHCs :: FieldValue entity [GHC] ⇒ Table entity → [GHC]
+getGHCs = getRequiredField _ghcs
+-- @-node:gcross.20100830091258.2040:ghcs
+-- @-node:gcross.20100830091258.2039:Fields
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
 -- @-node:gcross.20100708215239.2092:Namespaces
@@ -516,9 +570,9 @@ interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
 -- @+node:gcross.20100705150931.1962:ghc_linker_actor_name
 ghc_linker_actor_name = "the GHC linker"
 -- @-node:gcross.20100705150931.1962:ghc_linker_actor_name
--- @+node:gcross.20100611224425.1614:ghc_probe
+-- @+node:gcross.20100611224425.1614:ghc_version_regex
 ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
--- @-node:gcross.20100611224425.1614:ghc_probe
+-- @-node:gcross.20100611224425.1614:ghc_version_regex
 -- @+node:gcross.20100705150931.1951:ghc_runtime_dependency_name
 ghc_runtime_dependency_name = "Haskell (GHC)"
 -- @-node:gcross.20100705150931.1951:ghc_runtime_dependency_name
@@ -528,6 +582,18 @@ ghc_runtime_dependency = Dependency runtime_dependency_type ghc_runtime_dependen
 -- @+node:gcross.20100630111926.1889:ghc_runtime_unresolved_dependency
 ghc_runtime_unresolved_dependency = UnresolvedDependency Nothing ghc_runtime_dependency
 -- @-node:gcross.20100630111926.1889:ghc_runtime_unresolved_dependency
+-- @+node:gcross.20100830091258.2031:ghc_version_extractor
+ghc_version_extractor = VersionExtractor ["--version"] (extractVersion ghc_version_regex)
+
+-- @-node:gcross.20100830091258.2031:ghc_version_extractor
+-- @+node:gcross.20100830091258.2032:ghc_program
+ghc_program = VersionedProgram "ghc" ghc_version_extractor
+-- @nonl
+-- @-node:gcross.20100830091258.2032:ghc_program
+-- @+node:gcross.20100830091258.2036:ghc_pkg_program
+ghc_pkg_program = VersionedProgram "ghc-pkg" ghc_version_extractor
+-- @nonl
+-- @-node:gcross.20100830091258.2036:ghc_pkg_program
 -- @-node:gcross.20100611224425.1613:Values
 -- @-others
 -- @-node:gcross.20100611224425.1610:@thin GHC.hs
