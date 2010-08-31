@@ -381,23 +381,27 @@ fetchKnownModulesFromPackages path_to_ghc_pkg =
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
-createFindGHCConfigurationJobRunner ::
+createFindGHCConfigurationJob ::
     (Binary α, Eq α) =>
+    String →
     [FilePath] →
     α →
     ([GHC] → GHC) →
-    JobRunner JobId Record ([FilePath],α,GHC)
-createFindGHCConfigurationJobRunner search_paths user_data selectGHC maybe_old_search_paths
-  | Just (old_cache@(old_search_paths,old_user_data,ghc)) ← maybe_old_search_paths
-  , old_search_paths == search_paths
-  , old_user_data == user_data
-    = returnValueAndCache (withField _ghc ghc) old_cache
-  | otherwise
-    = liftIO (lookForGHCInPaths search_paths)
-      >>=
-      \ghcs →
-        let ghc = selectGHC ghcs
-        in returnValueAndCache (withField _ghc ghc) (search_paths,user_data,ghc)
+    Job JobId Record
+createFindGHCConfigurationJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
+    Job [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
+    $
+    \maybe_old_search_paths →
+        case maybe_old_search_paths of
+            Just (old_cache@(old_search_paths,old_selection_criteria_identifier,ghc))
+              | old_search_paths == search_paths
+              , old_selection_criteria_identifier == selection_criteria_identifier 
+              → returnValueAndCache (withField _ghc ghc) old_cache
+            _ → liftIO (lookForGHCInPaths search_paths)
+                 >>=
+                 \ghcs →
+                    let ghc = selectGHC ghcs
+                    in returnValueAndCache (withField _ghc ghc) (search_paths,selection_criteria_identifier,ghc)
 -- @-node:gcross.20100830091258.2033:createGHCConfigurationJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
@@ -579,6 +583,7 @@ getGHC = getRequiredField _ghc
 -- @-node:gcross.20100830091258.2039:Fields
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
+ghc_configuration_namespace = uuid "dc71e9fc-8917-4263-869b-bde953f56300"
 -- @-node:gcross.20100708215239.2092:Namespaces
 -- @+node:gcross.20100611224425.1613:Values
 -- @+node:gcross.20100705150931.1962:ghc_linker_actor_name

@@ -90,7 +90,7 @@ instance Exception UnrecognizedRuntimes
 -- @-node:gcross.20100630111926.1894:Exceptions
 -- @+node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100705185804.1971:ToolJob
-type ToolJob = Job JobId Record SerializableRecord
+type ToolJob = Job JobId Record
 -- @-node:gcross.20100705185804.1971:ToolJob
 -- @+node:gcross.20100709210816.2111:ToolJobTask
 type ToolJobTask result = JobTask JobId Record result

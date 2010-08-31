@@ -101,7 +101,7 @@ computeJobIdOfSourceFileDigest file_path =
         ("Digest " ++ file_path)
 -- @-node:gcross.20100708102250.2004:computeJobIdOfSourceFileDigest
 -- @+node:gcross.20100709210816.2113:createSourceFileDigestJob
-createSourceFileDigestJob :: SourceFile → Job JobId Record ()
+createSourceFileDigestJob :: SourceFile → Job JobId Record
 createSourceFileDigestJob SourceFile{..} =
     Job [sourceFileDigestJobId]
     $

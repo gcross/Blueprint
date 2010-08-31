@@ -129,11 +129,10 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100709210816.2107:Job
-data Job label result cache = Job
+data Job label result = forall cache. Binary cache => Job
     {   jobNames :: [label]
     ,   jobTask :: JobRunner label result cache
     }
--- @nonl
 -- @-node:gcross.20100709210816.2107:Job
 -- @+node:gcross.20100624100717.2145:JobId
 data OfJob deriving Typeable
@@ -163,7 +162,7 @@ data JobStatus label result =
 -- @-node:gcross.20100624100717.1753:JobStatus
 -- @+node:gcross.20100604204549.1368:JobQueueEntry
 data JobQueueEntry label result = 
-    ∀ cache. Binary cache => JobSubmission (Job label result cache) ThreadId
+    JobSubmission (Job label result) ThreadId
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest label (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [label] ByteString))
@@ -289,17 +288,15 @@ withJobServer number_of_io_slaves starting_cache thunk =
 -- @-node:gcross.20100607083309.1470:withJobServer
 -- @+node:gcross.20100607083309.1406:submitJobToServer
 submitJobToServer ::
-    Binary cache =>
     JobServer label result →
-    Job label result cache →
+    Job label result →
     IO ()
 submitJobToServer (JobServer job_queue _) job =
     myThreadId >>= writeChan job_queue . JobSubmission job
 -- @-node:gcross.20100607083309.1406:submitJobToServer
 -- @+node:gcross.20100709210816.2230:submitJob
 submitJob ::
-    Binary cache =>
-    Job label result cache →
+    Job label result →
     JobServerMonad label result ()
 submitJob = ReaderT . flip submitJobToServer
 -- @-node:gcross.20100709210816.2230:submitJob
