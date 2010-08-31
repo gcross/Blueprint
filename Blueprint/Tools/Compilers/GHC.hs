@@ -8,6 +8,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1611:<< Language extensions >>
@@ -24,9 +25,12 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 
+import Data.Binary
 import qualified Data.ByteString.Lazy as L
+import Data.DeriveTH
 import Data.Either
 import Data.Either.Unwrap
+import Data.Function
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -86,10 +90,12 @@ data BuiltProgram = BuiltProgram
 -- @+node:gcross.20100830091258.2027:GHC
 data GHC = GHC
     {   ghcVersion :: Version
-    ,   ghcPath :: FilePath
-    ,   ghcPkgPath :: FilePath
+    ,   ghcDirectory :: FilePath
+    ,   pathToGHC :: FilePath
+    ,   pathToGHCPkg :: FilePath
     } deriving Typeable
 
+$( derive makeBinary ''GHC )
 -- @-node:gcross.20100830091258.2027:GHC
 -- @+node:gcross.20100630111926.1875:GHCOptions
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
@@ -148,7 +154,9 @@ computeGHCLinkToProgramArguments
 lookForGHCInPaths :: [FilePath] → IO [GHC]
 lookForGHCInPaths paths =
     fmap (
-        map (\(path,version) → GHC version (path </> "ghc") (path </> "ghc-pkg"))
+        sortBy (compare `on` ghcVersion)
+        .
+        map (\(path,version) → GHC version path (path </> "ghc") (path </> "ghc-pkg"))
         .
         Map.toList
     )
@@ -372,19 +380,25 @@ fetchKnownModulesFromPackages path_to_ghc_pkg =
 -- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
--- @+node:gcross.20100830091258.2033:createFindGHCJobRunner
-createFindGHCJobRunner ::
+-- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
+createFindGHCConfigurationJobRunner ::
+    (Binary α, Eq α) =>
     [FilePath] →
-    JobRunner JobId Record ([FilePath],[GHC])
-createFindGHCJobRunner search_paths maybe_old_search_paths
-  | Just (old_cache@(old_search_paths,ghcs)) ← maybe_old_search_paths
+    α →
+    ([GHC] → GHC) →
+    JobRunner JobId Record ([FilePath],α,GHC)
+createFindGHCConfigurationJobRunner search_paths user_data selectGHC maybe_old_search_paths
+  | Just (old_cache@(old_search_paths,old_user_data,ghc)) ← maybe_old_search_paths
   , old_search_paths == search_paths
-    = returnValueAndCache (withField _ghcs ghcs) old_cache
+  , old_user_data == user_data
+    = returnValueAndCache (withField _ghc ghc) old_cache
   | otherwise
-    =   liftIO (lookForGHCInPaths search_paths)
-        >>=
-        \ghcs → returnValueAndCache (withField _ghcs ghcs) (search_paths,ghcs)
--- @-node:gcross.20100830091258.2033:createFindGHCJobRunner
+    = liftIO (lookForGHCInPaths search_paths)
+      >>=
+      \ghcs →
+        let ghc = selectGHC ghcs
+        in returnValueAndCache (withField _ghc ghc) (search_paths,user_data,ghc)
+-- @-node:gcross.20100830091258.2033:createGHCConfigurationJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
@@ -555,13 +569,13 @@ computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
 -- @-node:gcross.20100709210816.2233:options
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100830091258.2039:Fields
--- @+node:gcross.20100830091258.2040:ghcs
-_ghcs :: Field [GHC]
-_ghcs = field "GHC locations" "ed3130c9-a484-406f-bee0-8016de867d9f"
+-- @+node:gcross.20100830091258.2040:ghc
+_ghc :: Field GHC
+_ghc = field "GHC" "ed3130c9-a484-406f-bee0-8016de867d9f"
 
-getGHCs :: FieldValue entity [GHC] ⇒ Table entity → [GHC]
-getGHCs = getRequiredField _ghcs
--- @-node:gcross.20100830091258.2040:ghcs
+getGHC :: FieldValue entity GHC ⇒ Table entity → GHC
+getGHC = getRequiredField _ghc
+-- @-node:gcross.20100830091258.2040:ghc
 -- @-node:gcross.20100830091258.2039:Fields
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"

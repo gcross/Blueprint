@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100614121927.1660:<< Language extensions >>
 -- @nl
@@ -14,15 +15,22 @@ module Blueprint.Miscellaneous where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100614121927.1661:<< Import needed modules >>
+import Control.Arrow
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Abort
 import Control.Parallel.Strategies
 
+import Data.Binary
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.DeriveTH
 import Data.Digest.Pure.MD5
+import Data.Function
+import Data.List
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 import Data.UUID
@@ -37,7 +45,7 @@ import System.IO
 import System.Process
 import System.Random
 
-import Text.ParserCombinators.ReadP
+import Text.ParserCombinators.ReadP (readP_to_S)
 import Text.Regex.Base
 -- @-node:gcross.20100614121927.1661:<< Import needed modules >>
 -- @nl
@@ -55,6 +63,9 @@ instance Exception ProgramFailed
 -- @-node:gcross.20100614121927.2362:ProgramFailed
 -- @-node:gcross.20100614121927.2361:Exceptions
 -- @+node:gcross.20100624100717.2142:Instances
+-- @+node:gcross.20100830091258.2046:Binary Version
+$(derive makeBinary ''Version)
+-- @-node:gcross.20100830091258.2046:Binary Version
 -- @+node:gcross.20100624100717.2143:Typeable MD5Digest
 deriving instance Typeable MD5Digest
 -- @-node:gcross.20100624100717.2143:Typeable MD5Digest
@@ -94,6 +105,21 @@ extractVersion regex string =
         v:[] → tryReadVersion v
         _ → Nothing
 -- @-node:gcross.20100830091258.2026:extractVersion
+-- @+node:gcross.20100830091258.2041:invertMap
+invertMap :: Ord b => Map a b → Map b [a]
+invertMap =
+    Map.fromList
+    .
+    map ((fst . head) &&& map snd)
+    .
+    groupBy ((==) `on` fst)
+    .
+    sortBy (compare `on` fst)
+    .
+    map (\(a,b) → (b,a))
+    .
+    Map.toList
+-- @-node:gcross.20100830091258.2041:invertMap
 -- @+node:gcross.20100614121927.2360:readProcessByteString
 readProcessByteString :: FilePath → [String] → String → IO S.ByteString
 readProcessByteString program arguments input = do

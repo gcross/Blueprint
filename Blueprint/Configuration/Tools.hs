@@ -73,6 +73,16 @@ lookForVersionedProgramInPaths VersionedProgram{..} =
         \path → fmap (fmap ((,) path)) (getProgramVersion versionedProgramVersionExtractor (path </> versionedProgramName))
     )
 -- @-node:gcross.20100830091258.2016:lookForVersionedProgramInPaths
+-- @+node:gcross.20100830091258.2042:selectHighestCompatibleVersion
+selectHighestCompatibleVersion :: (Version → Bool) → Map Version [a] → Maybe a
+selectHighestCompatibleVersion isCompatible = go . Map.toDescList
+  where
+    go [] = Nothing
+    go ((_,[]):rest) = go rest
+    go ((version,(item:_)):rest)
+      | isCompatible version = Just item
+      | otherwise            = go rest
+-- @-node:gcross.20100830091258.2042:selectHighestCompatibleVersion
 -- @-node:gcross.20100830091258.2007:Functions
 -- @-others
 -- @-node:gcross.20100830091258.2004:@thin Tools.hs
