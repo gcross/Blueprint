@@ -381,6 +381,20 @@ request :: [label] → JobTask label result [result]
 request [] = return []
 request requests = Request requests return
 -- @-node:gcross.20100607083309.1417:request
+-- @+node:gcross.20100831211145.2157:incompleteJob
+incompleteJob ::
+    [jobid] → (α → JobTaskResult jobid result ()) →
+    IncompleteJob jobid result α
+incompleteJob job_names = IncompleteJob job_names . IncompleteJobRunner
+-- @-node:gcross.20100831211145.2157:incompleteJob
+-- @+node:gcross.20100831211145.2160:incompleteJobWithCache
+incompleteJobWithCache ::
+    Binary cache =>
+    [jobid] →
+    (α → Maybe cache → JobTaskResult jobid result cache) →
+    IncompleteJob jobid result α
+incompleteJobWithCache job_names = IncompleteJob job_names . IncompleteJobRunnerWithCache
+-- @-node:gcross.20100831211145.2160:incompleteJobWithCache
 -- @+node:gcross.20100831154015.2053:job
 job :: [jobid] → JobTaskResult jobid result () → Job jobid result
 job job_names = Job job_names . JobRunner
@@ -389,6 +403,16 @@ job job_names = Job job_names . JobRunner
 jobWithCache :: Binary cache => [jobid] → (Maybe cache → JobTaskResult jobid result cache) → Job jobid result
 jobWithCache job_names = Job job_names . JobRunnerWithCache
 -- @-node:gcross.20100831211145.2071:jobWithCache
+-- @+node:gcross.20100831211145.2165:completeJobRunner
+completeJobRunner ::
+    IncompleteJobRunner label result α →
+    α →
+    JobRunner label result
+completeJobRunner incomplete_runner x =
+    case incomplete_runner of
+        IncompleteJobRunner runJob → JobRunner (runJob x)
+        IncompleteJobRunnerWithCache runJob → JobRunnerWithCache (runJob x)
+-- @-node:gcross.20100831211145.2165:completeJobRunner
 -- @+node:gcross.20100831211145.2125:completeJobRunnerUsing
 completeJobRunnerUsing ::
     ([result] → α) →
@@ -400,7 +424,17 @@ completeJobRunnerUsing computeResult requests incomplete_runner =
         IncompleteJobRunner runJob → JobRunner (request requests >>= runJob . computeResult)
         IncompleteJobRunnerWithCache runJob → JobRunnerWithCache (\maybe_cache → request requests >>= flip runJob maybe_cache . computeResult)
 -- @-node:gcross.20100831211145.2125:completeJobRunnerUsing
--- @+node:gcross.20100831211145.2127:completeJobUsing
+-- @+node:gcross.20100831211145.2127:completeJob
+completeJob ::
+    IncompleteJob label result α →
+    α →
+    Job label result
+completeJob (IncompleteJob job_names incomplete_runner) =
+    Job job_names
+    .
+    completeJobRunner incomplete_runner
+-- @-node:gcross.20100831211145.2127:completeJob
+-- @+node:gcross.20100831211145.2167:completeJobUsing
 completeJobUsing ::
     ([result] → α) →
     [label] →
@@ -408,7 +442,7 @@ completeJobUsing ::
     Job label result
 completeJobUsing computeResult requests (IncompleteJob job_names incomplete_runner) =
     Job job_names (completeJobRunnerUsing computeResult requests incomplete_runner)
--- @-node:gcross.20100831211145.2127:completeJobUsing
+-- @-node:gcross.20100831211145.2167:completeJobUsing
 -- @-node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1405:Implementation
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions

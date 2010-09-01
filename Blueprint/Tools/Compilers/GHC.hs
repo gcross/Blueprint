@@ -3,6 +3,7 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100611224425.1611:<< Language extensions >>
+{-# LANGUAGE Arrows #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -107,6 +108,13 @@ data GHC = GHC
 
 $( derive makeBinary ''GHC )
 -- @-node:gcross.20100830091258.2027:GHC
+-- @+node:gcross.20100831211145.2168:GHCEnvironment
+data GHCEnvironment = GHCEnvironment
+    {   ghcEnvironmentGHC :: GHC
+    ,   ghcEnvironmentPackageDatabase :: PackageDatabase
+    } deriving Typeable
+
+-- @-node:gcross.20100831211145.2168:GHCEnvironment
 -- @+node:gcross.20100630111926.1875:GHCOptions
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
@@ -215,6 +223,35 @@ configureGHC job_distinguisher search_paths selection_criteria_identifier select
     job@(Job job_names job_runner) = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
 -- @nonl
 -- @-node:gcross.20100831154015.2037:configureGHC
+-- @+node:gcross.20100831211145.2170:configureGHCEnvironment
+configureGHCEnvironment ::
+    (Binary α, Eq α) =>
+    String →
+    [FilePath] →
+    α →
+    ([GHC] → GHC) →
+    JobApplicative JobId Dynamic GHCEnvironment
+configureGHCEnvironment distinguisher search_paths selection_criteria_identifier selectGHC =
+    configureGHC distinguisher search_paths selection_criteria_identifier selectGHC
+    ➤
+    proc ghc → do
+        package_database <- configurePackageDatabase distinguisher -< ghc
+        returnA -< GHCEnvironment ghc package_database
+-- @-node:gcross.20100831211145.2170:configureGHCEnvironment
+-- @+node:gcross.20100831211145.2153:configurePackageDatabase
+configurePackageDatabase ::
+    String →
+    JobArrow JobId Dynamic GHC PackageDatabase
+configurePackageDatabase distinguisher =
+    JobArrow
+    {   jobArrowDependentJobs = [job]
+    ,   jobArrowIndependentJobs = []
+    ,   jobArrowResultJobNames = job_names
+    ,   jobArrowResultExtractor = const (fromJust . fromDynamic . head)
+    }
+  where
+    job@(IncompleteJob job_names _) = cofmap pathToGHCPkg (createLoadGHCPackageDatabaseIncompleteJob distinguisher)
+-- @-node:gcross.20100831211145.2153:configurePackageDatabase
 -- @-node:gcross.20100830091258.2028:configuration
 -- @+node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100628115452.1895:computeGHCLinkDependencyArguments
@@ -459,15 +496,14 @@ createFindGHCJob job_distinguisher search_paths selection_criteria_identifier se
                     let ghc = selectGHC ghcs
                     in returnValueAndCache (toDyn ghc) (search_paths,selection_criteria_identifier,ghc)
 -- @-node:gcross.20100830091258.2033:createFindGHCJob
--- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseJob
-createLoadGHCPackageDatabaseJob ::
+-- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
+createLoadGHCPackageDatabaseIncompleteJob ::
     String →
-    FilePath →
-    Job JobId Dynamic
-createLoadGHCPackageDatabaseJob job_distinguisher path_to_ghc_pkg =
-    jobWithCache [identifierInNamespace ghc_package_database_namespace job_distinguisher "package database"]
+    IncompleteJob JobId Dynamic FilePath
+createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
+    incompleteJobWithCache [identifierInNamespace ghc_package_database_namespace job_distinguisher "package database"]
     $
-    \maybe_cache → do
+    \path_to_ghc_pkg maybe_cache → do
         list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg ["--simple-output","list"] "")
         case maybe_cache of
             Just cache@(old_list_of_package_atoms,old_package_database)
@@ -495,7 +531,14 @@ createLoadGHCPackageDatabaseJob job_distinguisher path_to_ghc_pkg =
                                 ]
                             )
                 returnDynamicValueAndCache package_database (list_of_package_atoms,package_database)
--- @-node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseJob
+-- @-node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
+-- @+node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
+createLoadGHCPackageDatabaseJob ::
+    String →
+    FilePath →
+    Job JobId Dynamic
+createLoadGHCPackageDatabaseJob = completeJob . createLoadGHCPackageDatabaseIncompleteJob
+-- @-node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
