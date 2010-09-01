@@ -32,7 +32,7 @@
 <v t="gcross.20100624100717.1731"><vh>@thin Identifier.hs</vh></v>
 <v t="gcross.20100604184944.1289"><vh>@thin Jobs.hs</vh></v>
 <v t="gcross.20100831211145.2022"><vh>@path Jobs</vh>
-<v t="gcross.20100831211145.2026"><vh>@thin Arrows.hs</vh></v>
+<v t="gcross.20100831211145.2026"><vh>@thin Combinators.hs</vh></v>
 </v>
 <v t="gcross.20100611224425.1634"><vh>@thin Language.hs</vh></v>
 <v t="gcross.20100611224425.1587"><vh>@path Language</vh>

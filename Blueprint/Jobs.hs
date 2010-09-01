@@ -209,6 +209,12 @@ data IncompleteJobRunner label result α =
     IncompleteJobRunner (α → JobTaskResult label result ())
  |  forall cache. Binary cache => IncompleteJobRunnerWithCache (α → Maybe cache → JobTaskResult label result cache)
 -- @-node:gcross.20100831154015.2050:IncompleteJobRunner
+-- @+node:gcross.20100831211145.2075:IncompleteJob
+data IncompleteJob label result α = IncompleteJob
+    {   incompleteJobNames :: [label]
+    ,   incompleteJobRunner :: IncompleteJobRunner label result α
+    }
+-- @-node:gcross.20100831211145.2075:IncompleteJob
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask

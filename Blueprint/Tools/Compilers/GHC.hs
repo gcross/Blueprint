@@ -58,7 +58,7 @@ import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Identifier
 import Blueprint.Jobs
-import Blueprint.Jobs.Arrows
+import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.SourceFile
@@ -179,16 +179,16 @@ configureGHC ::
     [FilePath] →
     α →
     ([GHC] → GHC) →
-    IndependentJobArrow JobId Dynamic GHC
+    JobApplicative JobId Dynamic GHC
 configureGHC job_distinguisher search_paths selection_criteria_identifier selectGHC =
-    JobArrow
-    {   jobArrowIndependentJobs = Map.singleton job_names job_runner
-    ,   jobArrowDependentJobs = Map.empty
-    ,   jobArrowResultJobNames = job_names
-    ,   jobArrowResultExtractor = const (fromJust . fromDynamic . head)
+    JobApplicative
+    {   jobApplicativeJobs = [job]
+    ,   jobApplicativeResultJobNames = job_names
+    ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
     }
   where
-    Job job_names job_runner = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
+    job@(Job job_names job_runner) = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
+-- @nonl
 -- @-node:gcross.20100831154015.2037:configureGHC
 -- @-node:gcross.20100830091258.2028:configuration
 -- @+node:gcross.20100628115452.1899:dependency arguments
