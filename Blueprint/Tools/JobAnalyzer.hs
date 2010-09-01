@@ -42,9 +42,6 @@ import Blueprint.Tools
 -- @+node:gcross.20100705185804.2036:JobAnalyzer
 type JobAnalyzer = RWST SerializableRecord SerializableRecord () (JobTask JobId Record)
 -- @-node:gcross.20100705185804.2036:JobAnalyzer
--- @+node:gcross.20100705185804.2051:JobAnalysisRunner
-type JobAnalysisRunner = ToolJobRunner SerializableRecord
--- @-node:gcross.20100705185804.2051:JobAnalysisRunner
 -- @-node:gcross.20100705185804.2035:Types
 -- @+node:gcross.20100705185804.2037:Functions
 -- @+node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
@@ -288,8 +285,8 @@ rerunTaskAndCacheResultOnlyIf field action True = do
 -- @+node:gcross.20100705185804.2048:runJobAnalyzer
 runJobAnalyzer ::
     JobAnalyzer [Record] →
-    JobAnalysisRunner
-runJobAnalyzer analyzer maybe_cache = do
+    ToolJobRunner
+runJobAnalyzer analyzer = JobRunner $ \maybe_cache → do
     (results,(),cache) ← runRWST analyzer (fromMaybe emptyTable maybe_cache) ()
     returnValuesAndCache results cache
 -- @-node:gcross.20100705185804.2048:runJobAnalyzer

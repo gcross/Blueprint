@@ -103,7 +103,7 @@ computeJobIdOfSourceFileDigest file_path =
 -- @+node:gcross.20100709210816.2113:createSourceFileDigestJob
 createSourceFileDigestJob :: SourceFile → Job JobId Record
 createSourceFileDigestJob SourceFile{..} =
-    Job [sourceFileDigestJobId]
+    job [sourceFileDigestJobId]
     $
     const (
         liftIO (digestFile sourceFilePath)

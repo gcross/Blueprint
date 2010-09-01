@@ -6,8 +6,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RelaxedPolyRec #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -21,7 +24,10 @@ module Blueprint.Jobs where
 -- @+node:gcross.20100604184944.1292:<< Import needed modules >>
 import Prelude hiding (catch)
 
+import Control.Applicative
 import Control.Arrow
+import Control.Category (Category)
+import qualified Control.Category as Category
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
@@ -40,6 +46,7 @@ import Data.Binary (Binary,encode,decode)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Either
+import Data.Function
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
@@ -129,9 +136,9 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100709210816.2107:Job
-data Job label result = forall cache. Binary cache => Job
+data Job label result = Job
     {   jobNames :: [label]
-    ,   jobTask :: JobRunner label result cache
+    ,   jobTask :: JobRunner label result
     }
 -- @-node:gcross.20100709210816.2107:Job
 -- @+node:gcross.20100624100717.2145:JobId
@@ -155,7 +162,7 @@ type JobTaskResult label result cache = JobTask label result (JobResults result 
 -- @-node:gcross.20100624100717.1747:JobTaskResult
 -- @+node:gcross.20100624100717.1753:JobStatus
 data JobStatus label result =
-    ∀ cache. Binary cache => Pending (JobRunner label result cache)
+    Pending (JobRunner label result)
   | Running [Int] [(Int,MVar (Either SomeException result))]
   | Succeeded [result]
   | Failed (IntMap SomeException) CombinedException
@@ -169,7 +176,7 @@ data JobQueueEntry label result =
   | ∀ cache. Binary cache => JobTask Int (JobTaskResult label result cache)
 -- @-node:gcross.20100604204549.1368:JobQueueEntry
 -- @+node:gcross.20100624100717.1743:JobRunner
-type JobRunner label result cache = Maybe cache → JobTaskResult label result cache
+data JobRunner label result = forall cache. Binary cache => JobRunner {computeTaskFromCache :: Maybe cache → JobTaskResult label result cache}
 -- @-node:gcross.20100624100717.1743:JobRunner
 -- @+node:gcross.20100607083309.1398:JobServer
 data JobServer label result = JobServer (Chan (JobQueueEntry label result)) [ThreadId]
@@ -198,6 +205,23 @@ $( deriveAccessors ''JobServerState )
 -- @+node:gcross.20100709210816.2224:JobServerMonad
 type JobServerMonad label result = ReaderT (JobServer label result) IO
 -- @-node:gcross.20100709210816.2224:JobServerMonad
+-- @+node:gcross.20100831154015.2040:JobArrow
+data JobArrow jobid result α β =
+    NullJobArrow (α → β)
+ |  JobArrow
+    {   jobArrowIndependentJobs :: Map [jobid] (JobRunner jobid result)
+    ,   jobArrowDependentJobs :: Map [jobid] (IncompleteJobRunner jobid result α)
+    ,   jobArrowResultJobNames :: [jobid]
+    ,   jobArrowResultExtractor :: [result] → β
+    }
+-- @-node:gcross.20100831154015.2040:JobArrow
+-- @+node:gcross.20100831154015.2052:IndependentJobArrow
+type IndependentJobArrow jobid result = JobArrow jobid result ()
+-- @-node:gcross.20100831154015.2052:IndependentJobArrow
+-- @+node:gcross.20100831154015.2050:IncompleteJobRunner
+data IncompleteJobRunner label result α =
+    forall cache. Binary cache => IncompleteJobRunner (α → Maybe cache → JobTaskResult label result cache)
+-- @-node:gcross.20100831154015.2050:IncompleteJobRunner
 -- @-node:gcross.20100604184944.1293:Types
 -- @+node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604184944.1309:Functor JobTask
@@ -220,6 +244,74 @@ instance Monad (JobTask label result) where
 instance MonadIO (JobTask label result) where
     liftIO task = PerformIO task return
 -- @-node:gcross.20100604184944.1306:MonadIO JobTask
+-- @+node:gcross.20100831154015.2042:Functor JobArrow
+instance Ord jobid => Functor (JobArrow jobid result α) where
+    fmap f (NullJobArrow g) = NullJobArrow (f . g)
+    fmap f a@JobArrow{..} = a { jobArrowResultExtractor = f . jobArrowResultExtractor}
+
+    x <$ _ = NullJobArrow (const x)
+-- @-node:gcross.20100831154015.2042:Functor JobArrow
+-- @+node:gcross.20100831154015.2043:Applicative JobArrow
+instance Ord jobid => Applicative (JobArrow jobid result ()) where
+    pure x = NullJobArrow (const x)
+    (NullJobArrow ff) <*> (NullJobArrow g) = NullJobArrow (ff () . g)
+    (NullJobArrow ff) <*> JobArrow{..} =
+        JobArrow
+        {   jobArrowResultExtractor = ff () . jobArrowResultExtractor
+        ,   ..
+        }
+    JobArrow{..} <*> (NullJobArrow f) =
+        JobArrow
+        {   jobArrowResultExtractor = ($ f ()) . jobArrowResultExtractor
+        ,   ..
+        }
+    a1 <*> a2 =
+        JobArrow
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 `Map.union` jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 `Map.union` jobArrowDependentJobs a2
+        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractor =
+                uncurry ($)
+                .
+                (jobArrowResultExtractor a1 *** jobArrowResultExtractor a2)
+                .
+                splitAt (length . jobArrowResultJobNames $ a1)
+        }
+    _ *> a = a
+    a <* _ = a
+-- @-node:gcross.20100831154015.2043:Applicative JobArrow
+-- @+node:gcross.20100831154015.2045:Category JobArrow
+instance Ord jobid => Category (JobArrow jobid result) where
+    id = NullJobArrow id
+    (NullJobArrow f) . (NullJobArrow g) = NullJobArrow (f . g)
+    a@(JobArrow{..}) . (NullJobArrow f) =
+        JobArrow
+        {   jobArrowDependentJobs =
+                Map.map (
+                    \(IncompleteJobRunner g) → IncompleteJobRunner (g . f)
+                ) jobArrowDependentJobs
+        ,   ..
+        }
+    (NullJobArrow f) . a@(JobArrow{..}) =
+        JobArrow
+        {   jobArrowResultExtractor = f . jobArrowResultExtractor
+        ,   ..
+        }
+    a2 . a1 =
+        JobArrow
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 `Map.union` jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 `Map.union` new_a2_dependent_jobs
+        ,   jobArrowResultJobNames = jobArrowResultJobNames a2
+        ,   jobArrowResultExtractor = jobArrowResultExtractor a2
+        }
+      where
+        new_a2_dependent_jobs =
+            Map.map (\(IncompleteJobRunner runJob) → IncompleteJobRunner $ \x maybe_cache → do
+                results ← request (jobArrowResultJobNames a1)
+                let y = jobArrowResultExtractor a1 results
+                runJob y maybe_cache
+            ) (jobArrowDependentJobs a2)
+-- @-node:gcross.20100831154015.2045:Category JobArrow
 -- @-node:gcross.20100604184944.1297:Instances
 -- @+node:gcross.20100604204549.1359:Functions
 -- @+node:gcross.20100607083309.1441:Debugging
@@ -342,6 +434,10 @@ request :: [label] → JobTask label result [result]
 request [] = return []
 request requests = Request requests return
 -- @-node:gcross.20100607083309.1417:request
+-- @+node:gcross.20100831154015.2053:job
+job :: Binary cache => [jobid] → (Maybe cache → JobTaskResult jobid result cache) → Job jobid result
+job job_names = Job job_names . JobRunner
+-- @-node:gcross.20100831154015.2053:job
 -- @-node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1405:Implementation
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions
@@ -452,12 +548,11 @@ notifyPausedJobsThatRequestedJobIsFinished job_id =
 startJobTask ::
     (Ord label
     ,Show label
-    ,Binary cache
     ) =>
     Int →
-    JobRunner label result cache →
+    JobRunner label result →
     StateT (JobServerState label result) IO ()
-startJobTask job_id computeTaskFromCache = do
+startJobTask job_id (JobRunner{..}) = do
     server_job_cache ← get serverJobCache
     server_job_names ← get serverJobKeys
     server_job_queue ← get serverJobQueue
@@ -483,7 +578,6 @@ startJobTask job_id computeTaskFromCache = do
         IntMap.insert job_id
         $
         Running [] []
--- @nonl
 -- @-node:gcross.20100604204549.7668:startJobTask
 -- @+node:gcross.20100607083309.1418:addJobResultListener
 addJobResultListener ::

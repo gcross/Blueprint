@@ -21,6 +21,7 @@ import Data.Function
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Record (uuid)
 import Data.Typeable
 import Data.UUID
@@ -56,6 +57,15 @@ instance Ord (Identifier a) where
 instance Show (Identifier a) where
     show = identifierDescription
 -- @-node:gcross.20100624100717.2023:Show (Identifier a)
+-- @+node:gcross.20100831154015.2048:Monoid (Identifier a)
+instance Monoid (Identifier a) where
+    mempty = Identifier nil ""
+    i1 `mappend` i2 =
+        identifierInNamespace
+            (identifierUUID i1)
+            (show . identifierUUID $ i2)
+            (identifierDescription i1 ++ ", " ++ identifierDescription i2)
+-- @-node:gcross.20100831154015.2048:Monoid (Identifier a)
 -- @-node:gcross.20100624100717.1765:Instances
 -- @+node:gcross.20100624100717.1738:Functions
 -- @+node:gcross.20100624100717.1739:identifier

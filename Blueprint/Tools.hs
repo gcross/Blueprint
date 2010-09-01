@@ -95,10 +95,9 @@ type ToolJob = Job JobId Record
 -- @+node:gcross.20100709210816.2111:ToolJobTask
 type ToolJobTask result = JobTask JobId Record result
 -- @-node:gcross.20100709210816.2111:ToolJobTask
--- @+node:gcross.20100705185804.2005:ToolJobRunner
-type ToolJobRunner cache = JobRunner JobId Record cache
-
--- @-node:gcross.20100705185804.2005:ToolJobRunner
+-- @+node:gcross.20100831154015.2055:ToolJobRunner
+type ToolJobRunner = JobRunner JobId Record
+-- @-node:gcross.20100831154015.2055:ToolJobRunner
 -- @-node:gcross.20100624100717.2146:Types
 -- @+node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100705185804.1978:fetchDigestsFor

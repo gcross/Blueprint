@@ -51,6 +51,7 @@ import System.Process
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
+import Blueprint.Configuration
 import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
@@ -103,11 +104,11 @@ newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @-node:gcross.20100630111926.1875:GHCOptions
 -- @-node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100709210816.2105:Instances
--- @+node:gcross.20100709210816.2106:BuiltModule
+-- @+node:gcross.20100709210816.2106:Show BuiltModule
 instance Show BuiltModule where
     show BuiltModule{..} =
         builtModuleName ++ ": " ++ builtModuleSourceFilePath ++ " -> " ++ builtModuleObjectFilePath ++ ", " ++ builtModuleInterfaceFilePath
--- @-node:gcross.20100709210816.2106:BuiltModule
+-- @-node:gcross.20100709210816.2106:Show BuiltModule
 -- @-node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100628115452.1859:compilation/linking arguments
@@ -169,6 +170,24 @@ lookForGHCInPaths paths =
             (lookForVersionedProgramInPaths ghc_pkg_program paths)
     )
 -- @-node:gcross.20100830091258.2029:lookForGHCInPaths
+-- @+node:gcross.20100831154015.2037:configureGHC
+configureGHC ::
+    (Binary α, Eq α) =>
+    String →
+    [FilePath] →
+    α →
+    ([GHC] → GHC) →
+    IndependentJobArrow JobId Record GHC
+configureGHC job_distinguisher search_paths selection_criteria_identifier selectGHC =
+    JobArrow
+    {   jobArrowIndependentJobs = Map.singleton job_names job_runner
+    ,   jobArrowDependentJobs = Map.empty
+    ,   jobArrowResultJobNames = job_names
+    ,   jobArrowResultExtractor = getGHC . head
+    }
+  where
+    Job job_names job_runner = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
+-- @-node:gcross.20100831154015.2037:configureGHC
 -- @-node:gcross.20100830091258.2028:configuration
 -- @+node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100628115452.1895:computeGHCLinkDependencyArguments
@@ -380,16 +399,16 @@ fetchKnownModulesFromPackages path_to_ghc_pkg =
 -- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100630111926.1873:jobs
--- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
-createFindGHCConfigurationJob ::
+-- @+node:gcross.20100830091258.2033:createFindGHCJob
+createFindGHCJob ::
     (Binary α, Eq α) =>
     String →
     [FilePath] →
     α →
     ([GHC] → GHC) →
     Job JobId Record
-createFindGHCConfigurationJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
-    Job [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
+createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
+    job [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
     $
     \maybe_old_search_paths →
         case maybe_old_search_paths of
@@ -402,7 +421,7 @@ createFindGHCConfigurationJob job_distinguisher search_paths selection_criteria_
                  \ghcs →
                     let ghc = selectGHC ghcs
                     in returnValueAndCache (withField _ghc ghc) (search_paths,selection_criteria_identifier,ghc)
--- @-node:gcross.20100830091258.2033:createGHCConfigurationJob
+-- @-node:gcross.20100830091258.2033:createFindGHCJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
