@@ -42,6 +42,7 @@ import Data.Accessor.Template
 import Data.Binary (Binary,encode,decode)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Dynamic
 import Data.Either
 import Data.Function
 import Data.IntMap (IntMap)
@@ -351,9 +352,21 @@ requestJobCacheFromServer (JobServer job_queue _) = do
 requestJobCache :: JobServerMonad label result (Map [label] ByteString)
 requestJobCache = ReaderT requestJobCacheFromServer
 -- @-node:gcross.20100607205618.1429:requestJobCache
--- @+node:gcross.20100607083309.1414:returnValuesAndCache
+-- @+node:gcross.20100607083309.1414:returnDynamicValuesAndCache
+returnDynamicValuesAndCache values cache = values `par` cache `par` return (JobResults (map toDyn values) cache)
+-- @-node:gcross.20100607083309.1414:returnDynamicValuesAndCache
+-- @+node:gcross.20100831211145.2145:returnDynamicValueAndCache
+returnDynamicValueAndCache value cache = value `par` cache `par` return (JobResults [toDyn value] cache)
+-- @-node:gcross.20100831211145.2145:returnDynamicValueAndCache
+-- @+node:gcross.20100831211145.2147:returnDynamicValue
+returnDynamicValue value = returnDynamicValueAndCache value ()
+-- @-node:gcross.20100831211145.2147:returnDynamicValue
+-- @+node:gcross.20100831211145.2149:returnValues
+returnDynamicValues values = returnDynamicValuesAndCache values ()
+-- @-node:gcross.20100831211145.2149:returnValues
+-- @+node:gcross.20100831211145.2143:returnValuesAndCache
 returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
--- @-node:gcross.20100607083309.1414:returnValuesAndCache
+-- @-node:gcross.20100831211145.2143:returnValuesAndCache
 -- @+node:gcross.20100607205618.1443:returnValueAndCache
 returnValueAndCache value cache = value `par` cache `par` return (JobResults [value] cache)
 -- @-node:gcross.20100607205618.1443:returnValueAndCache

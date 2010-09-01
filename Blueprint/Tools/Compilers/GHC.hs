@@ -9,6 +9,7 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TransformListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100611224425.1611:<< Language extensions >>
@@ -20,6 +21,7 @@ module Blueprint.Tools.Compilers.GHC where
 -- @+node:gcross.20100611224425.1612:<< Import needed modules >>
 import Control.Applicative
 import Control.Arrow
+import qualified Control.Concurrent.Thread as Thread
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
@@ -42,6 +44,11 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
 import Data.Version
+
+import Distribution.InstalledPackageInfo
+import Distribution.License
+import Distribution.ModuleName
+import Distribution.Package (PackageId(..),PackageName(..),PackageIdentifier(..),InstalledPackageId(..))
 
 import System.Directory
 import System.Exit
@@ -104,6 +111,12 @@ $( derive makeBinary ''GHC )
 newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @nonl
 -- @-node:gcross.20100630111926.1875:GHCOptions
+-- @+node:gcross.20100831211145.2134:PackageDatabase
+data PackageDatabase = PackageDatabase
+    {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackageInfo
+    ,   packageDatabaseIndexedByPackageNameAndVersion :: Map PackageName (Map Version [InstalledPackageInfo])
+    } deriving Typeable
+-- @-node:gcross.20100831211145.2134:PackageDatabase
 -- @-node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100709210816.2106:Show BuiltModule
@@ -111,6 +124,18 @@ instance Show BuiltModule where
     show BuiltModule{..} =
         builtModuleName ++ ": " ++ builtModuleSourceFilePath ++ " -> " ++ builtModuleObjectFilePath ++ ", " ++ builtModuleInterfaceFilePath
 -- @-node:gcross.20100709210816.2106:Show BuiltModule
+-- @+node:gcross.20100831211145.2151:Binary PackageDatabase
+$(derive makeBinary ''PackageDatabase)
+$(derive makeBinary ''InstalledPackageInfo_)
+$(derive makeBinary ''PackageName)
+$(derive makeBinary ''InstalledPackageId)
+$(derive makeBinary ''PackageIdentifier)
+$(derive makeBinary ''License)
+
+instance Binary ModuleName where
+    put module_name = put (show module_name)
+    get = fmap read get
+-- @-node:gcross.20100831211145.2151:Binary PackageDatabase
 -- @-node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100628115452.1859:compilation/linking arguments
@@ -400,6 +425,16 @@ fetchKnownModulesFromPackages path_to_ghc_pkg =
     mapM (MaybeT . fetchKnownModulesFromPackage path_to_ghc_pkg)
 -- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
 -- @-node:gcross.20100630111926.1869:package queries
+-- @+node:gcross.20100831211145.2135:package database
+-- @+node:gcross.20100831211145.2139:loadInstalledPackageInformation
+loadInstalledPackageInformation :: FilePath → String → IO InstalledPackageInfo
+loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
+    package_description ← readProcess path_to_ghc_pkg ["describe",package_atom] ""
+    case parseInstalledPackageInfo package_description of
+        ParseOk _ installed_package_info → return installed_package_info
+        ParseFailed parse_error → error $ "Error parsing description of package " ++ package_atom ++ ": " ++ show parse_error
+-- @-node:gcross.20100831211145.2139:loadInstalledPackageInformation
+-- @-node:gcross.20100831211145.2135:package database
 -- @+node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100830091258.2033:createFindGHCJob
 createFindGHCJob ::
@@ -424,6 +459,43 @@ createFindGHCJob job_distinguisher search_paths selection_criteria_identifier se
                     let ghc = selectGHC ghcs
                     in returnValueAndCache (toDyn ghc) (search_paths,selection_criteria_identifier,ghc)
 -- @-node:gcross.20100830091258.2033:createFindGHCJob
+-- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseJob
+createLoadGHCPackageDatabaseJob ::
+    String →
+    FilePath →
+    Job JobId Dynamic
+createLoadGHCPackageDatabaseJob job_distinguisher path_to_ghc_pkg =
+    jobWithCache [identifierInNamespace ghc_package_database_namespace job_distinguisher "package database"]
+    $
+    \maybe_cache → do
+        list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg ["--simple-output","list"] "")
+        case maybe_cache of
+            Just cache@(old_list_of_package_atoms,old_package_database)
+                | old_list_of_package_atoms == list_of_package_atoms → returnDynamicValueAndCache old_package_database cache
+            _ → do
+                installed_packages ← liftIO $
+                    mapM (Thread.forkIO . loadInstalledPackageInformation path_to_ghc_pkg) list_of_package_atoms
+                    >>=
+                    mapM ((>>= Thread.unsafeResult) . snd)
+                let package_database = 
+                        PackageDatabase
+                            (Map.fromList [(installedPackageId,package_info) | package_info@InstalledPackageInfo{..} ← installed_packages])
+                            (Map.fromList
+                                [ ((pkgName . sourcePackageId . head) installed_package_info
+                                  ,Map.fromList
+                                    [((pkgVersion . sourcePackageId . head) installed_package_info_
+                                     ,installed_package_info_
+                                     )
+                                    | installed_package_info_ ← installed_package_info
+                                    , then group by (pkgVersion . sourcePackageId $ installed_package_info_)
+                                    ]
+                                  )
+                                | installed_package_info ← installed_packages
+                                , then group by (pkgName . sourcePackageId $ installed_package_info)
+                                ]
+                            )
+                returnDynamicValueAndCache package_database (list_of_package_atoms,package_database)
+-- @-node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
@@ -596,6 +668,7 @@ computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
 ghc_configuration_namespace = uuid "dc71e9fc-8917-4263-869b-bde953f56300"
+ghc_package_database_namespace = uuid "bb0914b4-46fd-4fde-8277-08c5167c1f22"
 -- @-node:gcross.20100708215239.2092:Namespaces
 -- @+node:gcross.20100611224425.1613:Values
 -- @+node:gcross.20100705150931.1962:ghc_linker_actor_name
