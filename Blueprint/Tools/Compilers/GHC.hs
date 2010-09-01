@@ -28,6 +28,7 @@ import Control.Monad.Trans.Maybe
 import Data.Binary
 import qualified Data.ByteString.Lazy as L
 import Data.DeriveTH
+import Data.Dynamic
 import Data.Either
 import Data.Either.Unwrap
 import Data.Function
@@ -57,6 +58,7 @@ import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Identifier
 import Blueprint.Jobs
+import Blueprint.Jobs.Arrows
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.SourceFile
@@ -177,13 +179,13 @@ configureGHC ::
     [FilePath] →
     α →
     ([GHC] → GHC) →
-    IndependentJobArrow JobId Record GHC
+    IndependentJobArrow JobId Dynamic GHC
 configureGHC job_distinguisher search_paths selection_criteria_identifier selectGHC =
     JobArrow
     {   jobArrowIndependentJobs = Map.singleton job_names job_runner
     ,   jobArrowDependentJobs = Map.empty
     ,   jobArrowResultJobNames = job_names
-    ,   jobArrowResultExtractor = getGHC . head
+    ,   jobArrowResultExtractor = const (fromJust . fromDynamic . head)
     }
   where
     Job job_names job_runner = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
@@ -406,21 +408,21 @@ createFindGHCJob ::
     [FilePath] →
     α →
     ([GHC] → GHC) →
-    Job JobId Record
+    Job JobId Dynamic
 createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
-    job [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
+    jobWithCache [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
     $
     \maybe_old_search_paths →
         case maybe_old_search_paths of
             Just (old_cache@(old_search_paths,old_selection_criteria_identifier,ghc))
               | old_search_paths == search_paths
               , old_selection_criteria_identifier == selection_criteria_identifier 
-              → returnValueAndCache (withField _ghc ghc) old_cache
+              → returnValueAndCache (toDyn ghc) old_cache
             _ → liftIO (lookForGHCInPaths search_paths)
                  >>=
                  \ghcs →
                     let ghc = selectGHC ghcs
-                    in returnValueAndCache (withField _ghc ghc) (search_paths,selection_criteria_identifier,ghc)
+                    in returnValueAndCache (toDyn ghc) (search_paths,selection_criteria_identifier,ghc)
 -- @-node:gcross.20100830091258.2033:createFindGHCJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
@@ -591,15 +593,6 @@ computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
 -- @-node:gcross.20100709210816.2235:computeGHCPackageNameArguments
 -- @-node:gcross.20100709210816.2233:options
 -- @-node:gcross.20100628115452.1853:Functions
--- @+node:gcross.20100830091258.2039:Fields
--- @+node:gcross.20100830091258.2040:ghc
-_ghc :: Field GHC
-_ghc = field "GHC" "ed3130c9-a484-406f-bee0-8016de867d9f"
-
-getGHC :: FieldValue entity GHC ⇒ Table entity → GHC
-getGHC = getRequiredField _ghc
--- @-node:gcross.20100830091258.2040:ghc
--- @-node:gcross.20100830091258.2039:Fields
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
 ghc_configuration_namespace = uuid "dc71e9fc-8917-4263-869b-bde953f56300"

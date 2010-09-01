@@ -286,7 +286,7 @@ rerunTaskAndCacheResultOnlyIf field action True = do
 runJobAnalyzer ::
     JobAnalyzer [Record] →
     ToolJobRunner
-runJobAnalyzer analyzer = JobRunner $ \maybe_cache → do
+runJobAnalyzer analyzer = JobRunnerWithCache $ \maybe_cache → do
     (results,(),cache) ← runRWST analyzer (fromMaybe emptyTable maybe_cache) ()
     returnValuesAndCache results cache
 -- @-node:gcross.20100705185804.2048:runJobAnalyzer
