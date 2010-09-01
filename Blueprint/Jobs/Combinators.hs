@@ -18,11 +18,15 @@ import Control.Arrow
 import Control.Category (Category)
 import qualified Control.Category as Category
 
+import Data.Dynamic
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
+import Data.Monoid
 import Data.Typeable
 
 import Blueprint.Jobs
+import Blueprint.Miscellaneous
 -- @-node:gcross.20100831211145.2028:<< Import needed modules >>
 -- @nl
 
@@ -32,8 +36,8 @@ import Blueprint.Jobs
 data JobArrow jobid result α β =
     NullJobArrow (α → β)
  |  JobArrow
-    {   jobArrowIndependentJobs :: Map [jobid] (JobRunner jobid result)
-    ,   jobArrowDependentJobs :: Map [jobid] (IncompleteJobRunner jobid result α)
+    {   jobArrowIndependentJobs :: [Job jobid result]
+    ,   jobArrowDependentJobs :: [IncompleteJob jobid result α]
     ,   jobArrowResultJobNames :: [jobid]
     ,   jobArrowResultExtractor :: α → [result] → β
     }
@@ -110,8 +114,8 @@ instance Ord jobid => Applicative (JobArrow jobid result α) where
         }
     a1 <*> a2 =
         JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 `Map.union` jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 `Map.union` jobArrowDependentJobs a2
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
         ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
         ,   jobArrowResultExtractor = \x →
                 uncurry ($)
@@ -129,13 +133,7 @@ instance Ord jobid => Category (JobArrow jobid result) where
     (NullJobArrow f) . (NullJobArrow g) = NullJobArrow (f . g)
     JobArrow{..} . (NullJobArrow f) =
         JobArrow
-        {   jobArrowDependentJobs =
-                Map.map (
-                    \incomplete_runner →
-                        case incomplete_runner of 
-                            IncompleteJobRunner g → IncompleteJobRunner (g . f)
-                            IncompleteJobRunnerWithCache g → IncompleteJobRunnerWithCache (g . f)
-                ) jobArrowDependentJobs
+        {   jobArrowDependentJobs = map (cofmap f) jobArrowDependentJobs
         ,   jobArrowResultExtractor = jobArrowResultExtractor . f
         ,   ..
         }
@@ -146,14 +144,15 @@ instance Ord jobid => Category (JobArrow jobid result) where
         }
     a2 . a1 =
         JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 `Map.union` jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 `Map.union` new_a2_dependent_jobs
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ new_a2_dependent_jobs
         ,   jobArrowResultJobNames = jobArrowResultJobNames a2
         ,   jobArrowResultExtractor = new_a2_job_extractor
         }
       where
         new_a2_dependent_jobs =
-            Map.map (\incomplete_job_runner →
+            map (\(IncompleteJob job_names incomplete_job_runner) →
+                IncompleteJob job_names $
                 case incomplete_job_runner of
                     IncompleteJobRunner runJob → IncompleteJobRunner $ \x → do
                         results ← request (jobArrowResultJobNames a1)
@@ -176,30 +175,55 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
     arr f = NullJobArrow f
     first JobArrow{..} =
         JobArrow
-        {   jobArrowDependentJobs =
-                Map.map (
-                    \incomplete_runner →
-                        case incomplete_runner of 
-                            IncompleteJobRunner g → IncompleteJobRunner (g . fst)
-                            IncompleteJobRunnerWithCache g → IncompleteJobRunnerWithCache (g . fst)
-                ) jobArrowDependentJobs
+        {   jobArrowDependentJobs = map (cofmap fst) jobArrowDependentJobs
         ,   jobArrowResultExtractor = \(x,y) results → (jobArrowResultExtractor x results,y)
         ,   ..
         }
     second JobArrow{..} =
         JobArrow
-        {   jobArrowDependentJobs =
-                Map.map (
-                    \incomplete_runner →
-                        case incomplete_runner of 
-                            IncompleteJobRunner g → IncompleteJobRunner (g . snd)
-                            IncompleteJobRunnerWithCache g → IncompleteJobRunnerWithCache (g . snd)
-                ) jobArrowDependentJobs
+        {   jobArrowDependentJobs = map (cofmap snd) jobArrowDependentJobs
         ,   jobArrowResultExtractor = \(x,y) results → (x,jobArrowResultExtractor y results)
         ,   ..
         }
 -- @-node:gcross.20100831211145.2122:Arrow JobArrow
 -- @-node:gcross.20100831211145.2043:Instances
+-- @+node:gcross.20100831211145.2123:Functions
+-- @+node:gcross.20100831211145.2124:(➤)
+(➤) ::
+    (Typeable α, Typeable β, Monoid jobid) =>
+    JobApplicative jobid Dynamic α →
+    JobArrow jobid Dynamic α β →
+    JobApplicative jobid Dynamic β
+JobApplicative{..} ➤ JobArrow{..} =
+    JobApplicative
+    {   jobApplicativeJobs =
+            applicative_job
+            :
+            arrow_job
+            :
+            jobApplicativeJobs
+            ++
+            jobArrowIndependentJobs
+            ++
+            map (completeJobUsing (fromJust . fromDynamic . head) applicative_job_names)
+                jobArrowDependentJobs
+    ,   jobApplicativeResultJobNames = arrow_job_names
+    ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
+    }
+  where
+    applicative_job@(Job applicative_job_names _) =
+        job [mconcat jobApplicativeResultJobNames] $
+            request jobApplicativeResultJobNames
+            >>=
+            returnValue . toDyn . jobApplicativeResultExtractor
+    arrow_job@(Job arrow_job_names _) =
+        job [mconcat jobArrowResultJobNames] $ do
+            [x_dyn] ← request applicative_job_names
+            results ← request jobArrowResultJobNames
+            let x = (fromJust . fromDynamic) x_dyn
+            returnValue . toDyn $ jobArrowResultExtractor x results
+-- @-node:gcross.20100831211145.2124:(➤)
+-- @-node:gcross.20100831211145.2123:Functions
 -- @-others
 -- @-node:gcross.20100831211145.2026:@thin Combinators.hs
 -- @-leo

@@ -62,6 +62,12 @@ instance Show ProgramFailed where
 instance Exception ProgramFailed
 -- @-node:gcross.20100614121927.2362:ProgramFailed
 -- @-node:gcross.20100614121927.2361:Exceptions
+-- @+node:gcross.20100831211145.2129:Classes
+-- @+node:gcross.20100831211145.2130:Cofunctor
+class Cofunctor f where
+    cofmap :: (b → a) → f a → f b
+-- @-node:gcross.20100831211145.2130:Cofunctor
+-- @-node:gcross.20100831211145.2129:Classes
 -- @+node:gcross.20100624100717.2142:Instances
 -- @+node:gcross.20100830091258.2046:Binary Version
 $(derive makeBinary ''Version)
