@@ -185,6 +185,55 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
         ,   jobArrowResultExtractor = \(x,y) results → (x,jobArrowResultExtractor y results)
         ,   ..
         }
+
+    (NullJobArrow f) &&& (NullJobArrow g) = NullJobArrow (f &&& g)
+    (NullJobArrow f) &&& JobArrow{..} =
+        JobArrow
+        {   jobArrowResultExtractor = \x results → (f x,jobArrowResultExtractor x results)
+        ,   ..
+        }
+    JobArrow{..} &&& (NullJobArrow g) =
+        JobArrow
+        {   jobArrowResultExtractor = \x results → (jobArrowResultExtractor x results, g x)
+        ,   ..
+        }
+    a1 &&& a2 =
+        JobArrow
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
+        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractor = \x →
+                (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 x)
+                .
+                splitAt (length . jobArrowResultJobNames $ a1)
+        }
+
+    (NullJobArrow f) *** (NullJobArrow g) = NullJobArrow (f *** g)
+    (NullJobArrow f) *** JobArrow{..} =
+        JobArrow
+        {   jobArrowDependentJobs = map (cofmap snd) jobArrowDependentJobs
+        ,   jobArrowResultExtractor = \(x,y) results → (f x,jobArrowResultExtractor y results)
+        ,   ..
+        }
+    JobArrow{..} *** (NullJobArrow g) =
+        JobArrow
+        {   jobArrowDependentJobs = map (cofmap fst) jobArrowDependentJobs
+        ,   jobArrowResultExtractor = \(x,y) results → (jobArrowResultExtractor x results, g y)
+        ,   ..
+        }
+    a1 *** a2 =
+        JobArrow
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
+        ,   jobArrowDependentJobs =
+                map (cofmap fst) (jobArrowDependentJobs a1)
+                ++
+                map (cofmap snd) (jobArrowDependentJobs a2)
+        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractor = \(x,y) →
+                (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 y)
+                .
+                splitAt (length . jobArrowResultJobNames $ a1)
+        }
 -- @-node:gcross.20100831211145.2122:Arrow JobArrow
 -- @-node:gcross.20100831211145.2043:Instances
 -- @+node:gcross.20100831211145.2123:Functions
