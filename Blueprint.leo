@@ -27,6 +27,7 @@
 <v t="gcross.20100624100717.2080"><vh>@path Fields</vh>
 <v t="gcross.20100624100717.2122"><vh>@thin DeferredDependencies.hs</vh></v>
 <v t="gcross.20100624100717.2028"><vh>@thin Digest.hs</vh></v>
+<v t="gcross.20100902094127.2086"><vh>@thin Dynamic.hs</vh></v>
 <v t="gcross.20100624100717.2089"><vh>@thin FilePath.hs</vh></v>
 </v>
 <v t="gcross.20100604204549.7680"><vh>@thin IOTask.hs</vh></v>
@@ -61,6 +62,7 @@
 </v>
 <v t="gcross.20100705185804.2032"><vh>@thin JobAnalyzer.hs</vh></v>
 </v>
+<v t="gcross.20100902094127.2076"><vh>@thin Wrapper.hs</vh></v>
 </v>
 <v t="gcross.20100602152546.1280"><vh>@thin test.hs</vh></v>
 <v t="gcross.20100611224425.1692"><vh>thin template.hs</vh>

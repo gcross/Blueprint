@@ -19,7 +19,6 @@ import Control.Category (Category)
 import qualified Control.Category as Category
 
 import Data.Binary (Binary)
-import Data.Dynamic
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -28,6 +27,7 @@ import Data.Typeable
 
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
+import Blueprint.Wrapper
 -- @-node:gcross.20100831211145.2028:<< Import needed modules >>
 -- @nl
 
@@ -240,10 +240,10 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
 -- @+node:gcross.20100831211145.2123:Functions
 -- @+node:gcross.20100831211145.2124:(➤)
 (➤) ::
-    (Typeable α, Typeable β, Monoid jobid) =>
-    JobApplicative jobid Dynamic α →
-    JobArrow jobid Dynamic α β →
-    JobApplicative jobid Dynamic β
+    (Wrapper result α, Wrapper result β, Monoid jobid) =>
+    JobApplicative jobid result α →
+    JobArrow jobid result α β →
+    JobApplicative jobid result β
 JobApplicative{..} ➤ JobArrow{..} =
     JobApplicative
     {   jobApplicativeJobs =
@@ -255,56 +255,56 @@ JobApplicative{..} ➤ JobArrow{..} =
             ++
             jobArrowIndependentJobs
             ++
-            map (completeJobUsing (fromJust . fromDynamic . head) applicative_job_names)
+            map (completeJobUsing (unwrap . head) applicative_job_names)
                 jobArrowDependentJobs
     ,   jobApplicativeResultJobNames = arrow_job_names
-    ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
+    ,   jobApplicativeResultExtractor = unwrap . head
     }
   where
     applicative_job@(Job applicative_job_names _) =
         job [mconcat jobApplicativeResultJobNames] $
             request jobApplicativeResultJobNames
             >>=
-            returnValue . toDyn . jobApplicativeResultExtractor
+            returnValue . wrap . jobApplicativeResultExtractor
     arrow_job@(Job arrow_job_names _) =
         job [mconcat jobArrowResultJobNames] $ do
             [x_dyn] ← request applicative_job_names
             results ← request jobArrowResultJobNames
-            let x = (fromJust . fromDynamic) x_dyn
-            returnValue . toDyn $ jobArrowResultExtractor x results
+            let x = unwrap x_dyn
+            returnValue . wrap $ jobArrowResultExtractor x results
 -- @-node:gcross.20100831211145.2124:(➤)
--- @+node:gcross.20100901145855.2068:convertJobApplicativeToJob
+-- @+node:gcross.20100901145855.2068:extractJobsFromJobApplicative
 extractJobsFromJobApplicative ::
-    (Monoid jobid, Typeable α) =>
-    JobApplicative jobid Dynamic α →
-    (jobid,[Job jobid Dynamic])
+    (Monoid jobid, Wrapper result α) =>
+    JobApplicative jobid result α →
+    (jobid,[Job jobid result])
 extractJobsFromJobApplicative JobApplicative{..} =
     (job_name
     ,job [job_name] (
         request jobApplicativeResultJobNames
         >>=
-        returnDynamicValue . jobApplicativeResultExtractor
+        returnValue . wrap . jobApplicativeResultExtractor
      ):jobApplicativeJobs
     )
   where
     job_name = mconcat jobApplicativeResultJobNames
--- @-node:gcross.20100901145855.2068:convertJobApplicativeToJob
+-- @-node:gcross.20100901145855.2068:extractJobsFromJobApplicative
 -- @+node:gcross.20100901145855.2067:runJobApplicative
 runJobApplicative ::
     (Ord label
     ,Show label
     ,Typeable label
     ,Monoid label
-    ,Typeable α
+    ,Wrapper result α
     ) =>
     Int →
     Cache label →
-    JobApplicative label Dynamic α →
+    JobApplicative label result α →
     IO α
 runJobApplicative number_of_io_slaves cache job_applicative =
     withJobServer number_of_io_slaves cache $ do
         mapM_ submitJob jobs
-        fmap (fromJust . fromDynamic) (requestJobResult result_job_name)
+        fmap unwrap (requestJobResult result_job_name)
   where
     (result_job_name,jobs) = extractJobsFromJobApplicative job_applicative
 -- @-node:gcross.20100901145855.2067:runJobApplicative
@@ -315,16 +315,16 @@ runJobApplicativeUsingCacheFile ::
     ,Typeable label
     ,Binary label
     ,Monoid label
-    ,Typeable α
+    ,Wrapper result α
     ) =>
     Int →
     FilePath →
-    JobApplicative label Dynamic α →
+    JobApplicative label result α →
     IO α
 runJobApplicativeUsingCacheFile number_of_io_slaves path_to_cache job_applicative =
     withJobServerUsingCacheFile number_of_io_slaves path_to_cache $ do
         mapM_ submitJob jobs
-        fmap (fromJust . fromDynamic) (requestJobResult result_job_name)
+        fmap unwrap (requestJobResult result_job_name)
   where
     (result_job_name,jobs) = extractJobsFromJobApplicative job_applicative
 -- @-node:gcross.20100901145855.2071:runJobApplicativeUsingCacheFile
