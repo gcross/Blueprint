@@ -57,7 +57,6 @@
 <v t="gcross.20100611224425.1603"><vh>@path Tools</vh>
 <v t="gcross.20100611224425.1700"><vh>@thin Compilers.hs</vh></v>
 <v t="gcross.20100611224425.1604"><vh>@path Compilers</vh>
-<v t="gcross.20100611224425.1605"><vh>@thin GCC.hs</vh></v>
 <v t="gcross.20100611224425.1610"><vh>@thin GHC.hs</vh></v>
 </v>
 <v t="gcross.20100705185804.2032"><vh>@thin JobAnalyzer.hs</vh></v>
