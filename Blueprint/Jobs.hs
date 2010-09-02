@@ -39,7 +39,7 @@ import Control.Parallel.Strategies
 
 import Data.Accessor.Monad.Trans.State
 import Data.Accessor.Template
-import Data.Binary (Binary,encode,decode)
+import Data.Binary (Binary,encode,decode,encodeFile,decodeFile)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Dynamic
@@ -56,6 +56,7 @@ import Data.Maybe
 import Data.Typeable
 
 import Debug.Trace
+import System.Directory
 import System.IO
 
 import Blueprint.Identifier
@@ -131,6 +132,9 @@ instance Exception ReturnedWrongNumberOfResults
 -- @-node:gcross.20100607205618.1444:ReturnedWrongNumberOfResults
 -- @-node:gcross.20100604204549.1369:Exceptions
 -- @+node:gcross.20100604184944.1293:Types
+-- @+node:gcross.20100901145855.2069:Cache
+type Cache label = Map [label] ByteString
+-- @-node:gcross.20100901145855.2069:Cache
 -- @+node:gcross.20100709210816.2107:Job
 data Job label result = Job
     {   jobNames :: [label]
@@ -273,7 +277,7 @@ startJobServer ::
     ,Typeable label
     ) =>
     Int →
-    Map [label] ByteString →
+    Cache label →
     IO (JobServer label result)
 startJobServer number_of_io_slaves starting_cache = do
     job_queue ← newChan
@@ -304,7 +308,7 @@ withJobServer ::
     ,Typeable label
     ) =>
     Int →
-    Map [label] ByteString →
+    Cache label →
     JobServerMonad label result a →
     IO a
 withJobServer number_of_io_slaves starting_cache thunk =
@@ -313,6 +317,30 @@ withJobServer number_of_io_slaves starting_cache thunk =
         killJobServer
         (runReaderT thunk)
 -- @-node:gcross.20100607083309.1470:withJobServer
+-- @+node:gcross.20100901145855.2066:withJobServerUsingCacheFile
+withJobServerUsingCacheFile ::
+    (Ord label
+    ,Show label
+    ,Typeable label
+    ,Binary label
+    ) =>
+    Int →
+    FilePath →
+    JobServerMonad label result a →
+    IO a
+withJobServerUsingCacheFile number_of_io_slaves path_to_cache thunk = do
+    cache ←
+        doesFileExist path_to_cache
+        >>=
+        \cache_exists →
+            if cache_exists
+                then decodeFile path_to_cache
+                else return Map.empty
+    withJobServer number_of_io_slaves cache $ do
+        M.finally
+            thunk
+            (requestJobCache >>= liftIO . encodeFile path_to_cache)
+-- @-node:gcross.20100901145855.2066:withJobServerUsingCacheFile
 -- @+node:gcross.20100607083309.1406:submitJobToServer
 submitJobToServer ::
     JobServer label result →
@@ -349,7 +377,7 @@ requestJobCacheFromServer (JobServer job_queue _) = do
     takeMVar result_var
 -- @-node:gcross.20100709210816.2228:requestJobCacheFromServer
 -- @+node:gcross.20100607205618.1429:requestJobCache
-requestJobCache :: JobServerMonad label result (Map [label] ByteString)
+requestJobCache :: JobServerMonad label result (Cache label)
 requestJobCache = ReaderT requestJobCacheFromServer
 -- @-node:gcross.20100607205618.1429:requestJobCache
 -- @+node:gcross.20100607083309.1414:returnDynamicValuesAndCache

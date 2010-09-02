@@ -90,6 +90,7 @@ instance Show UnknownDependenciesError where
             "Unable to find " ++ show dependencyType ++ " '" ++ dependencyName ++ "'" ++
             case maybe_unknown_dependency_exporters of
                 Nothing → []
+                Just (DependencyExporters _ []) → []
                 Just exporters → " (but it is exported by the " ++ show exporters ++ ")"
         )
         $

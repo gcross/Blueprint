@@ -21,6 +21,7 @@ module Blueprint.Tools.Compilers.GHC where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100611224425.1612:<< Import needed modules >>
 import Control.Applicative
+import Control.Applicative.Infix
 import Control.Arrow
 import qualified Control.Concurrent.Thread as Thread
 import Control.Exception
@@ -44,12 +45,20 @@ import Data.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
-import Data.Version
 
+import qualified Distribution.Compiler as Compiler
 import Distribution.InstalledPackageInfo
 import Distribution.License
 import Distribution.ModuleName
 import Distribution.Package (PackageId(..),PackageName(..),PackageIdentifier(..),InstalledPackageId(..))
+import qualified Distribution.Package as Package
+import Distribution.PackageDescription
+import Distribution.PackageDescription.Configuration
+import Distribution.PackageDescription.Parse
+import Distribution.System
+import Distribution.Text
+import Distribution.Version
+import Distribution.Verbosity
 
 import System.Directory
 import System.Exit
@@ -60,7 +69,6 @@ import System.Process
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
-import Blueprint.Configuration
 import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
@@ -80,6 +88,20 @@ import Blueprint.Tools.JobAnalyzer
 -- @+node:gcross.20100630111926.1862:KnownModules
 type KnownModules = Map String ResolvedDependencies
 -- @-node:gcross.20100630111926.1862:KnownModules
+-- @+node:gcross.20100901145855.2053:BuildEnvironment
+data BuildEnvironment = BuildEnvironment
+    {   buildEnvironmentGHC :: GHC
+    ,   buildEnvironmentKnownModules :: KnownModules
+    ,   buildEnvironmentBuiltModules :: [BuiltModule]
+    ,   buildEnvironmentObjectLookup :: String → Maybe JobId
+    ,   buildEnvironmentCompileOptions :: [String]
+    ,   buildEnvironmentLinkOptions :: [String]
+    }
+-- @-node:gcross.20100901145855.2053:BuildEnvironment
+-- @+node:gcross.20100901145855.2055:BuildTargetType
+data BuildTargetType = LibraryTarget | ExecutableTarget
+
+-- @-node:gcross.20100901145855.2055:BuildTargetType
 -- @+node:gcross.20100708215239.2085:BuiltModule
 data BuiltModule = BuiltModule
     {   builtModuleName :: String
@@ -122,7 +144,7 @@ newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
 -- @+node:gcross.20100831211145.2134:PackageDatabase
 data PackageDatabase = PackageDatabase
     {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackageInfo
-    ,   packageDatabaseIndexedByPackageNameAndVersion :: Map PackageName (Map Version [InstalledPackageInfo])
+    ,   packageDatabaseIndexedByPackageNameAndVersion :: Map PackageName [(Version,[InstalledPackageInfo])]
     } deriving Typeable
 -- @-node:gcross.20100831211145.2134:PackageDatabase
 -- @-node:gcross.20100630111926.1861:Types
@@ -252,6 +274,96 @@ configurePackageDatabase distinguisher =
   where
     job@(IncompleteJob job_names _) = cofmap pathToGHCPkg (createLoadGHCPackageDatabaseIncompleteJob distinguisher)
 -- @-node:gcross.20100831211145.2153:configurePackageDatabase
+-- @+node:gcross.20100901145855.2056:extractPackageDependencies
+extractPackageDependencies :: PackageDescription → BuildTargetType → [Package.Dependency]
+extractPackageDependencies PackageDescription{..} build_target_type = buildDepends ++
+    case build_target_type of
+        LibraryTarget → targetBuildDepends . libBuildInfo . fromJust $ library
+        ExecutableTarget → concat . map (targetBuildDepends . buildInfo) $ executables
+-- @-node:gcross.20100901145855.2056:extractPackageDependencies
+-- @+node:gcross.20100901145855.2054:computeBuildEnvironment
+computeBuildEnvironment ::
+    GHCEnvironment →
+    PackageDescription →
+    BuildTargetType →
+    [BuiltModule] →
+    [String] →
+    [String] →
+    FilePath →
+    BuildEnvironment
+computeBuildEnvironment
+    GHCEnvironment{..}
+    package_description@PackageDescription{..}
+    build_target_type
+    built_modules
+    additional_compile_options
+    additional_link_options
+    interface_directory
+    =
+    BuildEnvironment
+    {   buildEnvironmentGHC = ghcEnvironmentGHC
+    ,   buildEnvironmentKnownModules =
+            Map.unions
+                (builtModulesToKnownModules built_modules
+                :map extractKnownModulesFromInstalledPackage installed_package_dependencies
+                )
+    ,   buildEnvironmentBuiltModules = built_modules
+    ,   buildEnvironmentObjectLookup = buildModulesToObjectLookup built_modules
+    ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
+    ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
+    }
+  where
+    build_for_package_options = 
+        case build_target_type of
+            LibraryTarget → ["-package-name",display package]
+            _ → []
+    installed_package_dependencies =
+        map (fromJust . findSatisfyingPackage ghcEnvironmentPackageDatabase)
+            (extractPackageDependencies package_description build_target_type)
+    package_dependency_options =
+        concat
+            [ ["-package",display sourcePackageId]
+            | InstalledPackageInfo{..} ← installed_package_dependencies
+            ]
+    shared_options =
+        ("-i" ++ interface_directory)
+        :
+        build_for_package_options
+        ++
+        package_dependency_options
+-- @-node:gcross.20100901145855.2054:computeBuildEnvironment
+-- @+node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
+extractKnownModulesFromInstalledPackage :: InstalledPackageInfo → KnownModules
+extractKnownModulesFromInstalledPackage InstalledPackageInfo{..} =
+    Map.fromList
+    .
+    map ((,resolved_dependencies) . display)
+    $
+    exposedModules
+  where
+    resolved_dependencies = ResolvedDependencies [] [haskellPackageDependency (display sourcePackageId)]
+-- @-node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
+-- @+node:gcross.20100901145855.2073:readAndConfigurePackageDescription
+readAndConfigurePackageDescription ::
+    GHCEnvironment →
+    FlagAssignment →
+    FilePath →
+    IO (PackageDescription, FlagAssignment)
+readAndConfigurePackageDescription GHCEnvironment{..} flags =
+    readPackageDescription silent
+    >=>
+    either
+        (throwIO . UnresolvedPackageDependenciesError ghcEnvironmentPackageDatabase)
+        return
+    .
+    finalizePackageDescription
+        flags
+        (checkForSatisfyingPackage ghcEnvironmentPackageDatabase)
+        buildPlatform
+        (Compiler.CompilerId Compiler.GHC (ghcVersion ghcEnvironmentGHC))
+        []
+-- @nonl
+-- @-node:gcross.20100901145855.2073:readAndConfigurePackageDescription
 -- @-node:gcross.20100830091258.2028:configuration
 -- @+node:gcross.20100628115452.1899:dependency arguments
 -- @+node:gcross.20100628115452.1895:computeGHCLinkDependencyArguments
@@ -311,7 +423,7 @@ builtModulesToKnownModules =
     )
 
 -- @-node:gcross.20100708102250.2756:builtModulesToKnownModules
--- @+node:gcross.20100709210816.2221:buildModulesToObjectLookup
+-- @+node:gcross.20100901145855.2058:buildModulesToObjectLookup
 buildModulesToObjectLookup :: [BuiltModule] → (String → Maybe JobId)
 buildModulesToObjectLookup =
     flip Map.lookup
@@ -319,7 +431,7 @@ buildModulesToObjectLookup =
     Map.fromList
     .
     map (builtModuleObjectFilePath &&& builtModuleObjectJobId)
--- @-node:gcross.20100709210816.2221:buildModulesToObjectLookup
+-- @-node:gcross.20100901145855.2058:buildModulesToObjectLookup
 -- @+node:gcross.20100630111926.1868:findPackagesExposingModule
 findPackagesExposingModule :: FilePath -> String -> IO [String]
 findPackagesExposingModule path_to_ghc_pkg module_name =
@@ -350,7 +462,7 @@ haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSou
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
--- @+node:gcross.20100630111926.1863:resolveModuleDependencies
+-- @+node:gcross.20100630111926.1863:resolveModuleDependency
 resolveModuleDependency :: FilePath → KnownModules → DependencyResolver
 resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
   | dependencyType == haskell_module_dependency_type
@@ -374,7 +486,7 @@ resolveModuleDependency path_to_ghc_pkg known_modules UnresolvedDependency{..}
     = throw $ UnrecognizedDependencyType "the GHC compiler" dependencyType
   where
     Dependency{..} = unresolvedDependency
--- @-node:gcross.20100630111926.1863:resolveModuleDependencies
+-- @-node:gcross.20100630111926.1863:resolveModuleDependency
 -- @+node:gcross.20100709210816.2223:builtProgram
 builtProgram :: FilePath → [FilePath] → BuiltProgram
 builtProgram program_file_path program_object_file_paths =
@@ -385,83 +497,6 @@ builtProgram program_file_path program_object_file_paths =
     }
 -- @-node:gcross.20100709210816.2223:builtProgram
 -- @-node:gcross.20100630111926.1860:dependency resolution
--- @+node:gcross.20100630111926.1869:package queries
--- @+node:gcross.20100630111926.1872:queryPackage
-queryPackage :: FilePath → String → String → IO (Maybe [String])
-queryPackage path_to_ghc_pkg field_name package_name =
-    fmap (\exit_code →
-        case exit_code of
-            (ExitSuccess,response,_) → Just . filter (/= (field_name ++ ":")) . words $ response 
-            _ → Nothing
-    )
-    $
-    readProcessWithExitCode path_to_ghc_pkg ["field",package_name,field_name] ""
--- @-node:gcross.20100630111926.1872:queryPackage
--- @+node:gcross.20100630111926.1870:fetchPackageModules
-fetchPackageModules :: FilePath -> String -> IO (Maybe [String])
-fetchPackageModules path_to_ghc qualified_package_name =
-    queryPackage path_to_ghc "exposed-modules" qualified_package_name
--- @-node:gcross.20100630111926.1870:fetchPackageModules
--- @+node:gcross.20100709210816.2201:resolvePackage
-resolvePackage :: FilePath → String → (Version → Bool) → IO (Either [Version] String)
-resolvePackage path_to_ghc_pkg package_name checkVersion =
-    fmap (
-        (\versions →
-            case find checkVersion versions of
-                Nothing → Left versions
-                Just version → Right (package_name ++ "-" ++ showVersion version)
-        )
-        .
-        map readVersion
-        .
-        fromMaybe []
-    ) (queryPackage path_to_ghc_pkg "version" package_name)
--- @-node:gcross.20100709210816.2201:resolvePackage
--- @+node:gcross.20100709210816.2208:resolvePackages
-resolvePackages :: FilePath → [(String,Version → Bool)] → IO (Either [(String,[Version])] [String])
-resolvePackages path_to_ghc_pkg =
-    fmap (\resolutions →
-        case partitionEithers resolutions of
-            ([],package_ids) → Right package_ids
-            (unresolved,_) → Left unresolved
-    )
-    .
-    mapM (\(package_name,checkVersion) →
-        fmap (mapLeft (package_name,)) (resolvePackage path_to_ghc_pkg package_name checkVersion)
-    )
--- @-node:gcross.20100709210816.2208:resolvePackages
--- @+node:gcross.20100709210816.2209:fetchKnownModulesFromPackage
-fetchKnownModulesFromPackage :: FilePath → String → IO (Maybe KnownModules)
-fetchKnownModulesFromPackage path_to_ghc_pkg package_id =
-    runMaybeT
-    .
-    fmap (Map.fromList . map (,resolution))
-    .
-    MaybeT
-    .
-    fetchPackageModules path_to_ghc_pkg
-    $
-    package_id
-  where
-    resolution =
-        ResolvedDependencies []
-        .
-        (:[])
-        .
-        haskellPackageDependency
-        $
-        package_id
--- @-node:gcross.20100709210816.2209:fetchKnownModulesFromPackage
--- @+node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
-fetchKnownModulesFromPackages :: FilePath → [String] → IO (Maybe KnownModules)
-fetchKnownModulesFromPackages path_to_ghc_pkg =
-    runMaybeT
-    .
-    fmap mconcat
-    .
-    mapM (MaybeT . fetchKnownModulesFromPackage path_to_ghc_pkg)
--- @-node:gcross.20100709210816.2213:fetchKnownModulesFromPackages
--- @-node:gcross.20100630111926.1869:package queries
 -- @+node:gcross.20100831211145.2135:package database
 -- @+node:gcross.20100831211145.2139:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackageInfo
@@ -471,6 +506,23 @@ loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
         ParseOk _ installed_package_info → return installed_package_info
         ParseFailed parse_error → error $ "Error parsing description of package " ++ package_atom ++ ": " ++ show parse_error
 -- @-node:gcross.20100831211145.2139:loadInstalledPackageInformation
+-- @+node:gcross.20100901145855.2050:findSatisfyingPackage
+findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackageInfo
+findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range) =
+    Map.lookup name packageDatabaseIndexedByPackageNameAndVersion
+    >>=
+    find (flip withinRange version_range . fst)
+    >>=
+    return . head . snd
+-- @-node:gcross.20100901145855.2050:findSatisfyingPackage
+-- @+node:gcross.20100901145855.2052:checkForSatsifyingPackage
+checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
+checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
+-- @-node:gcross.20100901145855.2052:checkForSatsifyingPackage
+-- @+node:gcross.20100901145855.2088:lookupPackageNamed
+lookupPackageNamed :: PackageDatabase → PackageName → Maybe [(Version,[InstalledPackageInfo])]
+lookupPackageNamed PackageDatabase{..} package_name = Map.lookup package_name packageDatabaseIndexedByPackageNameAndVersion
+-- @-node:gcross.20100901145855.2088:lookupPackageNamed
 -- @-node:gcross.20100831211145.2135:package database
 -- @+node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100830091258.2033:createFindGHCJob
@@ -518,13 +570,12 @@ createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
                             (Map.fromList [(installedPackageId,package_info) | package_info@InstalledPackageInfo{..} ← installed_packages])
                             (Map.fromList
                                 [ ((pkgName . sourcePackageId . head) installed_package_info
-                                  ,Map.fromList
-                                    [((pkgVersion . sourcePackageId . head) installed_package_info_
-                                     ,installed_package_info_
-                                     )
-                                    | installed_package_info_ ← installed_package_info
-                                    , then group by (pkgVersion . sourcePackageId $ installed_package_info_)
-                                    ]
+                                  ,[((pkgVersion . sourcePackageId . head) installed_package_info_
+                                    ,installed_package_info_
+                                    )
+                                   | installed_package_info_ ← installed_package_info
+                                   , then group by (pkgVersion . sourcePackageId $ installed_package_info_)
+                                   ]
                                   )
                                 | installed_package_info ← installed_packages
                                 , then group by (pkgName . sourcePackageId $ installed_package_info)
@@ -613,6 +664,17 @@ createGHCCompileToObjectJob
     -- @-node:gcross.20100705150931.1979:scanner
     -- @-others
 -- @-node:gcross.20100630111926.1874:createGHCCompileToObjectJob
+-- @+node:gcross.20100901145855.2080:createGHCCompileToObjectJobsFromBuildEnvironment
+createGHCCompileToObjectJobsFromBuildEnvironment :: BuildEnvironment → [ToolJob]
+createGHCCompileToObjectJobsFromBuildEnvironment BuildEnvironment{..} =
+    map (
+        createGHCCompileToObjectJob
+            (pathToGHC buildEnvironmentGHC)
+            (pathToGHCPkg buildEnvironmentGHC)
+            buildEnvironmentKnownModules
+            buildEnvironmentCompileOptions
+    ) buildEnvironmentBuiltModules
+-- @-node:gcross.20100901145855.2080:createGHCCompileToObjectJobsFromBuildEnvironment
 -- @+node:gcross.20100705132935.1938:createGHCLinkProgramJob
 createGHCLinkProgramJob ::
     FilePath →
@@ -696,6 +758,14 @@ createGHCLinkProgramJob
     -- @-node:gcross.20100705150931.1982:my_actor_name
     -- @-others
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramJob
+-- @+node:gcross.20100901145855.2085:createGHCLinkProgramJobUsingBuildEnvironment
+createGHCLinkProgramJobUsingBuildEnvironment :: BuildEnvironment → BuiltProgram → ToolJob
+createGHCLinkProgramJobUsingBuildEnvironment BuildEnvironment{..} =
+    createGHCLinkProgramJob
+        (pathToGHC buildEnvironmentGHC)
+        buildEnvironmentLinkOptions
+        buildEnvironmentObjectLookup
+-- @-node:gcross.20100901145855.2085:createGHCLinkProgramJobUsingBuildEnvironment
 -- @-node:gcross.20100630111926.1873:jobs
 -- @+node:gcross.20100709210816.2233:options
 -- @+node:gcross.20100709210816.2234:computeGHCInterfaceDirectoryArguments
@@ -708,6 +778,36 @@ computeGHCCompileAsPackageNameArguments = ("-package-name":) . (:[])
 -- @-node:gcross.20100709210816.2235:computeGHCPackageNameArguments
 -- @-node:gcross.20100709210816.2233:options
 -- @-node:gcross.20100628115452.1853:Functions
+-- @+node:gcross.20100901145855.2091:Exceptions
+-- @+node:gcross.20100901145855.2092:UnresolvedPackageDependenciesError
+data UnresolvedPackageDependenciesError =
+    UnresolvedPackageDependenciesError PackageDatabase [Package.Dependency]
+  deriving Typeable
+
+instance Show UnresolvedPackageDependenciesError where
+    show (UnresolvedPackageDependenciesError package_database unresolved_dependencies) =
+        intercalate "\n"
+        .
+        ("Unable to resolve the following package dependencies:":)
+        .
+        map (\dependency@(Package.Dependency package_name _) →
+            '\t' -- '
+            :
+            display dependency
+            ++
+            case fmap (map fst) (lookupPackageNamed package_database package_name) of
+                Nothing → ""
+                Just [] → ""
+                Just [version] → " (version " ++ display version ++ " is installed)"
+                Just [version1,version2] → " (versions " ++ display version1 ++ " and " ++ display version2 ++ " are installed)"
+                Just versions → " (versions " ++ intercalate ", " (map display versions) ++ " are installed)"
+        )
+        $
+        unresolved_dependencies
+
+instance Exception UnresolvedPackageDependenciesError
+-- @-node:gcross.20100901145855.2092:UnresolvedPackageDependenciesError
+-- @-node:gcross.20100901145855.2091:Exceptions
 -- @+node:gcross.20100708215239.2092:Namespaces
 interface_namespace = uuid "9f1b88df-e2cf-4020-8a44-655aacfbacbb"
 ghc_configuration_namespace = uuid "dc71e9fc-8917-4263-869b-bde953f56300"
