@@ -128,6 +128,51 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     dependencies_and_digests_field = field "dependencies and digests" "4292b8d0-5d15-49de-8032-92be8e67680f"
 -- @nonl
 -- @-node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
+-- @+node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
+analyzeExplicitDependenciesAndRebuildIfNecessary ::
+    (Typeable a, Binary a, Eq a) ⇒
+    JobTask JobId Record [MD5Digest] →
+    ([MD5Digest] → JobTask JobId Record Bool) →
+    a →
+    [JobId] →
+    JobAnalyzer [Record]
+analyzeExplicitDependenciesAndRebuildIfNecessary
+    builder
+    checkIfProductsMatch
+    miscellaneous_information
+    dependency_job_ids
+ = do
+    -- See whethether the dependencies have changed
+    dependencies_have_changed ←
+        fetchDigestsAndCheckForChanges
+            dependency_digests_field
+            dependency_job_ids
+
+    -- Check whether the miscellaneous information has changed
+    miscellaneous_information_has_changed ←
+        checkForChangesInMiscellaneousInformation miscellaneous_information
+
+    -- Rebuild the product if necessary
+    product_digests ←
+        rebuildProductsIfNecessary
+            builder
+            checkIfProductsMatch
+            (dependencies_have_changed || miscellaneous_information_has_changed)
+
+    -- Return the results
+    return
+        .
+        map (\digest →
+            withFields (
+                (_digest,digest)
+             :. ()
+            )
+        )
+        $
+        product_digests
+ where
+    dependency_digests_field = field "source digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
+-- @-node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2045:checkForChangesIn
 checkForChangesIn ::
     (Typeable a, Binary a, Eq a) ⇒
