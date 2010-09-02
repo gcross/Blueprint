@@ -72,6 +72,7 @@ import Text.Regex.PCRE.String
 import Blueprint.Configuration.Tools
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
+import Blueprint.Fields.FilePath
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
@@ -598,7 +599,6 @@ createGHCCompileToObjectJob ::
     [String] →
     BuiltModule →
     ToolJob
-
 createGHCCompileToObjectJob
     path_to_ghc
     path_to_ghc_pkg
@@ -648,8 +648,14 @@ createGHCCompileToObjectJob
             builtModuleInterfaceFilePath
     -- @-node:gcross.20100705150931.1978:ghc_arguments
     -- @+node:gcross.20100708102250.2008:postprocessX
-    postprocessInterface = addDeferredDependency (objectDependency builtModuleObjectFilePath)
-    postprocessObject = addDeferredDependency ghc_runtime_dependency
+    postprocessInterface =
+        setFilePath builtModuleInterfaceFilePath
+        .
+        addDeferredDependency (objectDependency builtModuleObjectFilePath)
+    postprocessObject =
+        setFilePath builtModuleObjectFilePath
+        .
+        addDeferredDependency ghc_runtime_dependency
     -- @-node:gcross.20100708102250.2008:postprocessX
     -- @+node:gcross.20100705150931.1979:scanner
     scanner =
@@ -691,6 +697,8 @@ createGHCLinkProgramJob
     Job [builtProgramJobId]
     .
     runJobAnalyzer
+    .
+    fmap (zipWith ($) [setFilePath builtProgramFilePath])
     $
     fetchAllDeferredDependenciesAndRebuildIfNecessary
         lookupDependencyJobIds
