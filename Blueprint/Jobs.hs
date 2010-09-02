@@ -431,16 +431,16 @@ job job_names = Job job_names . JobRunner
 jobWithCache :: Binary cache => [jobid] → (Maybe cache → JobTaskResult jobid result cache) → Job jobid result
 jobWithCache job_names = Job job_names . JobRunnerWithCache
 -- @-node:gcross.20100831211145.2071:jobWithCache
--- @+node:gcross.20100831211145.2165:completeJobRunner
-completeJobRunner ::
-    IncompleteJobRunner label result α →
+-- @+node:gcross.20100831211145.2165:completeJobRunnerWith
+completeJobRunnerWith ::
     α →
+    IncompleteJobRunner label result α →
     JobRunner label result
-completeJobRunner incomplete_runner x =
+completeJobRunnerWith x incomplete_runner =
     case incomplete_runner of
         IncompleteJobRunner runJob → JobRunner (runJob x)
         IncompleteJobRunnerWithCache runJob → JobRunnerWithCache (runJob x)
--- @-node:gcross.20100831211145.2165:completeJobRunner
+-- @-node:gcross.20100831211145.2165:completeJobRunnerWith
 -- @+node:gcross.20100831211145.2125:completeJobRunnerUsing
 completeJobRunnerUsing ::
     ([result] → α) →
@@ -452,16 +452,13 @@ completeJobRunnerUsing computeResult requests incomplete_runner =
         IncompleteJobRunner runJob → JobRunner (request requests >>= runJob . computeResult)
         IncompleteJobRunnerWithCache runJob → JobRunnerWithCache (\maybe_cache → request requests >>= flip runJob maybe_cache . computeResult)
 -- @-node:gcross.20100831211145.2125:completeJobRunnerUsing
--- @+node:gcross.20100831211145.2127:completeJob
-completeJob ::
-    IncompleteJob label result α →
+-- @+node:gcross.20100831211145.2127:completeJobWith
+completeJobWith ::
     α →
+    IncompleteJob label result α →
     Job label result
-completeJob (IncompleteJob job_names incomplete_runner) =
-    Job job_names
-    .
-    completeJobRunner incomplete_runner
--- @-node:gcross.20100831211145.2127:completeJob
+completeJobWith x (IncompleteJob job_names incomplete_runner) = Job job_names (completeJobRunnerWith x incomplete_runner)
+-- @-node:gcross.20100831211145.2127:completeJobWith
 -- @+node:gcross.20100831211145.2167:completeJobUsing
 completeJobUsing ::
     ([result] → α) →

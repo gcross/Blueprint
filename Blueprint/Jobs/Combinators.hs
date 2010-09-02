@@ -40,8 +40,10 @@ data JobArrow jobid result α β =
     {   jobArrowIndependentJobs :: [Job jobid result]
     ,   jobArrowDependentJobs :: [IncompleteJob jobid result α]
     ,   jobArrowResultJobNames :: [jobid]
+    ,   jobArrowResultExtractorJobName :: jobid → jobid
     ,   jobArrowResultExtractor :: α → [result] → β
     }
+-- @nonl
 -- @-node:gcross.20100831211145.2112:JobArrow
 -- @+node:gcross.20100831211145.2035:JobApplicative
 data JobApplicative jobid result α =
@@ -49,6 +51,7 @@ data JobApplicative jobid result α =
  |  JobApplicative
     {   jobApplicativeJobs :: [Job jobid result]
     ,   jobApplicativeResultJobNames :: [jobid]
+    ,   jobApplicativeResultExtractorJobName :: jobid
     ,   jobApplicativeResultExtractor :: [result] → α
     }
 -- @nonl
@@ -61,10 +64,9 @@ instance Ord jobid => Functor (JobApplicative jobid result) where
     fmap f a@JobApplicative{..} = a { jobApplicativeResultExtractor = f . jobApplicativeResultExtractor }
 
     x <$ _ = NullJobApplicative x
--- @nonl
 -- @-node:gcross.20100831211145.2044:Functor JobApplicative
 -- @+node:gcross.20100831211145.2045:Applicative JobApplicative
-instance Ord jobid => Applicative (JobApplicative jobid result) where
+instance (Ord jobid, Monoid jobid) => Applicative (JobApplicative jobid result) where
     pure x = NullJobApplicative x
     (NullJobApplicative f) <*> (NullJobApplicative x) = NullJobApplicative (f x)
     (NullJobApplicative f) <*> JobApplicative{..} =
@@ -81,6 +83,7 @@ instance Ord jobid => Applicative (JobApplicative jobid result) where
         JobApplicative
         {   jobApplicativeJobs = jobApplicativeJobs a1 ++ jobApplicativeJobs a2
         ,   jobApplicativeResultJobNames = jobApplicativeResultJobNames a1 ++ jobApplicativeResultJobNames a2
+        ,   jobApplicativeResultExtractorJobName = jobApplicativeResultExtractorJobName a1 `mappend` jobApplicativeResultExtractorJobName a2
         ,   jobApplicativeResultExtractor =
                 uncurry ($)
                 .
@@ -100,7 +103,7 @@ instance Ord jobid => Functor (JobArrow jobid result α) where
     x <$ _ = NullJobArrow (const x)
 -- @-node:gcross.20100831211145.2119:Functor JobArrow
 -- @+node:gcross.20100831211145.2120:Applicative JobArrow
-instance Ord jobid => Applicative (JobArrow jobid result α) where
+instance (Ord jobid, Monoid jobid) => Applicative (JobArrow jobid result α) where
     pure x = NullJobArrow (const x)
     (NullJobArrow ff) <*> (NullJobArrow g) = NullJobArrow (\x → (ff x) (g x))
     (NullJobArrow ff) <*> JobArrow{..} =
@@ -118,6 +121,7 @@ instance Ord jobid => Applicative (JobArrow jobid result α) where
         {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
         ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
         ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
         ,   jobArrowResultExtractor = \x →
                 uncurry ($)
                 .
@@ -127,6 +131,7 @@ instance Ord jobid => Applicative (JobArrow jobid result α) where
         }
     _ *> a = a
     a <* _ = a
+-- @nonl
 -- @-node:gcross.20100831211145.2120:Applicative JobArrow
 -- @+node:gcross.20100831211145.2121:Category JobArrow
 instance Ord jobid => Category (JobArrow jobid result) where
@@ -148,6 +153,7 @@ instance Ord jobid => Category (JobArrow jobid result) where
         {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
         ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ new_a2_dependent_jobs
         ,   jobArrowResultJobNames = jobArrowResultJobNames a2
+        ,   jobArrowResultExtractorJobName = jobArrowResultExtractorJobName a2 . jobArrowResultExtractorJobName a1
         ,   jobArrowResultExtractor = new_a2_job_extractor
         }
       where
@@ -170,9 +176,10 @@ instance Ord jobid => Category (JobArrow jobid result) where
             (first (jobArrowResultExtractor a1 x))
             .
             splitAt (length . jobArrowResultJobNames $ a1)
+-- @nonl
 -- @-node:gcross.20100831211145.2121:Category JobArrow
 -- @+node:gcross.20100831211145.2122:Arrow JobArrow
-instance Ord jobid => Arrow (JobArrow jobid result) where
+instance (Ord jobid, Monoid jobid) => Arrow (JobArrow jobid result) where
     arr f = NullJobArrow f
     first JobArrow{..} =
         JobArrow
@@ -203,6 +210,7 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
         {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
         ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
         ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
         ,   jobArrowResultExtractor = \x →
                 (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 x)
                 .
@@ -230,11 +238,13 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
                 ++
                 map (cofmap snd) (jobArrowDependentJobs a2)
         ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
+        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
         ,   jobArrowResultExtractor = \(x,y) →
                 (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 y)
                 .
                 splitAt (length . jobArrowResultJobNames $ a1)
         }
+-- @nonl
 -- @-node:gcross.20100831211145.2122:Arrow JobArrow
 -- @-node:gcross.20100831211145.2043:Instances
 -- @+node:gcross.20100831211145.2123:Functions
@@ -244,12 +254,23 @@ instance Ord jobid => Arrow (JobArrow jobid result) where
     JobApplicative jobid result α →
     JobArrow jobid result α β →
     JobApplicative jobid result β
+(NullJobApplicative x) ➤ (NullJobArrow f) = NullJobApplicative (f x)
+JobApplicative{..} ➤ (NullJobArrow f) =
+    JobApplicative
+    {   jobApplicativeResultExtractor = f . jobApplicativeResultExtractor
+    ,   ..
+    }
+(NullJobApplicative x) ➤ JobArrow{..} =
+    JobApplicative
+    {   jobApplicativeJobs = jobArrowIndependentJobs ++ map (completeJobWith x) jobArrowDependentJobs
+    ,   jobApplicativeResultJobNames = jobArrowResultJobNames
+    ,   jobApplicativeResultExtractorJobName = jobArrowResultExtractorJobName mempty
+    ,   jobApplicativeResultExtractor = jobArrowResultExtractor x
+    }
 JobApplicative{..} ➤ JobArrow{..} =
     JobApplicative
     {   jobApplicativeJobs =
             applicative_job
-            :
-            arrow_job
             :
             jobApplicativeJobs
             ++
@@ -257,37 +278,29 @@ JobApplicative{..} ➤ JobArrow{..} =
             ++
             map (completeJobUsing (unwrap . head) applicative_job_names)
                 jobArrowDependentJobs
-    ,   jobApplicativeResultJobNames = arrow_job_names
-    ,   jobApplicativeResultExtractor = unwrap . head
+    ,   jobApplicativeResultJobNames = applicative_job_names ++ jobArrowResultJobNames
+    ,   jobApplicativeResultExtractorJobName = jobArrowResultExtractorJobName jobApplicativeResultExtractorJobName
+    ,   jobApplicativeResultExtractor = \(x_dyn:results) → jobArrowResultExtractor (unwrap x_dyn) results
     }
   where
     applicative_job@(Job applicative_job_names _) =
-        job [mconcat jobApplicativeResultJobNames] $
+        job [jobApplicativeResultExtractorJobName] $
             request jobApplicativeResultJobNames
             >>=
             returnValue . wrap . jobApplicativeResultExtractor
-    arrow_job@(Job arrow_job_names _) =
-        job [mconcat jobArrowResultJobNames] $ do
-            [x_dyn] ← request applicative_job_names
-            results ← request jobArrowResultJobNames
-            let x = unwrap x_dyn
-            returnValue . wrap $ jobArrowResultExtractor x results
 -- @-node:gcross.20100831211145.2124:(➤)
 -- @+node:gcross.20100901145855.2068:extractJobsFromJobApplicative
 extractJobsFromJobApplicative ::
     (Monoid jobid, Wrapper result α) =>
     JobApplicative jobid result α →
-    (jobid,[Job jobid result])
+    [Job jobid result]
+extractJobsFromJobApplicative (NullJobApplicative _) = []
 extractJobsFromJobApplicative JobApplicative{..} =
-    (job_name
-    ,job [job_name] (
+    job [jobApplicativeResultExtractorJobName] (
         request jobApplicativeResultJobNames
         >>=
         returnValue . wrap . jobApplicativeResultExtractor
      ):jobApplicativeJobs
-    )
-  where
-    job_name = mconcat jobApplicativeResultJobNames
 -- @-node:gcross.20100901145855.2068:extractJobsFromJobApplicative
 -- @+node:gcross.20100901145855.2067:runJobApplicative
 runJobApplicative ::
@@ -301,12 +314,11 @@ runJobApplicative ::
     Cache label →
     JobApplicative label result α →
     IO α
-runJobApplicative number_of_io_slaves cache job_applicative =
+runJobApplicative _ _ (NullJobApplicative value) = return value
+runJobApplicative number_of_io_slaves cache job_applicative@JobApplicative{..} =
     withJobServer number_of_io_slaves cache $ do
-        mapM_ submitJob jobs
-        fmap unwrap (requestJobResult result_job_name)
-  where
-    (result_job_name,jobs) = extractJobsFromJobApplicative job_applicative
+        mapM_ submitJob (extractJobsFromJobApplicative job_applicative)
+        fmap unwrap (requestJobResult jobApplicativeResultExtractorJobName)
 -- @-node:gcross.20100901145855.2067:runJobApplicative
 -- @+node:gcross.20100901145855.2071:runJobApplicativeUsingCacheFile
 runJobApplicativeUsingCacheFile ::
@@ -321,12 +333,11 @@ runJobApplicativeUsingCacheFile ::
     FilePath →
     JobApplicative label result α →
     IO α
-runJobApplicativeUsingCacheFile number_of_io_slaves path_to_cache job_applicative =
+runJobApplicativeUsingCacheFile _ _ (NullJobApplicative value) = return value
+runJobApplicativeUsingCacheFile number_of_io_slaves path_to_cache job_applicative@JobApplicative{..} =
     withJobServerUsingCacheFile number_of_io_slaves path_to_cache $ do
-        mapM_ submitJob jobs
-        fmap unwrap (requestJobResult result_job_name)
-  where
-    (result_job_name,jobs) = extractJobsFromJobApplicative job_applicative
+        mapM_ submitJob (extractJobsFromJobApplicative job_applicative)
+        fmap unwrap (requestJobResult jobApplicativeResultExtractorJobName)
 -- @-node:gcross.20100901145855.2071:runJobApplicativeUsingCacheFile
 -- @-node:gcross.20100831211145.2123:Functions
 -- @-others

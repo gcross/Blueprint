@@ -240,11 +240,11 @@ configureGHC job_distinguisher search_paths selection_criteria_identifier select
     JobApplicative
     {   jobApplicativeJobs = [job]
     ,   jobApplicativeResultJobNames = job_names
+    ,   jobApplicativeResultExtractorJobName = identifierInNamespace ghc_configuration_namespace "configure GHC" "configure GHC"
     ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
     }
   where
     job@(Job job_names job_runner) = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
--- @nonl
 -- @-node:gcross.20100831154015.2037:configureGHC
 -- @+node:gcross.20100831211145.2170:configureGHCEnvironment
 configureGHCEnvironment ::
@@ -270,6 +270,7 @@ configurePackageDatabase distinguisher =
     {   jobArrowDependentJobs = [job]
     ,   jobArrowIndependentJobs = []
     ,   jobArrowResultJobNames = job_names
+    ,   jobArrowResultExtractorJobName = (`mappend` identifierInNamespace ghc_configuration_namespace "configure package database" "configure package database")
     ,   jobArrowResultExtractor = const (fromJust . fromDynamic . head)
     }
   where
@@ -589,7 +590,7 @@ createLoadGHCPackageDatabaseJob ::
     String →
     FilePath →
     Job JobId Dynamic
-createLoadGHCPackageDatabaseJob = completeJob . createLoadGHCPackageDatabaseIncompleteJob
+createLoadGHCPackageDatabaseJob = flip completeJobWith . createLoadGHCPackageDatabaseIncompleteJob
 -- @-node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
