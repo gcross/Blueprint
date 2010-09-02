@@ -60,11 +60,14 @@ instance Show (Identifier a) where
 -- @+node:gcross.20100831154015.2048:Monoid (Identifier a)
 instance Monoid (Identifier a) where
     mempty = Identifier nil ""
-    i1 `mappend` i2 =
-        identifierInNamespace
-            (identifierUUID i1)
-            (show . identifierUUID $ i2)
-            (identifierDescription i1 ++ ", " ++ identifierDescription i2)
+    i1 `mappend` i2
+      | UUID.null (identifierUUID i1) = i2
+      | UUID.null (identifierUUID i2) = i1
+      | otherwise =
+            identifierInNamespace
+                (identifierUUID i1)
+                (show . identifierUUID $ i2)
+                (identifierDescription i1 ++ ", " ++ identifierDescription i2)
 -- @-node:gcross.20100831154015.2048:Monoid (Identifier a)
 -- @-node:gcross.20100624100717.1765:Instances
 -- @+node:gcross.20100624100717.1738:Functions
