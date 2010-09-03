@@ -268,7 +268,7 @@ computeBuildEnvironment
         :
         build_for_package_options
 -- @-node:gcross.20100901145855.2054:computeBuildEnvironment
--- @+node:gcross.20100709210816.2223:computeBuiltProgram
+-- @+node:gcross.20100709210816.2223:computeProgramComponents
 computeProgramComponents :: [(Dependency,Maybe MD5Digest)] → ProgramComponents
 computeProgramComponents dependencies
   | (not . null) unrecognized_runtime_dependencies =
@@ -297,7 +297,7 @@ computeProgramComponents dependencies
         | (dependency_name,_) ← runtime_dependencies
         , dependency_name /= ghc_runtime_dependency_name
         ]
--- @-node:gcross.20100709210816.2223:computeBuiltProgram
+-- @-node:gcross.20100709210816.2223:computeProgramComponents
 -- @+node:gcross.20100831154015.2037:configureGHC
 configureGHC ::
     (Binary α, Eq α) =>
