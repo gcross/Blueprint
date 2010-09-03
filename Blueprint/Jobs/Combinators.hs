@@ -289,6 +289,26 @@ JobApplicative{..} ➤ JobArrow{..} =
             >>=
             returnValue . wrap . jobApplicativeResultExtractor
 -- @-node:gcross.20100831211145.2124:(➤)
+-- @+node:gcross.20100903104106.2078:(➠)
+(➠) ::
+    (Wrapper result α, Monoid jobid) =>
+    JobApplicative jobid result α →
+    [IncompleteJob jobid result α] →
+    [Job jobid result]
+(➠) (NullJobApplicative x) = map (completeJobWith x)
+(➠) JobApplicative{..} =
+    (applicative_job:)
+    .
+    (++ jobApplicativeJobs)
+    .
+    map (completeJobUsing (unwrap . head) applicative_job_names)
+  where
+    applicative_job@(Job applicative_job_names _) =
+        job [jobApplicativeResultExtractorJobName] $
+            request jobApplicativeResultJobNames
+            >>=
+            returnValue . wrap . jobApplicativeResultExtractor
+-- @-node:gcross.20100903104106.2078:(➠)
 -- @+node:gcross.20100901145855.2068:extractJobsFromJobApplicative
 extractJobsFromJobApplicative ::
     (Monoid jobid, Wrapper result α) =>

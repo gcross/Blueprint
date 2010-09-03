@@ -466,6 +466,35 @@ createGHCCompileToObjectJobsFromBuildEnvironment BuildEnvironment{..} =
             buildEnvironmentCompileOptions
     ) buildEnvironmentBuiltModules
 -- @-node:gcross.20100901145855.2080:createGHCCompileToObjectJobsFromBuildEnvironment
+-- @+node:gcross.20100903104106.2080:createGHCFetchDeferredDependencesAndLinkProgramJobs
+createGHCFetchDeferredDependencesAndLinkProgramJobs ::
+    FilePath →
+    [String] →
+    BuiltProgram →
+    ([Dependency] → [(Dependency,Maybe JobId)]) →
+    [Dependency] →
+    [ToolJob]
+createGHCFetchDeferredDependencesAndLinkProgramJobs
+    path_to_ghc
+    options_arguments
+    built_program@BuiltProgram{..}
+    lookupDependencyJobIds
+    starting_dependencies
+    =
+    fmap
+        (computeProgramComponents . Map.toList)
+        (fetchAllDeferredDependenciesAndTheirDigests
+            builtProgramFilePath
+            lookupDependencyJobIds
+            starting_dependencies
+        )
+    ➠
+    [createGHCLinkProgramIncompleteJob
+        path_to_ghc
+        options_arguments
+        built_program
+    ]
+-- @-node:gcross.20100903104106.2080:createGHCFetchDeferredDependencesAndLinkProgramJobs
 -- @+node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
 createGHCLinkProgramIncompleteJob ::
     FilePath →
