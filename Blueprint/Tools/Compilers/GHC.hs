@@ -48,10 +48,9 @@ import qualified Data.Set as Set
 import Data.Typeable
 
 import qualified Distribution.Compiler as Compiler
-import Distribution.InstalledPackageInfo
-import Distribution.License
-import Distribution.ModuleName
-import Distribution.Package (PackageId(..),PackageName(..),PackageIdentifier(..),InstalledPackageId(..))
+import Distribution.InstalledPackageInfo (InstalledPackageInfo)
+import qualified Distribution.InstalledPackageInfo as InstalledPackageInfo
+import Distribution.Package (InstalledPackageId(..))
 import qualified Distribution.Package as Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
@@ -87,11 +86,23 @@ import Blueprint.Tools.JobAnalyzer
 
 -- @+others
 -- @+node:gcross.20100630111926.1861:Types
+-- @+node:gcross.20100903104106.2083:InstalledPackage
+data InstalledPackage = InstalledPackage
+    {   installedPackageId :: InstalledPackageId
+    ,   installedPackageQualifiedName :: String
+    ,   installedPackageName :: String
+    ,   installedPackageVersion :: Version
+    ,   installedPackageModules :: [String]
+    } deriving (Typeable, Eq);
+
+$( derive makeBinary ''InstalledPackageId )
+$( derive makeBinary ''InstalledPackage )
+-- @-node:gcross.20100903104106.2083:InstalledPackage
 -- @+node:gcross.20100902134026.2122:PackageDatabase
 data PackageDatabase = PackageDatabase
-    {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackageInfo
-    ,   packageDatabaseIndexedByPackageNameAndVersion :: Map PackageName [(Version,[InstalledPackageInfo])]
-    ,   packageDatabaseIndexedByModuleName :: Map String [InstalledPackageInfo]
+    {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackage
+    ,   packageDatabaseIndexedByPackageNameAndVersion :: Map String [(Version,[InstalledPackage])]
+    ,   packageDatabaseIndexedByModuleName :: Map String [InstalledPackage]
     } deriving Typeable
 -- @-node:gcross.20100902134026.2122:PackageDatabase
 -- @+node:gcross.20100902134026.2105:KnownModule
@@ -172,18 +183,6 @@ instance Show BuiltModule where
     show BuiltModule{..} =
         builtModuleName ++ ": " ++ builtModuleSourceFilePath ++ " -> " ++ builtModuleObjectFilePath ++ ", " ++ builtModuleInterfaceFilePath
 -- @-node:gcross.20100709210816.2106:Show BuiltModule
--- @+node:gcross.20100831211145.2151:Binary PackageDatabase
-$(derive makeBinary ''PackageDatabase)
-$(derive makeBinary ''InstalledPackageInfo_)
-$(derive makeBinary ''PackageName)
-$(derive makeBinary ''InstalledPackageId)
-$(derive makeBinary ''PackageIdentifier)
-$(derive makeBinary ''License)
-
-instance Binary ModuleName where
-    put module_name = put (show module_name)
-    get = fmap read get
--- @-node:gcross.20100831211145.2151:Binary PackageDatabase
 -- @+node:gcross.20100902134026.2123:Binary ProgramComponents
 $( derive makeBinary ''ProgramComponents )
 -- @-node:gcross.20100902134026.2123:Binary ProgramComponents
@@ -337,6 +336,30 @@ configurePackageDatabase distinguisher =
   where
     job@(IncompleteJob job_names _) = cofmap pathToGHCPkg (createLoadGHCPackageDatabaseIncompleteJob distinguisher)
 -- @-node:gcross.20100831211145.2153:configurePackageDatabase
+-- @+node:gcross.20100903104106.2084:constructPackageDatabaseFromInstalledPackages
+constructPackageDatabaseFromInstalledPackages :: [InstalledPackage] → PackageDatabase
+constructPackageDatabaseFromInstalledPackages =
+    liftA3 PackageDatabase
+        (Map.fromList . map (installedPackageId &&& id))
+        (Map.fromList
+            .
+            map (second (gather . map (installedPackageVersion &&& id)))
+            .
+            gather
+            .
+            map (installedPackageName &&& id)
+        )
+        (\installed_packages →
+            Map.fromList
+            .
+            gather
+            $
+            [ (module_name,installed_package)
+            | installed_package@InstalledPackage{..} ← installed_packages
+            , module_name ← installedPackageModules
+            ]
+        )
+-- @-node:gcross.20100903104106.2084:constructPackageDatabaseFromInstalledPackages
 -- @+node:gcross.20100830091258.2033:createFindGHCJob
 createFindGHCJob ::
     (Binary α, Eq α) =>
@@ -348,7 +371,8 @@ createFindGHCJob ::
 createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
     jobWithCache [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
     $
-    \maybe_old_search_paths →
+    \maybe_old_search_paths → do
+        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "Looking for GHC..."
         case maybe_old_search_paths of
             Just (old_cache@(old_search_paths,old_selection_criteria_identifier,ghc))
               | old_search_paths == search_paths
@@ -395,7 +419,7 @@ createGHCCompileToObjectJob
         let [package_names,_] =
                 classifyDependenciesAndRejectUnrecognizedTypes
                     "GHC object compiler"
-                    [object_dependency_type,haskell_interface_dependency_type]
+                    [haskell_package_dependency_type,haskell_interface_dependency_type]
                     dependencies
         noticeM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Compiling "
@@ -538,38 +562,22 @@ createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
     incompleteJobWithCache [identifierInNamespace ghc_package_database_namespace job_distinguisher "package database"]
     $
     \path_to_ghc_pkg maybe_cache → do
+        liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
+            "(GHC) Reading package atoms..."
+        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $
+            unwords ("(GHC) Executing":path_to_ghc_pkg:["--simple-output","list"])
         list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg ["--simple-output","list"] "")
-        case maybe_cache of
-            Just cache@(old_list_of_package_atoms,old_package_database)
-                | old_list_of_package_atoms == list_of_package_atoms → returnWrappedValueAndCache old_package_database cache
-            _ → do
-                installed_packages ← liftIO $
+        installed_packages ← case maybe_cache of
+            Just cache@(old_list_of_package_atoms,installed_packages)
+                | old_list_of_package_atoms == list_of_package_atoms → return installed_packages
+            _ → liftIO $
+                    infoM "Blueprint.Tools.Compilers.GHC" "Loading package database..."
+                    >>
                     mapM (Thread.forkIO . loadInstalledPackageInformation path_to_ghc_pkg) list_of_package_atoms
                     >>=
                     mapM ((>>= Thread.unsafeResult) . snd)
-                let package_database = 
-                        PackageDatabase
-                            (Map.fromList [(installedPackageId,package_info) | package_info@InstalledPackageInfo{..} ← installed_packages])
-                            (Map.fromList
-                                [ ((pkgName . sourcePackageId . head) installed_package_info
-                                  ,[((pkgVersion . sourcePackageId . head) installed_package_info_
-                                    ,installed_package_info_
-                                    )
-                                   | installed_package_info_ ← installed_package_info
-                                   , then group by (pkgVersion . sourcePackageId $ installed_package_info_)
-                                   ]
-                                  )
-                                | installed_package_info ← installed_packages
-                                , then group by (pkgName . sourcePackageId $ installed_package_info)
-                                ]
-                            )
-                            (Map.fromList . gather $
-                                [ (display module_name,installed_package_info)
-                                | installed_package_info@InstalledPackageInfo{..} ← installed_packages
-                                , module_name ← exposedModules
-                                ]
-                            )
-                returnWrappedValueAndCache package_database (list_of_package_atoms,package_database)
+        let package_database = constructPackageDatabaseFromInstalledPackages installed_packages
+        returnWrappedValueAndCache package_database (list_of_package_atoms,installed_packages)
 -- @-node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
 -- @+node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
 createLoadGHCPackageDatabaseJob ::
@@ -579,14 +587,14 @@ createLoadGHCPackageDatabaseJob ::
 createLoadGHCPackageDatabaseJob = flip completeJobWith . createLoadGHCPackageDatabaseIncompleteJob
 -- @-node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
 -- @+node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
-extractKnownModulesFromInstalledPackage :: InstalledPackageInfo → KnownModules
-extractKnownModulesFromInstalledPackage InstalledPackageInfo{..} =
+extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
+extractKnownModulesFromInstalledPackage InstalledPackage{..} =
     Map.fromList
     .
-    map ((,KnownModuleInExternalPackage (display sourcePackageId)) . display)
+    map (,KnownModuleInExternalPackage installedPackageQualifiedName)
     $
-    exposedModules
-
+    installedPackageModules
+-- @nonl
 -- @-node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
 -- @+node:gcross.20100901145855.2056:extractPackageDependencies
 extractPackageDependencies :: PackageDescription → BuildTargetType → [Package.Dependency]
@@ -596,9 +604,9 @@ extractPackageDependencies PackageDescription{..} build_target_type = buildDepen
         ExecutableTarget → concat . map (targetBuildDepends . buildInfo) $ executables
 -- @-node:gcross.20100901145855.2056:extractPackageDependencies
 -- @+node:gcross.20100901145855.2050:findSatisfyingPackage
-findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackageInfo
+findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackage
 findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range) =
-    Map.lookup name packageDatabaseIndexedByPackageNameAndVersion
+    Map.lookup (display name) packageDatabaseIndexedByPackageNameAndVersion
     >>=
     find (flip withinRange version_range . fst)
     >>=
@@ -619,19 +627,28 @@ haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSou
   where
     haskell_module_path = hierarchalPathToFilePath haskellSourceHierarchalPath
     object_file_path = object_subdirectory </> haskell_module_path <.> "o"
-    interface_file_path = interface_subdirectory </> haskell_module_path <.> "o"
+    interface_file_path = interface_subdirectory </> haskell_module_path <.> "hi"
     display_name = "Compile " ++ haskellSourceModuleName
 -- @-node:gcross.20100708192404.2001:haskellSourceToBuiltModule
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
 -- @+node:gcross.20100831211145.2139:loadInstalledPackageInformation
-loadInstalledPackageInformation :: FilePath → String → IO InstalledPackageInfo
+loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
 loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
     package_description ← readProcess path_to_ghc_pkg ["describe",package_atom] ""
-    case parseInstalledPackageInfo package_description of
-        ParseOk _ installed_package_info → return installed_package_info
-        ParseFailed parse_error → error $ "Error parsing description of package " ++ package_atom ++ ": " ++ show parse_error
+    InstalledPackageInfo.InstalledPackageInfo{..} ←
+        case InstalledPackageInfo.parseInstalledPackageInfo package_description of
+            ParseOk _ installed_package_info → return installed_package_info
+            ParseFailed parse_error → error $ "Error parsing description of package " ++ package_atom ++ ": " ++ show parse_error
+    return $
+        InstalledPackage
+        {   installedPackageId = installedPackageId
+        ,   installedPackageQualifiedName = display sourcePackageId
+        ,   installedPackageName = (display . Package.pkgName) sourcePackageId
+        ,   installedPackageVersion = Package.pkgVersion sourcePackageId
+        ,   installedPackageModules = map display exposedModules
+        }
 -- @-node:gcross.20100831211145.2139:loadInstalledPackageInformation
 -- @+node:gcross.20100830091258.2029:lookForGHCInPaths
 lookForGHCInPaths :: [FilePath] → IO [GHC]
@@ -664,8 +681,11 @@ lookupDependencyJobIdInBuiltModules =
         (map ((haskellInterfaceDependency . builtModuleInterfaceFilePath) &&& builtModuleInterfaceJobId))
 -- @-node:gcross.20100901145855.2058:lookupDependencyJobIdInBuiltModules
 -- @+node:gcross.20100901145855.2088:lookupPackageNamed
-lookupPackageNamed :: PackageDatabase → PackageName → Maybe [(Version,[InstalledPackageInfo])]
-lookupPackageNamed PackageDatabase{..} package_name = Map.lookup package_name packageDatabaseIndexedByPackageNameAndVersion
+lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])]
+lookupPackageNamed PackageDatabase{..} =
+    flip Map.lookup packageDatabaseIndexedByPackageNameAndVersion
+    .
+    display
 -- @-node:gcross.20100901145855.2088:lookupPackageNamed
 -- @+node:gcross.20100901145855.2073:readAndConfigurePackageDescription
 readAndConfigurePackageDescription ::
@@ -709,7 +729,7 @@ resolveModuleDependency PackageDatabase{..} known_modules module_name =
             .
             UnknownDependency (haskellModuleDependency module_name)
             .
-            fmap (DependencyExporters haskell_package_dependency_type . map (display . sourcePackageId))
+            fmap (DependencyExporters haskell_package_dependency_type . map installedPackageQualifiedName)
             $
             Map.lookup module_name packageDatabaseIndexedByModuleName
 -- @-node:gcross.20100630111926.1863:resolveModuleDependency
