@@ -35,6 +35,7 @@ import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.SourceFile
+import Blueprint.Tools
 import Blueprint.Tools.Compilers.GHC
 -- @-node:gcross.20100709210816.2099:<< Import needed modules >>
 -- @nl
@@ -66,7 +67,7 @@ main = do
             ghc_environment
             []
             "Blueprint.cabal"
-    let build_environment =
+    let build_environment@BuildEnvironment{..} =
             computeBuildEnvironment
                 ghc_environment
                 package_description
@@ -75,14 +76,18 @@ main = do
                 []
                 []
                 interface_directory
-        options_arguments = computeGHCInterfaceDirectoryArguments "interface"
         compilation_jobs = createGHCCompileToObjectJobsFromBuildEnvironment build_environment
-        lookupObjectJobId = buildModulesToObjectLookup built_modules
-        built_program = builtProgram "test" . (:[]) . builtModuleObjectFilePath . head $ built_modules
+        built_program = builtProgram "test"
+        link_jobs =
+            createGHCFetchDeferredDependencesAndLinkProgramJobs
+                (pathToGHC ghcEnvironmentGHC)
+                []
+                built_program
+                buildEnvironmentLookupDependencyJobId
+                [objectDependency (builtModuleObjectFilePath . head $ built_modules)]
     withJobServerUsingCacheFile 4 "build.cache" $ do
         mapM_ (submitJob . createSourceFileDigestJob) sources
-        mapM_ submitJob compilation_jobs
-        submitJob $ createGHCLinkProgramJobUsingBuildEnvironment build_environment built_program
+        mapM_ submitJob (compilation_jobs ++ link_jobs)
         requestJobResult . builtProgramJobId $ built_program
 -- @-node:gcross.20100709210816.2100:main
 -- @-others

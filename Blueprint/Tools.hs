@@ -114,10 +114,10 @@ fetchDigestsFor = fmap (map getDigest) . request
 -- @+node:gcross.20100705185804.1961:fetchAllDeferredDependencies
 fetchAllDeferredDependenciesAndTheirDigests ::
     String →
-    ([Dependency] → [(Dependency,Maybe JobId)]) →
+    (Dependency → Maybe JobId) →
     [Dependency] →
     JobApplicative JobId Record (Map Dependency (Maybe MD5Digest))
-fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobIds starting_dependencies =
+fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobId starting_dependencies =
     jobApplicativeFromJobTask
         task_name
         extractor_name
@@ -145,13 +145,11 @@ fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobIds
                 .
                 partitionEithers
                 .
-                map (\(dependency,maybe_job_id) →
-                    case maybe_job_id of
+                map (\dependency →
+                    case lookupDependencyJobId dependency of
                         Nothing → Left dependency
                         Just job_id → Right (dependency,job_id)
                 )
-                .
-                lookupDependencyJobIds
                 .
                 filter (`Map.notMember` seen_dependencies)
                 .

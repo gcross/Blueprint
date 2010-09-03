@@ -112,7 +112,7 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentPackageDatabase :: PackageDatabase
     ,   buildEnvironmentKnownModules :: KnownModules
     ,   buildEnvironmentBuiltModules :: [BuiltModule]
-    ,   buildEnvironmentObjectLookup :: String → Maybe JobId
+    ,   buildEnvironmentLookupDependencyJobId :: Dependency → Maybe JobId
     ,   buildEnvironmentCompileOptions :: [String]
     ,   buildEnvironmentLinkOptions :: [String]
     }
@@ -189,15 +189,6 @@ $( derive makeBinary ''ProgramComponents )
 -- @-node:gcross.20100902134026.2123:Binary ProgramComponents
 -- @-node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100628115452.1853:Functions
--- @+node:gcross.20100901145855.2058:buildModulesToObjectLookup
-buildModulesToObjectLookup :: [BuiltModule] → (String → Maybe JobId)
-buildModulesToObjectLookup =
-    flip Map.lookup
-    .
-    Map.fromList
-    .
-    map (builtModuleObjectFilePath &&& builtModuleObjectJobId)
--- @-node:gcross.20100901145855.2058:buildModulesToObjectLookup
 -- @+node:gcross.20100708102250.2756:builtModulesToKnownModules
 builtModulesToKnownModules :: [BuiltModule] → KnownModules
 builtModulesToKnownModules =
@@ -251,7 +242,7 @@ computeBuildEnvironment
                 :map extractKnownModulesFromInstalledPackage installed_package_dependencies
                 )
     ,   buildEnvironmentBuiltModules = built_modules
-    ,   buildEnvironmentObjectLookup = buildModulesToObjectLookup built_modules
+    ,   buildEnvironmentLookupDependencyJobId = lookupDependencyJobIdInBuiltModules built_modules
     ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
     ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
     }
@@ -471,7 +462,7 @@ createGHCFetchDeferredDependencesAndLinkProgramJobs ::
     FilePath →
     [String] →
     BuiltProgram →
-    ([Dependency] → [(Dependency,Maybe JobId)]) →
+    (Dependency → Maybe JobId) →
     [Dependency] →
     [ToolJob]
 createGHCFetchDeferredDependencesAndLinkProgramJobs
@@ -661,6 +652,17 @@ lookForGHCInPaths paths =
             (lookForVersionedProgramInPaths ghc_pkg_program paths)
     )
 -- @-node:gcross.20100830091258.2029:lookForGHCInPaths
+-- @+node:gcross.20100901145855.2058:lookupDependencyJobIdInBuiltModules
+lookupDependencyJobIdInBuiltModules :: [BuiltModule] → (Dependency → Maybe JobId)
+lookupDependencyJobIdInBuiltModules =
+    flip Map.lookup
+    .
+    Map.fromList
+    .
+    liftA2 (++)
+        (map ((objectDependency . builtModuleObjectFilePath) &&& builtModuleObjectJobId))
+        (map ((haskellInterfaceDependency . builtModuleInterfaceFilePath) &&& builtModuleInterfaceJobId))
+-- @-node:gcross.20100901145855.2058:lookupDependencyJobIdInBuiltModules
 -- @+node:gcross.20100901145855.2088:lookupPackageNamed
 lookupPackageNamed :: PackageDatabase → PackageName → Maybe [(Version,[InstalledPackageInfo])]
 lookupPackageNamed PackageDatabase{..} package_name = Map.lookup package_name packageDatabaseIndexedByPackageNameAndVersion
