@@ -132,15 +132,20 @@ data BuiltModule = BuiltModule
     ,   builtModuleInterfaceJobId :: JobId
     }
 -- @-node:gcross.20100708215239.2085:BuiltModule
--- @+node:gcross.20100709210816.2222:BuiltProgram
+-- @+node:gcross.20100902220655.2075:BuiltProgram
 data BuiltProgram = BuiltProgram
-    {   builtProgramObjectFilePaths :: [FilePath]
-    ,   builtProgramRequiredLibraries :: [String]
-    ,   builtProgramRequiredPackages :: [String]
-    ,   builtProgramDependencyDigests :: [MD5Digest]
+    {   builtProgramFilePath :: FilePath
+    ,   builtProgramJobId :: JobId
+    }
+-- @-node:gcross.20100902220655.2075:BuiltProgram
+-- @+node:gcross.20100709210816.2222:ProgramComponents
+data ProgramComponents = ProgramComponents
+    {   programComponentObjectFilePaths :: [FilePath]
+    ,   programComponentLibraries :: [String]
+    ,   programComponentPackages :: [String]
+    ,   programComponentDependencyDigests :: [MD5Digest]
     } deriving (Eq, Typeable)
-
--- @-node:gcross.20100709210816.2222:BuiltProgram
+-- @-node:gcross.20100709210816.2222:ProgramComponents
 -- @+node:gcross.20100830091258.2027:GHC
 data GHC = GHC
     {   ghcVersion :: Version
@@ -179,9 +184,9 @@ instance Binary ModuleName where
     put module_name = put (show module_name)
     get = fmap read get
 -- @-node:gcross.20100831211145.2151:Binary PackageDatabase
--- @+node:gcross.20100902134026.2123:Binary BuiltProgram
-$( derive makeBinary ''BuiltProgram )
--- @-node:gcross.20100902134026.2123:Binary BuiltProgram
+-- @+node:gcross.20100902134026.2123:Binary ProgramComponents
+$( derive makeBinary ''ProgramComponents )
+-- @-node:gcross.20100902134026.2123:Binary ProgramComponents
 -- @-node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100901145855.2058:buildModulesToObjectLookup
@@ -207,6 +212,13 @@ builtModulesToKnownModules =
             builtModuleObjectFilePath
     )
 -- @-node:gcross.20100708102250.2756:builtModulesToKnownModules
+-- @+node:gcross.20100902220655.2076:builtProgram
+builtProgram :: FilePath → BuiltProgram
+builtProgram program_filepath =
+    BuiltProgram
+        program_filepath
+        (programJobId program_filepath ("Building program " ++ program_filepath))
+-- @-node:gcross.20100902220655.2076:builtProgram
 -- @+node:gcross.20100901145855.2052:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
 checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
@@ -257,8 +269,8 @@ computeBuildEnvironment
         build_for_package_options
 -- @-node:gcross.20100901145855.2054:computeBuildEnvironment
 -- @+node:gcross.20100709210816.2223:computeBuiltProgram
-computeBuiltProgram :: [(Dependency,Maybe MD5Digest)] → BuiltProgram
-computeBuiltProgram dependencies
+computeProgramComponents :: [(Dependency,Maybe MD5Digest)] → ProgramComponents
+computeProgramComponents dependencies
   | (not . null) unrecognized_runtime_dependencies =
         throw
         $
@@ -266,11 +278,11 @@ computeBuiltProgram dependencies
             "GHC program linker"
             unrecognized_runtime_dependencies
   | otherwise =
-        BuiltProgram
-        {   builtProgramObjectFilePaths = map fst object_dependencies
-        ,   builtProgramRequiredLibraries = map fst library_dependencies
-        ,   builtProgramRequiredPackages = map fst haskell_package_dependencies
-        ,   builtProgramDependencyDigests = catMaybes . map snd . concat $ all_dependencies
+        ProgramComponents
+        {   programComponentObjectFilePaths = map fst object_dependencies
+        ,   programComponentLibraries = map fst library_dependencies
+        ,   programComponentPackages = map fst haskell_package_dependencies
+        ,   programComponentDependencyDigests = catMaybes . map snd . concat $ all_dependencies
         }
 
   where
@@ -458,47 +470,45 @@ createGHCCompileToObjectJobsFromBuildEnvironment BuildEnvironment{..} =
 createGHCLinkProgramIncompleteJob ::
     FilePath →
     [String] →
-    FilePath →
-    JobId →
-    IncompleteToolJob BuiltProgram
+    BuiltProgram →
+    IncompleteToolJob ProgramComponents
 createGHCLinkProgramIncompleteJob
     path_to_ghc
     options_arguments
-    built_program_filepath
-    built_program_job_id
+    BuiltProgram{..}
     =
-    incompleteJobWithCache [built_program_job_id]
+    incompleteJobWithCache [builtProgramJobId]
     $
-    \built_program@BuiltProgram{..} →
+    \program_components@ProgramComponents{..} →
         let ghc_arguments =
-                builtProgramObjectFilePaths
+                programComponentObjectFilePaths
                 ++
-                map (('-':) . ('l':)) builtProgramRequiredLibraries -- '
+                map (('-':) . ('l':)) programComponentLibraries -- '
                 ++
-                concat [["-package",package] | package ← builtProgramRequiredPackages]
+                concat [["-package",package] | package ← programComponentPackages]
                 ++
-                ["-o",built_program_filepath]
+                ["-o",builtProgramFilePath]
                 ++
                 options_arguments
             builder = liftIO $ do
                 noticeM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Linking program "
-                    ++ built_program_filepath
+                    ++ builtProgramFilePath
                 infoM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
                 runProductionCommandAndDigestOutputs
-                    [built_program_filepath]
+                    [builtProgramFilePath]
                     []
                     path_to_ghc
                     ghc_arguments
         in  runJobAnalyzer
             .
-            fmap (zipWith ($) [setFilePath built_program_filepath])
+            fmap (zipWith ($) [setFilePath builtProgramFilePath])
             $
             compareToCacheAndRebuildIfNecessary
                 builder
-                (liftIO . checkDigestsOfFilesIfExisting [built_program_filepath])
-                built_program
+                (liftIO . checkDigestsOfFilesIfExisting [builtProgramFilePath])
+                program_components
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
 -- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
 createLoadGHCPackageDatabaseIncompleteJob ::
