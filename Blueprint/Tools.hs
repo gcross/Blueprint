@@ -40,6 +40,7 @@ import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Miscellaneous
 import Blueprint.Jobs
+import Blueprint.Jobs.Combinators
 -- @-node:gcross.20100624100717.2134:<< Import needed modules >>
 -- @nl
 
@@ -89,9 +90,15 @@ instance Exception UnrecognizedRuntimes
 -- @-node:gcross.20100705150931.1955:UnknownRuntimes
 -- @-node:gcross.20100630111926.1894:Exceptions
 -- @+node:gcross.20100624100717.2146:Types
--- @+node:gcross.20100705185804.1971:ToolJob
+-- @+node:gcross.20100705185804.1971:IncompleteToolJob
+type IncompleteToolJob = IncompleteJob JobId Record
+-- @-node:gcross.20100705185804.1971:IncompleteToolJob
+-- @+node:gcross.20100902134026.2094:IncompleteToolJobRunner
+type IncompleteToolJobRunner = IncompleteJobRunner JobId Record
+-- @-node:gcross.20100902134026.2094:IncompleteToolJobRunner
+-- @+node:gcross.20100902134026.2090:ToolJob
 type ToolJob = Job JobId Record
--- @-node:gcross.20100705185804.1971:ToolJob
+-- @-node:gcross.20100902134026.2090:ToolJob
 -- @+node:gcross.20100709210816.2111:ToolJobTask
 type ToolJobTask result = JobTask JobId Record result
 -- @-node:gcross.20100709210816.2111:ToolJobTask
@@ -105,13 +112,32 @@ fetchDigestsFor :: [JobId] → ToolJobTask [MD5Digest]
 fetchDigestsFor = fmap (map getDigest) . request
 -- @-node:gcross.20100705185804.1978:fetchDigestsFor
 -- @+node:gcross.20100705185804.1961:fetchAllDeferredDependencies
-fetchAllDeferredDependencies ::
+fetchAllDeferredDependenciesAndTheirDigests ::
+    String →
     ([Dependency] → [(Dependency,Maybe JobId)]) →
     [Dependency] →
-    ToolJobTask (Map Dependency (Maybe MD5Digest))
-fetchAllDeferredDependencies lookupDependencyJobIds =
-    go Map.empty
+    JobApplicative JobId Record (Map Dependency (Maybe MD5Digest))
+fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobIds starting_dependencies =
+    jobApplicativeFromJobTask
+        task_name
+        extractor_name
+    $
+    go Map.empty starting_dependencies
   where
+    task_name =
+        identifierInNamespace
+            (uuid "4b453994-83d6-4c2b-9b79-9ec442ab6874")
+            (distinguisher ++ job_description)
+            job_description
+          where
+            job_description = "Fetch all deferred dependencies of " ++ show starting_dependencies
+    extractor_name =
+        identifierInNamespace
+            (uuid "17047d2b-e8e2-4220-bd83-d61cda2fcbdc")
+            (distinguisher ++ job_description)
+            job_description
+          where
+            job_description = "Process results of fetching all deferred dependencies of " ++ show starting_dependencies
     go all_dependencies [] = return all_dependencies
     go seen_dependencies additional_dependencies = do
         let (new_dependencies_without_job_ids,(new_dependencies_with_job_ids,job_ids)) =

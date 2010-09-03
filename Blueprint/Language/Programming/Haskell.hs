@@ -66,14 +66,10 @@ instance Show HaskellSource where
 -- @-node:gcross.20100709210816.2102:Show HaskellSource
 -- @-node:gcross.20100709210816.2101:Instances
 -- @+node:gcross.20100615082419.1705:Functions
--- @+node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
-extractDependenciesFromHaskellSource :: L.ByteString → [UnresolvedDependency]
-extractDependenciesFromHaskellSource =
+-- @+node:gcross.20100615082419.1706:extractImportedModulesFromHaskellSource
+extractImportedModulesFromHaskellSource :: L.ByteString → [String]
+extractImportedModulesFromHaskellSource =
     map (
-        UnresolvedDependency Nothing
-        .
-        haskellModuleDependency
-        .
         unpack
         .
         fst
@@ -82,7 +78,7 @@ extractDependenciesFromHaskellSource =
     )
     .
     matchAllText import_regex
--- @-node:gcross.20100615082419.1706:extractDependenciesFromHaskellSource
+-- @-node:gcross.20100615082419.1706:extractImportedModulesFromHaskellSource
 -- @+node:gcross.20100630111926.2041:extractHaskellSources
 extractHaskellSources :: [SourceFile] → [HaskellSource]
 extractHaskellSources source_files =
@@ -96,10 +92,14 @@ extractHaskellSources source_files =
     , sourceFileExtension == ".hs"
     ]
 -- @-node:gcross.20100630111926.2041:extractHaskellSources
--- @+node:gcross.20100628115452.1840:haskellModuleDependency
+-- @+node:gcross.20100902134026.2108:haskellInterfaceDependency
+haskellInterfaceDependency :: String → Dependency
+haskellInterfaceDependency = Dependency haskell_interface_dependency_type
+-- @-node:gcross.20100902134026.2108:haskellInterfaceDependency
+-- @+node:gcross.20100902134026.2110:haskellModuleDependency
 haskellModuleDependency :: String → Dependency
 haskellModuleDependency = Dependency haskell_module_dependency_type
--- @-node:gcross.20100628115452.1840:haskellModuleDependency
+-- @-node:gcross.20100902134026.2110:haskellModuleDependency
 -- @+node:gcross.20100709210816.2211:haskellPackageDependency
 haskellPackageDependency :: String → Dependency
 haskellPackageDependency = Dependency haskell_package_dependency_type
@@ -112,12 +112,9 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @-node:gcross.20100611224425.1708:regular expression
 -- @-node:gcross.20100611224425.1689:Values
 -- @+node:gcross.20100630111926.1880:Dependency Types
--- @+node:gcross.20100628115452.1839:haskell_module_dependency_type
 haskell_module_dependency_type = identifier "450299f0-5957-4e05-a185-88d765a032b8" "haskell module"
--- @-node:gcross.20100628115452.1839:haskell_module_dependency_type
--- @+node:gcross.20100628115452.1898:haskell_package_dependency_type
 haskell_package_dependency_type = identifier "b0094d7f-1cf0-4cbf-8938-e40bf38a6e81" "haskell package"
--- @-node:gcross.20100628115452.1898:haskell_package_dependency_type
+haskell_interface_dependency_type = identifier "17047d2b-e8e2-4220-bd83-d61cda2fcbdc" "haskell interface file"
 -- @-node:gcross.20100630111926.1880:Dependency Types
 -- @-others
 -- @-node:gcross.20100611224425.1682:@thin Haskell.hs

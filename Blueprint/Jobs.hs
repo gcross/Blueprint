@@ -62,6 +62,7 @@ import System.IO
 import Blueprint.Identifier
 import Blueprint.IOTask
 import Blueprint.Miscellaneous
+import Blueprint.Wrapper
 -- @-node:gcross.20100604184944.1292:<< Import needed modules >>
 -- @nl
 
@@ -138,7 +139,7 @@ type Cache label = Map [label] ByteString
 -- @+node:gcross.20100709210816.2107:Job
 data Job label result = Job
     {   jobNames :: [label]
-    ,   jobTask :: JobRunner label result
+    ,   jobRunner :: JobRunner label result
     }
 -- @-node:gcross.20100709210816.2107:Job
 -- @+node:gcross.20100624100717.2145:JobId
@@ -380,24 +381,24 @@ requestJobCacheFromServer (JobServer job_queue _) = do
 requestJobCache :: JobServerMonad label result (Cache label)
 requestJobCache = ReaderT requestJobCacheFromServer
 -- @-node:gcross.20100607205618.1429:requestJobCache
--- @+node:gcross.20100607083309.1414:returnDynamicValuesAndCache
-returnDynamicValuesAndCache values cache = values `par` cache `par` return (JobResults (map toDyn values) cache)
--- @-node:gcross.20100607083309.1414:returnDynamicValuesAndCache
--- @+node:gcross.20100831211145.2145:returnDynamicValueAndCache
-returnDynamicValueAndCache value cache = value `par` cache `par` return (JobResults [toDyn value] cache)
--- @-node:gcross.20100831211145.2145:returnDynamicValueAndCache
--- @+node:gcross.20100831211145.2147:returnDynamicValue
-returnDynamicValue value = returnDynamicValueAndCache value ()
--- @-node:gcross.20100831211145.2147:returnDynamicValue
--- @+node:gcross.20100831211145.2149:returnValues
-returnDynamicValues values = returnDynamicValuesAndCache values ()
--- @-node:gcross.20100831211145.2149:returnValues
--- @+node:gcross.20100831211145.2143:returnValuesAndCache
-returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
--- @-node:gcross.20100831211145.2143:returnValuesAndCache
+-- @+node:gcross.20100831211145.2145:returnWrappedValueAndCache
+returnWrappedValueAndCache value cache = value `par` cache `par` return (JobResults [wrap value] cache)
+-- @-node:gcross.20100831211145.2145:returnWrappedValueAndCache
+-- @+node:gcross.20100607083309.1414:returnWrappedValuesAndCache
+returnWrappedValuesAndCache values cache = values `par` cache `par` return (JobResults (map wrap values) cache)
+-- @-node:gcross.20100607083309.1414:returnWrappedValuesAndCache
+-- @+node:gcross.20100831211145.2147:returnWrappedValue
+returnWrappedValue value = returnWrappedValueAndCache value ()
+-- @-node:gcross.20100831211145.2147:returnWrappedValue
+-- @+node:gcross.20100831211145.2149:returnWrappedValues
+returnWrappedValues values = returnWrappedValuesAndCache values ()
+-- @-node:gcross.20100831211145.2149:returnWrappedValues
 -- @+node:gcross.20100607205618.1443:returnValueAndCache
 returnValueAndCache value cache = value `par` cache `par` return (JobResults [value] cache)
 -- @-node:gcross.20100607205618.1443:returnValueAndCache
+-- @+node:gcross.20100831211145.2143:returnValuesAndCache
+returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
+-- @-node:gcross.20100831211145.2143:returnValuesAndCache
 -- @+node:gcross.20100607205618.1427:returnValue
 returnValue value = returnValueAndCache value ()
 -- @-node:gcross.20100607205618.1427:returnValue
@@ -468,6 +469,21 @@ completeJobUsing ::
 completeJobUsing computeResult requests (IncompleteJob job_names incomplete_runner) =
     Job job_names (completeJobRunnerUsing computeResult requests incomplete_runner)
 -- @-node:gcross.20100831211145.2167:completeJobUsing
+-- @+node:gcross.20100902134026.2114:postprocessJobRunnerResultWith
+postprocessJobRunnerResultWith :: ([result] → [result]) → JobRunner label result → JobRunner label result
+postprocessJobRunnerResultWith f job_runner =
+    case job_runner of
+        JobRunner runner → JobRunner (postprocessJobTaskResultWith f runner)
+        JobRunnerWithCache runJob → JobRunnerWithCache (postprocessJobTaskResultWith f . runJob)
+-- @-node:gcross.20100902134026.2114:postprocessJobRunnerResultWith
+-- @+node:gcross.20100902134026.2116:postprocessJobResultWith
+postprocessJobResultWith :: ([result] → [result]) → Job label result → Job label result
+postprocessJobResultWith f Job{..} = Job { jobRunner = postprocessJobRunnerResultWith f jobRunner, .. }
+-- @-node:gcross.20100902134026.2116:postprocessJobResultWith
+-- @+node:gcross.20100902134026.2125:postprocessJobTaskResultWith
+postprocessJobTaskResultWith :: ([result] → [result]) → JobTaskResult label result cache → JobTaskResult label result cache
+postprocessJobTaskResultWith f = fmap (\JobResults{..} → JobResults { jobResults = f jobResults, .. })
+-- @-node:gcross.20100902134026.2125:postprocessJobTaskResultWith
 -- @-node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1405:Implementation
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions

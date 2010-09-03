@@ -111,6 +111,15 @@ extractVersion regex string =
         v:[] → tryReadVersion v
         _ → Nothing
 -- @-node:gcross.20100830091258.2026:extractVersion
+-- @+node:gcross.20100902134026.2126:gather
+gather :: (Ord a, Eq a) => [(a,b)] → [(a,[b])]
+gather =
+    map (fst . head &&& map snd)
+    .
+    groupBy ((==) `on` fst)
+    .
+    sortBy (compare `on` fst)
+-- @-node:gcross.20100902134026.2126:gather
 -- @+node:gcross.20100830091258.2041:invertMap
 invertMap :: Ord b => Map a b → Map b [a]
 invertMap =

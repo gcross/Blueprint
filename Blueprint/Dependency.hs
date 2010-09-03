@@ -20,15 +20,23 @@ import Control.Arrow
 import Control.Exception
 
 import Data.Binary
-import Data.Either
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
+import Data.Either
+import Data.Function
 import Data.List
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Maybe
+import Data.Monoid
 import Data.Record
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Typeable
 
 import Blueprint.Identifier
 import Blueprint.Jobs
+import Blueprint.Miscellaneous
 -- @-node:gcross.20100624100717.1715:<< Import needed modules >>
 -- @nl
 
@@ -50,18 +58,12 @@ data DependencyExporters = DependencyExporters
     ,   dependencyExporterNames :: [String]
     } deriving (Eq)
 -- @-node:gcross.20100624100717.1726:DependencyExporters
--- @+node:gcross.20100624100717.1741:ResolvedDependencies
-data ResolvedDependencies = ResolvedDependencies
-    {   resolvedImmediateDependencies :: [JobId]
-    ,   resolvedDeferredDependencies :: [Dependency]
+-- @+node:gcross.20100624100717.1741:RequiredDependencies
+data RequiredDependencies = RequiredDependencies
+    {   requiredImmediateDependencies :: [(Dependency, Maybe JobId)]
+    ,   requiredDeferredDependencies :: [Dependency]
     } deriving Show
--- @-node:gcross.20100624100717.1741:ResolvedDependencies
--- @+node:gcross.20100624100717.1727:UnresolvedDependency
-data UnresolvedDependency = UnresolvedDependency
-    {   unresolvedDependencyIsExternal :: Maybe Bool
-    ,   unresolvedDependency :: Dependency
-    } deriving (Show,Eq,Typeable);  $( derive makeBinary ''UnresolvedDependency )
--- @-node:gcross.20100624100717.1727:UnresolvedDependency
+-- @-node:gcross.20100624100717.1741:RequiredDependencies
 -- @+node:gcross.20100624100717.2064:UnknownDependency
 data UnknownDependency = UnknownDependency
     {   unknownDependency :: Dependency
@@ -69,12 +71,9 @@ data UnknownDependency = UnknownDependency
     } deriving (Show,Eq,Typeable)
 
 -- @-node:gcross.20100624100717.2064:UnknownDependency
--- @+node:gcross.20100624100717.1737:DependencyResolution
-type DependencyResolution = Either UnknownDependency ResolvedDependencies
--- @-node:gcross.20100624100717.1737:DependencyResolution
--- @+node:gcross.20100624100717.1725:DependencyResolver
-type DependencyResolver = UnresolvedDependency → JobTask JobId Record DependencyResolution
--- @-node:gcross.20100624100717.1725:DependencyResolver
+-- @+node:gcross.20100902134026.2111:DependencyResolution
+type DependencyResolution = Either UnknownDependency RequiredDependencies
+-- @-node:gcross.20100902134026.2111:DependencyResolution
 -- @-node:gcross.20100624100717.1720:Types
 -- @+node:gcross.20100624100717.2063:Exceptions
 -- @+node:gcross.20100624100717.2065:UnknownDependenciesError
@@ -124,61 +123,56 @@ instance Show DependencyExporters where
     show (DependencyExporters{..}) = show dependencyExporterType ++ "(s) " ++ show dependencyExporterNames
 -- @nonl
 -- @-node:gcross.20100624100717.2150:Show DependencyExporters
+-- @+node:gcross.20100902134026.2106:Monoid RequiredDependencies
+instance Monoid RequiredDependencies where
+    mempty = RequiredDependencies [] []
+    x1 `mappend` x2 =
+        RequiredDependencies
+            (nub (requiredImmediateDependencies x1 ++ requiredImmediateDependencies x2))
+            (nub (requiredDeferredDependencies x1 ++ requiredDeferredDependencies x2))
+    mconcat =
+        liftA2 RequiredDependencies
+            (Set.toList . Set.unions . map (Set.fromList . requiredImmediateDependencies))
+            (Set.toList . Set.unions . map (Set.fromList . requiredDeferredDependencies))
+-- @-node:gcross.20100902134026.2106:Monoid RequiredDependencies
 -- @-node:gcross.20100624100717.2149:Instances
 -- @+node:gcross.20100624100717.2066:Functions
--- @+node:gcross.20100624100717.2067:extractDependenciesOrError
-extractDependenciesOrError :: [DependencyResolution] → [ResolvedDependencies]
-extractDependenciesOrError resolutions =
-    case partitionEithers resolutions of
-        ([],successful_resolutions) → successful_resolutions
-        (failed_resolutions,_) → throw $ UnknownDependenciesError failed_resolutions
--- @-node:gcross.20100624100717.2067:extractDependenciesOrError
--- @+node:gcross.20100624100717.2068:concatResolvedDependencies
-concatResolvedDependencies :: [ResolvedDependencies] → ResolvedDependencies
-concatResolvedDependencies =
-    uncurry ResolvedDependencies
+-- @+node:gcross.20100902134026.2101:classifyDependenciesAndRejectUnrecognizedTypes
+classifyDependenciesAndRejectUnrecognizedTypes :: String → [DependencyType] → [Dependency] → [[String]]
+classifyDependenciesAndRejectUnrecognizedTypes actor_name recognized_dependency_types =
+    extractRecognizedDependencesOrError actor_name recognized_dependency_types
     .
-    ((nub . concat) *** (nub . concat))
+    map (dependencyType &&& dependencyName)
+-- @-node:gcross.20100902134026.2101:classifyDependenciesAndRejectUnrecognizedTypes
+-- @+node:gcross.20100902134026.2118:classifyTaggedDependenciesAndRejectUnrecognizedTypes
+classifyTaggedDependenciesAndRejectUnrecognizedTypes :: String → [DependencyType] → [(Dependency,a)] → [[(String,a)]]
+classifyTaggedDependenciesAndRejectUnrecognizedTypes actor_name recognized_dependency_types =
+    extractRecognizedDependencesOrError actor_name recognized_dependency_types
     .
-    unzip
-    .
-    map (\(ResolvedDependencies a b) → (a,b))
--- @-node:gcross.20100624100717.2068:concatResolvedDependencies
--- @+node:gcross.20100624100717.2073:extractAndConcatenateDependencies
-extractAndConcatenateDependencies :: [DependencyResolution] → ResolvedDependencies
-extractAndConcatenateDependencies =
-    concatResolvedDependencies
-    .
-    extractDependenciesOrError
--- @-node:gcross.20100624100717.2073:extractAndConcatenateDependencies
--- @+node:gcross.20100705150931.1950:separateDependenciesByType
-separateDependenciesByType :: String → [DependencyType] → [Dependency] → [[String]]
-separateDependenciesByType actor_name = go
-  where
-    go [] [] = []
-    go [] unrecognized_dependencies =
+    map (\(Dependency{..},x) → ((dependencyType,(dependencyName,x))))
+-- @-node:gcross.20100902134026.2118:classifyTaggedDependenciesAndRejectUnrecognizedTypes
+-- @+node:gcross.20100902134026.2104:extractRecognizedDependencesOrError
+extractRecognizedDependencesOrError :: String → [DependencyType] → [(DependencyType,a)] → [[a]]
+extractRecognizedDependencesOrError actor_name recognized_dependency_types dependencies
+  | (not . null) unrecognized_dependency_types =
         throw
-        .
-        UnrecognizedDependencyTypes actor_name
-        .
-        nub
-        .
-        map dependencyType 
         $
-        unrecognized_dependencies
-    go (dependency_type:rest_dependency_types) dependencies =
-        uncurry (:)
-        .
-        (map dependencyName *** go rest_dependency_types)
-        .
-        partition (
-            (== dependency_type)
-            .
-            dependencyType
-        )
-        $
-        dependencies
--- @-node:gcross.20100705150931.1950:separateDependenciesByType
+        UnrecognizedDependencyTypes
+            actor_name
+            unrecognized_dependency_types
+  | otherwise =
+        map (fromMaybe [] . flip lookup classified_dependencies) recognized_dependency_types
+  where
+    classified_dependencies = gather dependencies
+    unrecognized_dependency_types = (\\ recognized_dependency_types) . map fst $ classified_dependencies
+-- @-node:gcross.20100902134026.2104:extractRecognizedDependencesOrError
+-- @+node:gcross.20100624100717.2067:extractRequiredDependenciesOrError
+extractRequiredDependenciesOrError :: [DependencyResolution] → RequiredDependencies
+extractRequiredDependenciesOrError resolutions =
+    case partitionEithers resolutions of
+        ([],successful_resolutions) → mconcat successful_resolutions
+        (failed_resolutions,_) → throw $ UnknownDependenciesError failed_resolutions
+-- @-node:gcross.20100624100717.2067:extractRequiredDependenciesOrError
 -- @-node:gcross.20100624100717.2066:Functions
 -- @-others
 -- @-node:gcross.20100624100717.1713:@thin Dependency.hs

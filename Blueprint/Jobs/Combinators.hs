@@ -339,6 +339,16 @@ runJobApplicativeUsingCacheFile number_of_io_slaves path_to_cache job_applicativ
         mapM_ submitJob (extractJobsFromJobApplicative job_applicative)
         fmap unwrap (requestJobResult jobApplicativeResultExtractorJobName)
 -- @-node:gcross.20100901145855.2071:runJobApplicativeUsingCacheFile
+-- @+node:gcross.20100902134026.2088:simpleJobApplicative
+jobApplicativeFromJobTask :: Wrapper result α => jobid → jobid → JobTask jobid result α → JobApplicative jobid result α
+jobApplicativeFromJobTask task_name extractor_name task =
+    JobApplicative
+    {   jobApplicativeJobs = [job [task_name] (task >>= returnWrappedValue)]
+    ,   jobApplicativeResultJobNames = [task_name]
+    ,   jobApplicativeResultExtractorJobName = extractor_name
+    ,   jobApplicativeResultExtractor = unwrap . head
+    }
+-- @-node:gcross.20100902134026.2088:simpleJobApplicative
 -- @-node:gcross.20100831211145.2123:Functions
 -- @-others
 -- @-node:gcross.20100831211145.2026:@thin Combinators.hs

@@ -39,6 +39,10 @@ import Blueprint.Tools
 
 -- @+others
 -- @+node:gcross.20100705185804.2035:Types
+-- @+node:gcross.20100902134026.2095:IncompleteJobAnalyzer
+type IncompleteJobAnalyzer α β = α → JobAnalyzer β
+-- @nonl
+-- @-node:gcross.20100902134026.2095:IncompleteJobAnalyzer
 -- @+node:gcross.20100705185804.2036:JobAnalyzer
 type JobAnalyzer = RWST SerializableRecord SerializableRecord () (JobTask JobId Record)
 -- @-node:gcross.20100705185804.2036:JobAnalyzer
@@ -46,23 +50,21 @@ type JobAnalyzer = RWST SerializableRecord SerializableRecord () (JobTask JobId 
 -- @+node:gcross.20100705185804.2037:Functions
 -- @+node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
 analyzeImplicitDependenciesAndRebuildIfNecessary ::
-    (Typeable a, Binary a, Eq a) ⇒
-    JobTask JobId Record [UnresolvedDependency] →
-    JobTask JobId Record [MD5Digest] →
+    (Typeable α, Binary α, Eq α, Typeable β, Binary β, Eq β) ⇒
+    JobTask JobId Record β →
+    (β → JobTask JobId Record RequiredDependencies) →
+    ([Dependency] → JobTask JobId Record [MD5Digest]) →
     ([MD5Digest] → JobTask JobId Record Bool) →
-    DependencyResolver →
-    a →
+    α →
     [JobId] →
-    [UnresolvedDependency] →
     JobAnalyzer [Record]
 analyzeImplicitDependenciesAndRebuildIfNecessary
     scanner
+    resolve
     builder
     checkIfProductsMatch
-    resolveDependency
     miscellaneous_information
     source_dependency_job_ids
-    explicit_dependencies
  = do
     -- See whethether the sources have changed
     sources_have_changed ←
@@ -71,22 +73,28 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
             source_dependency_job_ids
 
     -- Determine what the implicit dependencies are
-    implicit_dependencies ←  
+    dependencies ←  
         if sources_have_changed
             then runTaskAndCacheResult implicit_dependencies_field scanner
             else readRequiredAndCache implicit_dependencies_field
 
     -- Resolve all dependencies, and fetch the relevent digests
-    let dependencies = explicit_dependencies ++ implicit_dependencies
-    ResolvedDependencies{..} ←
-        fmap extractAndConcatenateDependencies
-        .
+    required_dependencies@RequiredDependencies{..} ←
         lift
         .
-        mapM resolveDependency
+        resolve
         $
         dependencies
-    dependency_digests ← lift . fetchDigestsFor $ resolvedImmediateDependencies
+    dependency_digests ←
+        lift
+        .
+        fetchDigestsFor
+        .
+        catMaybes
+        .
+        map snd
+        $
+        requiredImmediateDependencies
 
     -- Check whether the dependencies have changed
     dependencies_have_changed ←
@@ -106,7 +114,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     -- Rebuild the product if necessary
     product_digests ←
         rebuildProductsIfNecessary
-            builder
+            (builder . map fst $ requiredImmediateDependencies)
             checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
 
@@ -116,7 +124,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
         map (\digest →
             withFields (
                 (_digest,digest)
-             :. (_deferred_dependencies,resolvedDeferredDependencies)
+             :. (_deferred_dependencies,requiredDeferredDependencies)
              :. ()
             )
         )
@@ -130,10 +138,10 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
 analyzeExplicitDependenciesAndRebuildIfNecessary ::
-    (Typeable a, Binary a, Eq a) ⇒
+    (Typeable α, Binary α, Eq α) ⇒
     JobTask JobId Record [MD5Digest] →
     ([MD5Digest] → JobTask JobId Record Bool) →
-    a →
+    α →
     [JobId] →
     JobAnalyzer [Record]
 analyzeExplicitDependenciesAndRebuildIfNecessary
@@ -171,7 +179,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
         $
         product_digests
  where
-    dependency_digests_field = field "source digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
+    dependency_digests_field = field "depedency digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
 -- @-node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2045:checkForChangesIn
 checkForChangesIn ::
@@ -197,44 +205,28 @@ checkForChangesInMiscellaneousInformation =
   where
     miscellaneous_information_field = field "miscellaneous information" "b77f1940-ac94-4a22-980f-e0f52c26af28"
 -- @-node:gcross.20100705185804.2041:checkForChangesInMiscellaneousInformation
--- @+node:gcross.20100705185804.2039:fetchAllDeferredDependenciesAndRebuildIfNecessary
-fetchAllDeferredDependenciesAndRebuildIfNecessary ::
-    (Typeable a, Binary a, Eq a) ⇒
-    ([Dependency] → [(Dependency,Maybe JobId)]) →
-    ([MD5Digest] → ToolJobTask Bool) →
-    ([Dependency] → ToolJobTask [MD5Digest]) →
-    a →
-    [Dependency] →
+-- @+node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
+compareToCacheAndRebuildIfNecessary ::
+    (Typeable α, Binary α, Eq α) ⇒
+    JobTask JobId Record [MD5Digest] →
+    ([MD5Digest] → JobTask JobId Record Bool) →
+    α →
     JobAnalyzer [Record]
-fetchAllDeferredDependenciesAndRebuildIfNecessary
-    lookupDependencyJobIds
-    checkIfProductsMatch
+compareToCacheAndRebuildIfNecessary
     builder
-    miscellaneous_information
-    starting_dependencies
-  = do
-    -- Scan recursively for all dependencies and their digests
-    dependencies_and_digests ←
-        lift
-        .
-        fetchAllDeferredDependencies lookupDependencyJobIds
-        $
-        starting_dependencies
-    dependencies_have_changed ←
-        checkForChangesIn
-            dependencies_and_digests_field
-            dependencies_and_digests
-
+    checkIfProductsMatch
+    cached_information
+ = do
     -- Check whether the miscellaneous information has changed
-    miscellaneous_information_has_changed ←
-        checkForChangesInMiscellaneousInformation miscellaneous_information
+    cached_information_has_changed ←
+        checkForChangesInMiscellaneousInformation cached_information
 
     -- Rebuild the product if necessary
     product_digests ←
         rebuildProductsIfNecessary
-            (builder . Map.keys $ dependencies_and_digests)
+            builder
             checkIfProductsMatch
-            (dependencies_have_changed || miscellaneous_information_has_changed)
+            cached_information_has_changed
 
     -- Return the results
     return
@@ -247,10 +239,7 @@ fetchAllDeferredDependenciesAndRebuildIfNecessary
         )
         $
         product_digests
-  where
-    dependencies_and_digests_field = field "dependencies and digests" "e5fef247-53b8-47e8-9a01-ab1bec67a599"
--- @nonl
--- @-node:gcross.20100705185804.2039:fetchAllDeferredDependenciesAndRebuildIfNecessary
+-- @-node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2044:fetchDigestsAndCheckForChanges
 fetchDigestsAndCheckForChanges ::
     Field [MD5Digest] →
@@ -328,10 +317,7 @@ rerunTaskAndCacheResultOnlyIf field action True = do
     return result
 -- @-node:gcross.20100705185804.2047:rerunTaskAndCacheResultOnlyIf
 -- @+node:gcross.20100705185804.2048:runJobAnalyzer
-runJobAnalyzer ::
-    JobAnalyzer [Record] →
-    ToolJobRunner
-runJobAnalyzer analyzer = JobRunnerWithCache $ \maybe_cache → do
+runJobAnalyzer analyzer maybe_cache = do
     (results,(),cache) ← runRWST analyzer (fromMaybe emptyTable maybe_cache) ()
     returnValuesAndCache results cache
 -- @-node:gcross.20100705185804.2048:runJobAnalyzer
