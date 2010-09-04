@@ -203,10 +203,12 @@ test_dependency_4 =
     }
 -- @-node:gcross.20100628115452.1835:Test dependencies
 -- @+node:gcross.20100628115452.1891:Test identifiers
-test_identifier, test_identifier_1, test_identifier_2 :: Identifier ()
 test_identifier = identifier "1fa9d5fa-0b71-4e59-9534-6c7d2c146717" "test identifier"
 test_identifier_1 = identifier "4b33b60f-09c1-416e-a421-d048aca91699" "test identifier 1"
 test_identifier_2 = identifier "d3e9ab2c-1430-466e-a451-906f98031c22" "test identifier 2"
+test_identifier_3 = identifier "fc0a9f7c-b2b6-4baa-b399-c608dc6bc41f" "test identifier 3"
+test_identifier_4 = identifier "09693966-f6b8-4aa1-938f-5a4897b7b5a6" "test identifier 4"
+test_identifier_5 = identifier "87eadc97-8580-4b01-87b4-e707eb10a51f" "test identifier 5"
 -- @-node:gcross.20100628115452.1891:Test identifiers
 -- @-node:gcross.20100602152546.1874:Values
 -- @+node:gcross.20100609163522.1717:Types
@@ -1050,7 +1052,7 @@ main = defaultMain
                         "Is the output set correct?"
                         Map.empty
                         .
-                        findConflicts Set.empty (const "") Set.singleton
+                        findConflicts Set.empty (const mempty) Set.singleton
                         $
                         [()]
                 -- @-node:gcross.20100603132252.1296:singleton list
@@ -1058,12 +1060,12 @@ main = defaultMain
                 ,testCase "2-element list with conflicts" $
                     assertEqual
                         "Is the output set correct?"
-                        (Map.singleton () (Set.fromList ["A","B"]))
+                        (Map.singleton () (Set.fromList [test_identifier_1,test_identifier_2]))
                         .
                         findConflicts Set.empty fst (Set.singleton . snd)
                         $
-                        [("A",())
-                        ,("B",())
+                        [(test_identifier_1,())
+                        ,(test_identifier_2,())
                         ]
                 -- @-node:gcross.20100603132252.1298:2-element list with conflicts
                 -- @+node:gcross.20100603132252.1299:list with simple resolved conflicts
@@ -1074,9 +1076,9 @@ main = defaultMain
                         .
                         findConflicts (Set.singleton ()) fst (Set.singleton . snd)
                         $
-                        [("A",())
-                        ,("B",())
-                        ,("C",())
+                        [(test_identifier_1,())
+                        ,(test_identifier_2,())
+                        ,(test_identifier_3,())
                         ]
                 -- @-node:gcross.20100603132252.1299:list with simple resolved conflicts
                 -- @-others
@@ -1093,9 +1095,9 @@ main = defaultMain
                         .
                         findConflicts Set.empty fst (Set.fromList . snd)
                         $
-                        [("A",[1,2])
-                        ,("B",[3,4])
-                        ,("C",[5,6,7,8])
+                        [(test_identifier_1,[1,2])
+                        ,(test_identifier_2,[3,4])
+                        ,(test_identifier_3,[5,6,7,8])
                         ]
                 -- @-node:gcross.20100603132252.1309:list with no conflicts
                 -- @+node:gcross.20100603132252.1310:list with unresolved conflicts
@@ -1107,17 +1109,17 @@ main = defaultMain
                             .
                             map (second Set.fromList)
                             $
-                            [(2,["A","B","D"])
-                            ,(3,["B","D"])
+                            [(2,[test_identifier_1,test_identifier_2,test_identifier_4])
+                            ,(3,[test_identifier_2,test_identifier_4])
                             ]
                         )
                         .
                         findConflicts Set.empty fst (Set.fromList . snd)
                         $
-                        [("A",[1,2])
-                        ,("B",[2,3])
-                        ,("C",[5,6,7,8])
-                        ,("D",[2,3,4])
+                        [(test_identifier_1,[1,2])
+                        ,(test_identifier_2,[2,3])
+                        ,(test_identifier_3,[5,6,7,8])
+                        ,(test_identifier_4,[2,3,4])
                         ]
                 -- @-node:gcross.20100603132252.1310:list with unresolved conflicts
                 -- @+node:gcross.20100603132252.1312:list with some resolved conflicts
@@ -1129,17 +1131,17 @@ main = defaultMain
                             .
                             map (second Set.fromList)
                             $
-                            [(3,["B","D"])
+                            [(3,[test_identifier_2,test_identifier_4])
                             ]
                         )
                         .
                         findConflicts (Set.fromList [1,2]) fst (Set.fromList . snd)
                         $
-                        [("A",[1,2])
-                        ,("B",[2,3])
-                        ,("C",[5,6,7,8])
-                        ,("D",[2,3,4])
-                        ,("E",[1])
+                        [(test_identifier_1,[1,2])
+                        ,(test_identifier_2,[2,3])
+                        ,(test_identifier_3,[5,6,7,8])
+                        ,(test_identifier_4,[2,3,4])
+                        ,(test_identifier_5,[1])
                         ]
                 -- @-node:gcross.20100603132252.1312:list with some resolved conflicts
                 -- @-others
@@ -1174,7 +1176,7 @@ main = defaultMain
                         "Is the output set correct?"
                         []
                         .
-                        filterConflictsAndConvertToList "A" (Map.singleton () "B")
+                        filterConflictsAndConvertToList test_identifier_1 (Map.singleton () test_identifier_2)
                         $
                         Set.singleton ()
                 -- @-node:gcross.20100603132252.1321:singleton set with conflict
@@ -1184,7 +1186,7 @@ main = defaultMain
                         "Is the output set correct?"
                         [()]
                         .
-                        filterConflictsAndConvertToList "A" (Map.singleton () "A")
+                        filterConflictsAndConvertToList test_identifier_1 (Map.singleton () test_identifier_1)
                         $
                         Set.singleton ()
                 -- @-node:gcross.20100603132252.1323:singleton set with resolved conflict
@@ -1212,13 +1214,13 @@ main = defaultMain
                         "Is the output set correct?"
                         [1,2,4,6,7,8,10]
                         .
-                        filterConflictsAndConvertToList "A"
+                        filterConflictsAndConvertToList test_identifier_1
                             (Map.fromList
-                                [(1,"A")
-                                ,(3,"B")
-                                ,(5,"C")
-                                ,(8,"A")
-                                ,(9,"D")
+                                [(1,test_identifier_1)
+                                ,(3,test_identifier_2)
+                                ,(5,test_identifier_3)
+                                ,(8,test_identifier_1)
+                                ,(9,test_identifier_4)
                                 ]
                             )
                         .
@@ -1258,8 +1260,8 @@ main = defaultMain
             ,testCase "some non-conflicting options" $
                 let opts =
                         options $
-                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            [(test_identifier_1,"abc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"def",["long"],RequiredArgument "TYPE","Option 2")
                             ]
                 in assertEqual
                     "Is the computed specification correct?"
@@ -1273,27 +1275,26 @@ main = defaultMain
                         Map.empty
                         Map.empty
                         opts
-            -- @nonl
             -- @-node:gcross.20100603132252.1344:some non-conflicting options
             -- @+node:gcross.20100603132252.1346:some options with resolved conflicts
             ,testCase "some options with resolved conflicts" $
                 let opts =
                         options
-                            [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
-                            ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                            [(test_identifier_1,"zabc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"zdef",["long-1"],RequiredArgument "TYPE","Option 2")
+                            ,(test_identifier_3,"zbcf",["long-2"],OptionalArgument "TYPE" "None","Option 3")
                             ]
                     short_form_resolutions =
                         Map.fromList
-                            [('b',"A")
-                            ,('c',"C")
-                            ,('f',"B")
-                            ,('z',"A") -- '
+                            [('b',test_identifier_1)
+                            ,('c',test_identifier_3)
+                            ,('f',test_identifier_2)
+                            ,('z',test_identifier_1) -- '
                             ]
                     long_form_resolutions =
                         Map.fromList
-                            [("long-1","B")
-                            ,("long-2","C")
+                            [("long-1",test_identifier_2)
+                            ,("long-2",test_identifier_3)
                             ]
                 in assertEqual
                     "Is the computed specification correct?"
@@ -1307,34 +1308,33 @@ main = defaultMain
                         short_form_resolutions
                         long_form_resolutions
                         opts
-            -- @nonl
             -- @-node:gcross.20100603132252.1346:some options with resolved conflicts
             -- @+node:gcross.20100603132252.1348:some options with unresolved conflicts
             ,testCase "some options with unresolved conflicts" $
                 let opts =
                         options
-                            [("A","zabc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","zdef",["long-1"],"",RequiredArgument "TYPE","Option B")
-                            ,("C","zbcf",["long-2"],"",OptionalArgument "TYPE" "None","Option C")
+                            [(test_identifier_1,"zabc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"zdef",["long-1"],RequiredArgument "TYPE","Option 2")
+                            ,(test_identifier_3,"zbcf",["long-2"],OptionalArgument "TYPE" "None","Option 3")
                             ]
                     short_form_resolutions =
                         Map.fromList
-                            [('b',"A")
-                            ,('c',"C") -- '
+                            [('b',test_identifier_1)
+                            ,('c',test_identifier_3) -- '
                             ]
                     long_form_resolutions =
                         Map.fromList
-                            [("long-1","B")
+                            [("long-1",test_identifier_2)
                             ]
                 in assertThrows
                     (ConflictingOptionFormsException
                         (Map.fromList
-                            [('z',Set.fromList ["A","B","C"])
-                            ,('f',Set.fromList ["B","C"]) -- '
+                            [('z',Set.fromList [test_identifier_1,test_identifier_2,test_identifier_3])
+                            ,('f',Set.fromList [test_identifier_2,test_identifier_3]) -- '
                             ]
                         )
                         (Map.fromList
-                            [("long-2",Set.fromList ["A","C"])
+                            [("long-2",Set.fromList [test_identifier_1,test_identifier_3])
                             ]
                         )
                     )
@@ -1375,8 +1375,8 @@ main = defaultMain
                     "Were the options parsed correctly?"
                     (Right
                         (Map.fromList $
-                            [("A","1")
-                            ,("B","2")
+                            [(test_identifier_1,"1")
+                            ,(test_identifier_2,"2")
                             ]
                         ,["foo","bar"]
                         )
@@ -1387,8 +1387,8 @@ main = defaultMain
                         Map.empty
                         Map.empty
                         (options
-                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                            [(test_identifier_1,"abc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"def",["long"],RequiredArgument "TYPE","Option 2")
                             ]
                         )
                     )
@@ -1400,9 +1400,8 @@ main = defaultMain
                     "Were the options parsed correctly?"
                     (Right
                         (Map.fromList $
-                            [("A","1")
-                            ,("B","")
-                            ,("C","1")
+                            [(test_identifier_1,"1")
+                            ,(test_identifier_3,"1")
                             ]
                         ,["foo","bar"]
                         )
@@ -1411,20 +1410,20 @@ main = defaultMain
                 processOptions
                     (createOptionSpecificationWithResolvedConflicts
                         (Map.fromList
-                            [('d',"C") -- '
+                            [('d',test_identifier_3) -- '
                             ]
                         )
                         Map.empty
                         (options
-                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                            ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                            [(test_identifier_1,"abc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"def",["long"],RequiredArgument "TYPE","Option 2")
+                            ,(test_identifier_3,"dg",[],OptionalArgument "TYPE" "1","Option 3")
                             ]
                         )
                     )
                     ["foo","-a","bar","-d"]
             -- @-node:gcross.20100604110000.1360:test case #2
-            -- @+node:gcross.20100604110000.1362:test case #2
+            -- @+node:gcross.20100604110000.1362:test case #3
             ,testCase "test case #3" $
                 assertEqual
                     "Were the options parsed correctly?"
@@ -1435,19 +1434,19 @@ main = defaultMain
                 processOptions
                     (createOptionSpecificationWithResolvedConflicts
                         (Map.fromList
-                            [('d',"C") -- '
+                            [('d',test_identifier_3) -- '
                             ]
                         )
                         Map.empty
                         (options
-                            [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                            ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
-                            ,("C","dg",[],"0",OptionalArgument "TYPE" "1","Option B")
+                            [(test_identifier_1,"abc",["long-1","long-2"],NoArgument "1","Option 1")
+                            ,(test_identifier_2,"def",["long"],RequiredArgument "TYPE","Option 2")
+                            ,(test_identifier_3,"dg",[],OptionalArgument "TYPE" "1","Option 3")
                             ]
                         )
                     )
                     ["-q","--long"]
-            -- @-node:gcross.20100604110000.1362:test case #2
+            -- @-node:gcross.20100604110000.1362:test case #3
             -- @-others
             ]
         -- @nonl
@@ -1457,29 +1456,27 @@ main = defaultMain
             assertEqual
                 "Is the options map correct?"
                 (Map.fromList
-                    [("A"
+                    [(test_identifier_1
                      ,Option
                         (Set.fromList "abc")
                         (Set.fromList ["long-1","long-2"])
-                        "0"
                         (NoArgument "1")
-                        "Option A"
+                        "Option 1"
                      )
-                    ,("B"
+                    ,(test_identifier_2
                      ,Option
                         (Set.fromList "def")
                         (Set.fromList ["long"])
-                        ""
                         (RequiredArgument "TYPE")
-                        "Option B"
+                        "Option 2"
                      )
                     ]
                 )
                 .
                 options
                 $
-                [("A","abc",["long-1","long-2"],"0",NoArgument "1","Option A")
-                ,("B","def",["long"],"",RequiredArgument "TYPE","Option B")
+                [(test_identifier_1,"abc",["long-1","long-2"],NoArgument "1","Option 1")
+                ,(test_identifier_2,"def",["long"],RequiredArgument "TYPE","Option 2")
                 ]
         -- @-node:gcross.20100603132252.1338:options
         -- @-others

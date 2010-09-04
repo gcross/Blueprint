@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100602152546.1277:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -28,6 +29,8 @@ import qualified Data.Set as Set
 import Data.Typeable
 
 import qualified System.Console.GetOpt as GetOpt
+
+import Blueprint.Identifier
 -- @-node:gcross.20100602152546.1270:<< Import needed modules >>
 -- @nl
 
@@ -36,20 +39,23 @@ import qualified System.Console.GetOpt as GetOpt
 -- @+node:gcross.20100602195250.1301:ConflictingOptionFormsException
 data ConflictingOptionFormsException =
     ConflictingOptionFormsException 
-    {   conflictingShortForms :: Map Char (Set String)
-    ,   conflictingLongForms :: Map String (Set String)
+    {   conflictingShortForms :: Map Char (Set OptionId)
+    ,   conflictingLongForms :: Map String (Set OptionId)
     } deriving (Eq,Show,Typeable)
 
 instance Exception ConflictingOptionFormsException
 -- @-node:gcross.20100602195250.1301:ConflictingOptionFormsException
 -- @-node:gcross.20100602195250.1300:Exceptions
 -- @+node:gcross.20100602141408.1274:Types
+-- @+node:gcross.20100903190909.1950:OptionId
+data OfOption
+type OptionId = Identifier OfOption
+-- @-node:gcross.20100903190909.1950:OptionId
 -- @+node:gcross.20100602141408.1275:Option
 data Option =
     Option
     {   optionShortForms :: Set Char
     ,   optionLongForms :: Set String
-    ,   optionDefaultValue :: String
     ,   optionArgumentType :: OptionArgumentType
     ,   optionDescription :: String
     } deriving (Eq,Show)
@@ -67,18 +73,18 @@ data OptionArgumentType =
 -- @+node:gcross.20100602152546.1274:OptionSpecification
 data OptionSpecification =
     OptionSpecification
-    {   optionSpecificationResolvedShortForms :: Map Char String
-    ,   optionSpecificationResolvedLongForms :: Map String String
-    ,   optionSpecificationOptions :: Map String Option
+    {   optionSpecificationResolvedShortForms :: Map Char OptionId
+    ,   optionSpecificationResolvedLongForms :: Map String OptionId
+    ,   optionSpecificationOptions :: Map OptionId Option
     } deriving (Eq,Show)
 -- @-node:gcross.20100602152546.1274:OptionSpecification
 -- @+node:gcross.20100602152546.1279:OptionValues
-type OptionValues = Map String String
+type OptionValues = Map OptionId String
 -- @-node:gcross.20100602152546.1279:OptionValues
 -- @-node:gcross.20100602141408.1274:Types
 -- @+node:gcross.20100602152546.1268:Functions
 -- @+node:gcross.20100603132252.2071:processOptions
-processOptions :: OptionSpecification → [String] → Either [String] (Map String String,[String])
+processOptions :: OptionSpecification → [String] → Either [String] (OptionValues,[String])
 processOptions option_specification arguments =
     if null error_messages
         then Right (option_values,non_matching_arguments)
@@ -90,13 +96,10 @@ processOptions option_specification arguments =
             (computeGetOptDescriptors option_specification)
             arguments
 
-    option_values =
-        Map.union
-            (Map.fromList key_value_updates)
-            (defaultOptionValues option_specification)
+    option_values = Map.fromList key_value_updates
 -- @-node:gcross.20100603132252.2071:processOptions
 -- @+node:gcross.20100602152546.1269:computeGetOptDescriptors
-computeGetOptDescriptors :: OptionSpecification → [GetOpt.OptDescr (String,String)]
+computeGetOptDescriptors :: OptionSpecification → [GetOpt.OptDescr (OptionId,String)]
 computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_resolutions options) =
     map (uncurry makeDescriptor)
     .
@@ -127,9 +130,9 @@ createOptionSpecification = createOptionSpecificationWithResolvedConflicts Map.e
 -- @-node:gcross.20100602152546.1876:createOptionSpecification
 -- @+node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
 createOptionSpecificationWithResolvedConflicts ::
-    Map Char String →
-    Map String String →
-    Map String Option →
+    Map Char OptionId →
+    Map String OptionId →
+    Map OptionId Option →
     OptionSpecification
 createOptionSpecificationWithResolvedConflicts
     short_form_conflict_resolutions
@@ -167,7 +170,7 @@ createOptionSpecificationWithResolvedConflicts
 -- @nonl
 -- @-node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
 -- @+node:gcross.20100602152546.1882:findConflicts
-findConflicts :: Ord a => Set a → (b → String) → (b → Set a) → [b] → Map a (Set String)
+findConflicts :: Ord a => Set a → (b → OptionId) → (b → Set a) → [b] → Map a (Set OptionId)
 findConflicts values_to_ignore getName getValues =
     Map.filter ((> 1) . Set.size)
     .
@@ -196,7 +199,7 @@ findConflicts values_to_ignore getName getValues =
 -- @nonl
 -- @-node:gcross.20100602152546.1882:findConflicts
 -- @+node:gcross.20100602195250.1296:filterConflictsAndConvertToList
-filterConflictsAndConvertToList :: Ord a => String → Map a String → Set a → [a]
+filterConflictsAndConvertToList :: Ord a => OptionId → Map a OptionId → Set a → [a]
 filterConflictsAndConvertToList key conflict_resolutions =
     filter (
         maybe True (== key)
@@ -207,27 +210,21 @@ filterConflictsAndConvertToList key conflict_resolutions =
     Set.toList
 -- @-node:gcross.20100602195250.1296:filterConflictsAndConvertToList
 -- @+node:gcross.20100603132252.1336:options
-options :: [(String,[Char],[String],String,OptionArgumentType,String)] → Map String Option
+options :: [(OptionId,[Char],[String],OptionArgumentType,String)] → Map OptionId Option
 options =
     Map.fromList
     .
     map (
-        \(key,short_forms,long_forms,default_value,argument_type,description) →
+        \(key,short_forms,long_forms,argument_type,description) →
             (key
             ,Option
                 (Set.fromList short_forms)
                 (Set.fromList long_forms)
-                default_value
                 argument_type
                 description
             )
     )
--- @nonl
 -- @-node:gcross.20100603132252.1336:options
--- @+node:gcross.20100603184437.1357:defaultOptionValues
-defaultOptionValues = Map.map optionDefaultValue . optionSpecificationOptions
-
--- @-node:gcross.20100603184437.1357:defaultOptionValues
 -- @-node:gcross.20100602152546.1268:Functions
 -- @-others
 -- @-node:gcross.20100602141408.1273:@thin Options.hs
