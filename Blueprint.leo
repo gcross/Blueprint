@@ -12,9 +12,6 @@
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
 <v t="gcross.20100901145855.2072"><vh>@thin Blueprint.cabal</vh></v>
 <v t="gcross.20100709210816.2097"><vh>@thin build-test.hs</vh></v>
-<v t="gcross.20100624100717.1779"><vh>@path Control/Monad/Trans</vh>
-<v t="gcross.20100630111926.1935"><vh>@thin Abort.hs</vh></v>
-</v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
 <v t="gcross.20100830091258.2021"><vh>@path Configuration</vh>
 <v t="gcross.20100830091258.2004"><vh>@thin Tools.hs</vh></v>
@@ -87,7 +84,6 @@ module Blueprint.Module where
 <t tx="gcross.20100611224425.1696"></t>
 <t tx="gcross.20100614121927.1735"></t>
 <t tx="gcross.20100616175443.1685"></t>
-<t tx="gcross.20100624100717.1779"></t>
 <t tx="gcross.20100624100717.2080"></t>
 <t tx="gcross.20100830091258.2021"></t>
 <t tx="gcross.20100831211145.2022"></t>
