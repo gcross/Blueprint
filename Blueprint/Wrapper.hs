@@ -22,7 +22,8 @@ import Data.Typeable
 
 import Blueprint.Fields.Dynamic
 
-import Data.Record
+import Blueprint.Record
+-- @nonl
 -- @-node:gcross.20100902094127.2078:<< Import needed modules >>
 -- @nl
 

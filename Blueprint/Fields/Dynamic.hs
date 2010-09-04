@@ -13,7 +13,8 @@ module Blueprint.Fields.Dynamic where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100902094127.2088:<< Import needed modules >>
 import Data.Dynamic
-import Data.Record
+import Blueprint.Record
+-- @nonl
 -- @-node:gcross.20100902094127.2088:<< Import needed modules >>
 -- @nl
 

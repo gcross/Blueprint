@@ -68,9 +68,8 @@ import System.IO
 import System.Random
 
 import Control.Monad.Trans.Abort
-import Control.Monad.Trans.Goto
 
-import Data.Record
+import Blueprint.Record
 
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
@@ -236,8 +235,8 @@ main = defaultMain
     -- @    << Tests >>
     -- @+node:gcross.20100602152546.1870:<< Tests >>
     -- @+others
-    -- @+node:gcross.20100609163522.1702:Data.Record
-    [testGroup "Data.Record" $
+    -- @+node:gcross.20100609163522.1702:Blueprint.Record
+    [testGroup "Blueprint.Record" $
         let 
             makeTests name emptyRecord toEntity_ =
                 testGroup name
@@ -444,7 +443,7 @@ main = defaultMain
                             record
             ]
     -- @nonl
-    -- @-node:gcross.20100609163522.1702:Data.Record
+    -- @-node:gcross.20100609163522.1702:Blueprint.Record
     -- @+node:gcross.20100604204549.7679:Blueprint.IOTask
     ,testGroup "Blueprint.IOTask"
         -- @    @+others
@@ -1537,7 +1536,7 @@ main = defaultMain
                 -- @    @+others
                 -- @+node:gcross.20100630111926.1988:without Abort
                 [testProperty "without Abort" $
-                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> return x) == x+y
+                    \(x :: Int) (y :: Int) → runAbort (return (+y) <*> return x) == x+y
                 -- @nonl
                 -- @-node:gcross.20100630111926.1988:without Abort
                 -- @+node:gcross.20100630111926.1989:with Abort
@@ -1634,161 +1633,6 @@ main = defaultMain
         ]
     -- @nonl
     -- @-node:gcross.20100630111926.1978:Control.Monad.Trans.Abort
-    -- @+node:gcross.20100624100717.1917:Control.Monad.Trans.Goto
-    ,testGroup "Control.Monad.Trans.Goto"
-        -- @    @+others
-        -- @+node:gcross.20100624100717.1918:Functor
-        [testGroup "Functor"
-            -- @    @+others
-            -- @+node:gcross.20100624100717.1919:Identity
-            [testGroup "Identity"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1920:without goto
-                [testProperty "without goto" $
-                    \(x :: Int) (y :: Int) → (== x+y) . runGoto . fmap (+y) . return $ x
-                -- @-node:gcross.20100624100717.1920:without goto
-                -- @+node:gcross.20100624100717.1922:with goto
-                ,testProperty "with goto" $
-                    \(x :: Int) (y :: Int) → (== x) . runGoto . fmap (+y) . goto . return $ x
-                -- @-node:gcross.20100624100717.1922:with goto
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1919:Identity
-            -- @+node:gcross.20100624100717.1926:Maybe
-            ,testGroup "Maybe"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1927:without goto
-                [testProperty "without goto" $
-                    \(x :: Int) (y :: Int) → (== Just (x+y)) . runGotoT . fmap (+y) . lift . Just $ x
-                -- @-node:gcross.20100624100717.1927:without goto
-                -- @+node:gcross.20100624100717.1928:with goto
-                ,testProperty "with goto" $
-                    \(x :: Int) (y :: Int) → (== Just x) . runGotoT . fmap (+y) . goto . lift . Just $ x
-                -- @-node:gcross.20100624100717.1928:with goto
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1926:Maybe
-            -- @-others
-            ]
-        -- @-node:gcross.20100624100717.1918:Functor
-        -- @+node:gcross.20100624100717.1936:Applicative
-        ,testGroup "Applicative"
-            -- @    @+others
-            -- @+node:gcross.20100624100717.1937:Identity
-            [testGroup "Identity"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1938:without goto
-                [testProperty "without goto" $
-                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> return x) == x+y
-                -- @-node:gcross.20100624100717.1938:without goto
-                -- @+node:gcross.20100624100717.1939:with goto
-                ,testProperty "with goto" $
-                    \(x :: Int) (y :: Int) → runGoto (return (+y) <*> goto (return x)) == x
-                -- @-node:gcross.20100624100717.1939:with goto
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1937:Identity
-            -- @+node:gcross.20100624100717.1943:Maybe
-            ,testGroup "Maybe"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1940:Just
-                [testGroup "Just"
-                    -- @    @+others
-                    -- @+node:gcross.20100624100717.1941:without goto
-                    [testProperty "without goto" $
-                        \(x :: Int) (y :: Int) → runGotoT (lift (Just (+y)) <*> lift (Just x)) == Just (x+y)
-                    -- @-node:gcross.20100624100717.1941:without goto
-                    -- @+node:gcross.20100624100717.1942:with goto
-                    ,testProperty "with goto" $
-                        \(x :: Int) (y :: Int) → runGotoT (lift (Just (+y)) <*> goto (lift (Just x))) == Just x
-                    -- @-node:gcross.20100624100717.1942:with goto
-                    -- @-others
-                    ]
-                -- @-node:gcross.20100624100717.1940:Just
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1943:Maybe
-            -- @-others
-            ]
-        -- @-node:gcross.20100624100717.1936:Applicative
-        -- @+node:gcross.20100624100717.1970:Monad
-        ,testGroup "Monad"
-            -- @    @+others
-            -- @+node:gcross.20100624100717.1981:Maybe
-            [testGroup "Maybe"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1982:Just
-                [testGroup "Just"
-                    -- @    @+others
-                    -- @+node:gcross.20100624100717.1983:without goto
-                    [testProperty "without goto" $
-                        \(x :: Int) (y :: Int) → (== Just (x+y)) . runGotoT $ do
-                            a ← lift (Just x)
-                            b ← lift (Just y)
-                            return (a+b)
-                    -- @-node:gcross.20100624100717.1983:without goto
-                    -- @+node:gcross.20100624100717.1984:with goto
-                    ,testProperty "with goto" $
-                        \(x :: Int) (y :: Int) → (== Just x) . runGotoT $ do
-                            a ← lift (Just x)
-                            goto $ return a
-                            b ← lift (Just y)
-                            return (a+b)
-                    -- @nonl
-                    -- @-node:gcross.20100624100717.1984:with goto
-                    -- @-others
-                    ]
-                -- @-node:gcross.20100624100717.1982:Just
-                -- @+node:gcross.20100624100717.1988:Nothing
-                ,testGroup "Nothing"
-                    -- @    @+others
-                    -- @+node:gcross.20100624100717.1989:without goto
-                    [testProperty "without goto" $
-                        \(x :: Int) (y :: Int) → (== Nothing) . runGotoT $ do
-                            a ← lift (Just x)
-                            b ← lift (Just y)
-                            lift Nothing
-                            return (a+b)
-                    -- @-node:gcross.20100624100717.1989:without goto
-                    -- @+node:gcross.20100624100717.1990:with goto
-                    ,testProperty "with goto" $
-                        \(x :: Int) (y :: Int) → (== Just x) . runGotoT $ do
-                            a ← lift (Just x)
-                            goto $ return a
-                            b ← lift (Just y)
-                            lift Nothing
-                            return (a+b)
-                    -- @nonl
-                    -- @-node:gcross.20100624100717.1990:with goto
-                    -- @-others
-                    ]
-                -- @-node:gcross.20100624100717.1988:Nothing
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1981:Maybe
-            -- @+node:gcross.20100624100717.1991:State
-            ,testGroup "State"
-                -- @    @+others
-                -- @+node:gcross.20100624100717.1992:without goto
-                [testProperty "without goto" $
-                    \(x :: Int) (y :: Int) → (== x+y) . flip execState x . runGotoT $ do
-                        lift (modify (+y))
-                -- @-node:gcross.20100624100717.1992:without goto
-                -- @+node:gcross.20100624100717.1994:with goto
-                ,testProperty "with goto" $
-                    \(x :: Int) (y :: Int) → (== x) . flip execState x . runGotoT $ do
-                        goto $ return ()
-                        lift (modify (+y))
-                -- @-node:gcross.20100624100717.1994:with goto
-                -- @-others
-                ]
-            -- @-node:gcross.20100624100717.1991:State
-            -- @-others
-            ]
-        -- @-node:gcross.20100624100717.1970:Monad
-        -- @-others
-        ]
-    -- @-node:gcross.20100624100717.1917:Control.Monad.Trans.Goto
     -- @+node:gcross.20100628115452.1875:Blueprint.Identifier
     ,testGroup "Blueprint.Identifier" $
         -- @    @+others

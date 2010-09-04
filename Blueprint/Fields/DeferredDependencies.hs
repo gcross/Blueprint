@@ -13,9 +13,10 @@ module Blueprint.Fields.DeferredDependencies where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.2124:<< Import needed modules >>
 import Data.Maybe
-import Data.Record
+import Blueprint.Record
 
 import Blueprint.Dependency
+-- @nonl
 -- @-node:gcross.20100624100717.2124:<< Import needed modules >>
 -- @nl
 

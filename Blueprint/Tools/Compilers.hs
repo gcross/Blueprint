@@ -20,7 +20,7 @@ import Control.Exception
 import Data.ByteString.Char8 (pack)
 import qualified Data.ByteString.Char8 as S
 import Data.Data
-import Data.Record
+import Blueprint.Record
 import Data.Typeable
 
 import System.Directory

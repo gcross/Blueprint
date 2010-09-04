@@ -19,7 +19,7 @@ import Control.Monad.Trans.List
 
 import qualified Data.Foldable as Fold
 import Data.List
-import Data.Record
+import Blueprint.Record
 import Data.Sequence (Seq,(><),(|>))
 import qualified Data.Sequence as Seq
 import Data.UUID
@@ -32,6 +32,7 @@ import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
+-- @nonl
 -- @-node:gcross.20100630111926.2025:<< Import needed modules >>
 -- @nl
 

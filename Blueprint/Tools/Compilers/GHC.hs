@@ -42,7 +42,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
-import Data.Record
+import Blueprint.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
@@ -81,6 +81,7 @@ import Blueprint.Miscellaneous
 import Blueprint.SourceFile
 import Blueprint.Tools
 import Blueprint.Tools.JobAnalyzer
+-- @nonl
 -- @-node:gcross.20100611224425.1612:<< Import needed modules >>
 -- @nl
 

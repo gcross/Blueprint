@@ -29,7 +29,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
-import Data.Record
+import Blueprint.Record
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
@@ -37,6 +37,7 @@ import Data.Typeable
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
+-- @nonl
 -- @-node:gcross.20100624100717.1715:<< Import needed modules >>
 -- @nl
 

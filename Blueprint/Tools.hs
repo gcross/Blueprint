@@ -25,7 +25,7 @@ import Data.Either
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Record
+import Blueprint.Record
 import Data.Typeable
 
 import System.Directory
@@ -41,6 +41,7 @@ import Blueprint.Identifier
 import Blueprint.Miscellaneous
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
+-- @nonl
 -- @-node:gcross.20100624100717.2134:<< Import needed modules >>
 -- @nl
 

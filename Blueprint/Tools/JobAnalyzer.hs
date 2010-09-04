@@ -26,7 +26,7 @@ import Data.Maybe
 import Data.Typeable
 import Data.Vec ((:.)(..))
 
-import Data.Record
+import Blueprint.Record
 
 import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies

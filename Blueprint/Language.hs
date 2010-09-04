@@ -15,7 +15,7 @@ module Blueprint.Language where
 -- @+node:gcross.20100611224425.1636:<< Import needed modules >>
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe
-import Data.Record
+import Blueprint.Record
 import Data.Typeable
 import Data.UUID (UUID)
 

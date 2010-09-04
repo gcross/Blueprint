@@ -20,12 +20,12 @@ import Data.ByteString.Lazy.Char8 (unpack)
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
-import Data.Record
 import Blueprint.Dependency
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Language
 import Blueprint.Language.Programming
+import Blueprint.Record
 import Blueprint.SourceFile
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
 -- @nl

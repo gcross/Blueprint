@@ -12,7 +12,8 @@ module Blueprint.Fields.FilePath where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.2091:<< Import needed modules >>
-import Data.Record
+import Blueprint.Record
+-- @nonl
 -- @-node:gcross.20100624100717.2091:<< Import needed modules >>
 -- @nl
 

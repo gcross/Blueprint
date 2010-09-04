@@ -51,7 +51,7 @@ main = do
             getAllSourceFilesAndPrependParentIn (Seq.singleton subdirectory) subdirectory
         )
         $
-        ["Blueprint","Control","Data"]
+        ["Blueprint","Control"]
     let haskell_sources = extractHaskellSources sources
         object_directory = "build" </> "program" </> "objects"
         interface_directory = "build" </> "program" </> "interfaces"

@@ -13,7 +13,8 @@ module Blueprint.Fields.Digest where
 -- @<< Import needed modules >>
 -- @+node:gcross.20100624100717.2030:<< Import needed modules >>
 import Data.Digest.Pure.MD5
-import Data.Record
+import Blueprint.Record
+-- @nonl
 -- @-node:gcross.20100624100717.2030:<< Import needed modules >>
 -- @nl
 
