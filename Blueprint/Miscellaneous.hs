@@ -97,6 +97,9 @@ digestFiles :: [FilePath] → IO [MD5Digest]
 digestFiles = mapM digestFile
 -- @nonl
 -- @-node:gcross.20100624100717.2079:digestFiles
+-- @+node:gcross.20100903200211.2254:doubleton
+doubleton x y = [x,y]
+-- @-node:gcross.20100903200211.2254:doubleton
 -- @+node:gcross.20100614121927.2357:echo
 echo x = trace (show x) x
 -- @-node:gcross.20100614121927.2357:echo
@@ -120,6 +123,10 @@ gather =
     .
     sortBy (compare `on` fst)
 -- @-node:gcross.20100902134026.2126:gather
+-- @+node:gcross.20100903200211.2251:intersectAndUnion
+intersectAndUnion :: Ord k => (a → b → b) → Map k a → Map k b → Map k b
+intersectAndUnion combine x y = Map.union (Map.intersectionWith combine x y) y
+-- @-node:gcross.20100903200211.2251:intersectAndUnion
 -- @+node:gcross.20100830091258.2041:invertMap
 invertMap :: Ord b => Map a b → Map b [a]
 invertMap =

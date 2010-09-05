@@ -1,231 +1,226 @@
 -- @+leo-ver=4-thin
--- @+node:gcross.20100602141408.1273:@thin Options.hs
+-- @+node:gcross.20100903200211.2235:@thin Options.hs
 -- @@language Haskell
 -- @<< Language extensions >>
--- @+node:gcross.20100602152546.1277:<< Language extensions >>
+-- @+node:gcross.20100903200211.2236:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100602152546.1277:<< Language extensions >>
+-- @-node:gcross.20100903200211.2236:<< Language extensions >>
 -- @nl
 
 module Blueprint.Options where
 
 -- @<< Import needed modules >>
--- @+node:gcross.20100602152546.1270:<< Import needed modules >>
+-- @+node:gcross.20100903200211.2237:<< Import needed modules >>
 import Control.Arrow
 import Control.Exception
+import Control.Monad
 
 import Data.Either
 import Data.Either.Unwrap
+import Data.Function
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.Monoid
 import Data.Typeable
 
-import qualified System.Console.GetOpt as GetOpt
+import System.Console.GetOpt
+import System.Environment
+import System.Exit
 
 import Blueprint.Identifier
--- @-node:gcross.20100602152546.1270:<< Import needed modules >>
+import Blueprint.Miscellaneous
+-- @-node:gcross.20100903200211.2237:<< Import needed modules >>
 -- @nl
 
 -- @+others
--- @+node:gcross.20100602195250.1300:Exceptions
--- @+node:gcross.20100602195250.1301:ConflictingOptionFormsException
-data ConflictingOptionFormsException =
-    ConflictingOptionFormsException 
-    {   conflictingShortForms :: Map Char (Set OptionId)
-    ,   conflictingLongForms :: Map String (Set OptionId)
-    } deriving (Eq,Show,Typeable)
+-- @+node:gcross.20100903200211.2257:Exceptions
+-- @+node:gcross.20100903200211.2258:OptionConflictsExceptions
+data ConflictingOptionsException = ConflictingOptionsException Conflicts deriving (Typeable,Show)
 
-instance Exception ConflictingOptionFormsException
--- @-node:gcross.20100602195250.1301:ConflictingOptionFormsException
--- @-node:gcross.20100602195250.1300:Exceptions
--- @+node:gcross.20100602141408.1274:Types
--- @+node:gcross.20100903190909.1950:OptionId
+instance Exception ConflictingOptionsException
+
+-- @-node:gcross.20100903200211.2258:OptionConflictsExceptions
+-- @-node:gcross.20100903200211.2257:Exceptions
+-- @+node:gcross.20100903200211.2238:Types
+-- @+node:gcross.20100903200211.2240:OptionId
 data OfOption
 type OptionId = Identifier OfOption
--- @-node:gcross.20100903190909.1950:OptionId
--- @+node:gcross.20100602141408.1275:Option
-data Option =
-    Option
-    {   optionShortForms :: Set Char
-    ,   optionLongForms :: Set String
-    ,   optionArgumentType :: OptionArgumentType
-    ,   optionDescription :: String
-    } deriving (Eq,Show)
--- @-node:gcross.20100602141408.1275:Option
--- @+node:gcross.20100602152546.1272:OptionArgumentType
-data OptionArgumentType =
-    NoArgument { optionValueIfPresent :: String }
-  | RequiredArgument { optionValueTypeDescription :: String }
-  | OptionalArgument
-    {   optionValueTypeDescription :: String
-    ,   optionValueIfPresentButNotSpecified :: String
+-- @-node:gcross.20100903200211.2240:OptionId
+-- @+node:gcross.20100903200211.2241:ArgumentType
+data ArgumentType =
+    NoArgument
+    {   argumentDefaultValue :: String
     }
-  deriving (Eq,Show)
--- @-node:gcross.20100602152546.1272:OptionArgumentType
--- @+node:gcross.20100602152546.1274:OptionSpecification
-data OptionSpecification =
-    OptionSpecification
-    {   optionSpecificationResolvedShortForms :: Map Char OptionId
-    ,   optionSpecificationResolvedLongForms :: Map String OptionId
-    ,   optionSpecificationOptions :: Map OptionId Option
+  | OptionalArgument
+    {   argumentDescription :: String
+    ,   argumentDefaultValue :: String
+    }
+  | RequiredArgument 
+    {   argumentDescription :: String
+    }
+  deriving Show
+-- @-node:gcross.20100903200211.2241:ArgumentType
+-- @+node:gcross.20100903200211.2243:Options
+data Options = Options
+    {   optionShortForms :: Map Char (OptionId,ArgumentType)
+    ,   optionLongForms :: Map String (OptionId,ArgumentType)
+    ,   optionConfigurationKeys :: Map String OptionId
+    ,   optionConflictResolutions :: Map OptionId ([String] → Either String String)
+    ,   optionDescriptions :: Map OptionId (String,String)
+    }
+-- @-node:gcross.20100903200211.2243:Options
+-- @+node:gcross.20100903200211.2248:Conflicts
+data Conflicts = Conflicts
+    {   conflictingShortForms :: Map Char [OptionId]
+    ,   conflictingLongForms :: Map String [OptionId]
+    ,   conflictingConfigurationKeys :: Map String [OptionId]
+    ,   conflictingConflictResolutions :: Map OptionId Int
+    ,   conflictingDescriptions :: Map OptionId [(String,String)]
     } deriving (Eq,Show)
--- @-node:gcross.20100602152546.1274:OptionSpecification
--- @+node:gcross.20100602152546.1279:OptionValues
-type OptionValues = Map OptionId String
--- @-node:gcross.20100602152546.1279:OptionValues
--- @-node:gcross.20100602141408.1274:Types
--- @+node:gcross.20100602152546.1268:Functions
--- @+node:gcross.20100603132252.2071:processOptions
-processOptions :: OptionSpecification → [String] → Either [String] (OptionValues,[String])
-processOptions option_specification arguments =
-    if null error_messages
-        then Right (option_values,non_matching_arguments)
-        else Left error_messages
-  where
-    (key_value_updates,non_matching_arguments,error_messages) =
-        GetOpt.getOpt
-            GetOpt.Permute
-            (computeGetOptDescriptors option_specification)
-            arguments
-
-    option_values = Map.fromList key_value_updates
--- @-node:gcross.20100603132252.2071:processOptions
--- @+node:gcross.20100602152546.1269:computeGetOptDescriptors
-computeGetOptDescriptors :: OptionSpecification → [GetOpt.OptDescr (OptionId,String)]
-computeGetOptDescriptors (OptionSpecification short_form_resolutions long_form_resolutions options) =
-    map (uncurry makeDescriptor)
-    .
-    Map.toList
-    $
-    options
-  where
-    makeDescriptor key (Option{optionShortForms,optionLongForms,optionArgumentType,optionDescription}) =
-        GetOpt.Option
-            (filterConflictsAndConvertToList key short_form_resolutions optionShortForms)
-            (filterConflictsAndConvertToList key long_form_resolutions optionLongForms)
-            (case optionArgumentType of
-                NoArgument value_if_present →
-                    GetOpt.NoArg (key,value_if_present)
-                RequiredArgument type_description →
-                    GetOpt.ReqArg
-                        ((,) key)
-                        type_description
-                OptionalArgument type_description value_if_present_but_not_specified →
-                    GetOpt.OptArg
-                        ((,) key . fromMaybe value_if_present_but_not_specified)
-                        type_description
-            )
-            optionDescription
--- @-node:gcross.20100602152546.1269:computeGetOptDescriptors
--- @+node:gcross.20100602152546.1876:createOptionSpecification
-createOptionSpecification = createOptionSpecificationWithResolvedConflicts Map.empty Map.empty
--- @-node:gcross.20100602152546.1876:createOptionSpecification
--- @+node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
-createOptionSpecificationWithResolvedConflicts ::
-    Map Char OptionId →
-    Map String OptionId →
-    Map OptionId Option →
-    OptionSpecification
-createOptionSpecificationWithResolvedConflicts
-    short_form_conflict_resolutions
-    long_form_conflict_resolutions
-    options
-    =
-    if Map.null conflicting_short_forms && Map.null conflicting_long_forms
-        then
-            OptionSpecification
-                short_form_conflict_resolutions
-                long_form_conflict_resolutions
-                options
-        else throw $
-            ConflictingOptionFormsException
-                conflicting_short_forms
-                conflicting_long_forms
- where
-    options_as_list = Map.toList options
-
-    conflicting_short_forms =
-        findConflicts
-            (Map.keysSet short_form_conflict_resolutions)
-            fst
-            (optionShortForms . snd)
-        $
-        options_as_list
-
-    conflicting_long_forms =
-        findConflicts
-            (Map.keysSet long_form_conflict_resolutions)
-            fst
-            (optionLongForms . snd)
-        $
-        options_as_list
--- @nonl
--- @-node:gcross.20100602152546.1273:createOptionSpecificationWithResolvedConflicts
--- @+node:gcross.20100602152546.1882:findConflicts
-findConflicts :: Ord a => Set a → (b → OptionId) → (b → Set a) → [b] → Map a (Set OptionId)
-findConflicts values_to_ignore getName getValues =
-    Map.filter ((> 1) . Set.size)
-    .
-    foldl' -- '
-        addFoundConflicts
-        Map.empty
-  where
-    addFoundConflicts conflicts x =
-        Set.fold
-            (\value conflicts →
-                (\new_set → Map.insert value new_set conflicts)
-                .
-                Set.insert name
-                .
-                fromMaybe Set.empty
-                .
-                Map.lookup value
-                $
-                conflicts
-            )
-            conflicts
-            $
-            getValues x `Set.difference` values_to_ignore
+-- @-node:gcross.20100903200211.2248:Conflicts
+-- @-node:gcross.20100903200211.2238:Types
+-- @+node:gcross.20100903200211.2246:Instances
+-- @+node:gcross.20100903200211.2250:Monoid Conflicts
+instance Monoid Conflicts where
+    mempty = Conflicts Map.empty Map.empty Map.empty Map.empty Map.empty
+    c1 `mappend` c2 =
+        Conflicts
+        {   conflictingShortForms = (Map.unionWith (++) `on` conflictingShortForms) c1 c2
+        ,   conflictingLongForms = (Map.unionWith (++) `on` conflictingLongForms) c1 c2
+        ,   conflictingConfigurationKeys = (Map.unionWith (++) `on` conflictingConfigurationKeys) c1 c2
+        ,   conflictingConflictResolutions = (Map.unionWith (+) `on` conflictingConflictResolutions) c1 c2
+        ,   conflictingDescriptions = (Map.unionWith (++) `on` conflictingDescriptions) c1 c2
+        }
+-- @-node:gcross.20100903200211.2250:Monoid Conflicts
+-- @+node:gcross.20100903200211.2253:Monoid Options
+instance Monoid Options where
+    mempty = Options Map.empty Map.empty Map.empty Map.empty Map.empty
+    o1 `mappend` o2 =
+        Options
+        {   optionShortForms = (Map.union `on` optionShortForms) o1 o2
+        ,   optionLongForms = (Map.union `on` optionLongForms) o1 o2
+        ,   optionConfigurationKeys = (Map.union `on` optionConfigurationKeys) o1 o2
+        ,   optionConflictResolutions = (Map.union `on` optionConflictResolutions) o1 o2
+        ,   optionDescriptions = (Map.union `on` optionDescriptions) o1 o2
+        }
+-- @-node:gcross.20100903200211.2253:Monoid Options
+-- @+node:gcross.20100903200211.2249:Monoid (Either Conflicts Options)
+instance Monoid (Either Conflicts Options) where
+    mempty = Right mempty
+    Left x `mappend` Left y = Left (x `mappend` y)
+    x@(Right _) `mappend` y@(Left _) = y `mappend` x
+    Left Conflicts{..} `mappend` Right Options{..} =
+        Left $ Conflicts
+        {   conflictingShortForms =
+                intersectAndUnion ((:) . fst)
+                    optionShortForms
+                    conflictingShortForms
+        ,   conflictingLongForms =
+                intersectAndUnion ((:) . fst)
+                    optionLongForms
+                    conflictingLongForms
+        ,   conflictingConfigurationKeys =
+                intersectAndUnion (:)
+                    optionConfigurationKeys
+                    conflictingConfigurationKeys
+        ,   conflictingConflictResolutions =
+                intersectAndUnion (const (+1))
+                    optionConflictResolutions
+                    conflictingConflictResolutions
+        ,   conflictingDescriptions =
+                intersectAndUnion (:)
+                    optionDescriptions
+                    conflictingDescriptions
+        }
+    Right o1 `mappend` Right o2
+      | conflicts == mempty = Left conflicts
+      | otherwise           = Right (o1 `mappend` o2)
       where
-        name = getName x
--- @nonl
--- @-node:gcross.20100602152546.1882:findConflicts
--- @+node:gcross.20100602195250.1296:filterConflictsAndConvertToList
-filterConflictsAndConvertToList :: Ord a => OptionId → Map a OptionId → Set a → [a]
-filterConflictsAndConvertToList key conflict_resolutions =
-    filter (
-        maybe True (== key)
+        conflicts =
+            Conflicts
+            {   conflictingShortForms =
+                    (Map.intersectionWith (doubleton `on` fst) `on` optionShortForms) o1 o2
+            ,   conflictingLongForms =
+                    (Map.intersectionWith (doubleton `on` fst) `on` optionLongForms) o1 o2
+            ,   conflictingConfigurationKeys =
+                    (Map.intersectionWith doubleton `on` optionConfigurationKeys) o1 o2
+            ,   conflictingConflictResolutions =
+                    (Map.intersectionWith (\_ _ → 2) `on` optionConflictResolutions) o1 o2
+            ,   conflictingDescriptions =
+                    (Map.intersectionWith doubleton `on` optionDescriptions) o1 o2
+            }
+-- @-node:gcross.20100903200211.2249:Monoid (Either Conflicts Options)
+-- @-node:gcross.20100903200211.2246:Instances
+-- @+node:gcross.20100903200211.2255:Functions
+-- @+node:gcross.20100903200211.2256:extractOptionsOrError
+extractOptionsOrError :: Either Conflicts Options → Options
+extractOptionsOrError = either (throw . ConflictingOptionsException) id
+-- @-node:gcross.20100903200211.2256:extractOptionsOrError
+-- @+node:gcross.20100903200211.2259:parseCommandLineOptions
+parseCommandLineOptions :: Options → [String] → Either [String] ([String],Map OptionId String)
+parseCommandLineOptions Options{..} arguments =
+    case error_messages of
+        [] → Right (leftovers,options)
+        _ → Left error_messages
+  where
+    (error_messages,options) =
+        ((++parsing_error_messages) *** Map.fromList)
         .
-        flip Map.lookup conflict_resolutions
-    )
-    .
-    Set.toList
--- @-node:gcross.20100602195250.1296:filterConflictsAndConvertToList
--- @+node:gcross.20100603132252.1336:options
-options :: [(OptionId,[Char],[String],OptionArgumentType,String)] → Map OptionId Option
-options =
-    Map.fromList
-    .
-    map (
-        \(key,short_forms,long_forms,argument_type,description) →
-            (key
-            ,Option
-                (Set.fromList short_forms)
-                (Set.fromList long_forms)
-                argument_type
-                description
+        partitionEithers
+        .
+        map (\(option_id,values) →
+            case values of
+                [x] → Right (option_id,x)
+                xs → case Map.lookup option_id optionConflictResolutions of
+                    Nothing → Left $
+                        "Multiple incompatible values specified for option "
+                        ++ show option_id ++
+                        ": ["
+                        ++ intercalate " " values ++
+                        "]"
+                    Just combine → mapRight (option_id,) (combine values)
+        )
+        .
+        gather
+        $
+        parsed_options
+    (parsed_options,leftovers,parsing_error_messages) = getOpt Permute descriptors arguments
+    descriptors =
+        [ Option
+            [short_form]
+            []
+            (case argument_type of
+                NoArgument{..} → NoArg (option_id,argumentDefaultValue)
+                OptionalArgument{..} → OptArg (maybe (option_id,argumentDefaultValue) (option_id,)) undefined
+                RequiredArgument{..} → ReqArg (option_id,) undefined
             )
-    )
--- @-node:gcross.20100603132252.1336:options
--- @-node:gcross.20100602152546.1268:Functions
+            undefined
+        | (short_form,(option_id,argument_type)) ← Map.toList optionShortForms
+        ]
+-- @nonl
+-- @-node:gcross.20100903200211.2259:parseCommandLineOptions
+-- @+node:gcross.20100903200211.2261:getAndParseCommandLineOptions
+getAndParseCommandLineOptions :: Options → IO ([String],Map OptionId String)
+getAndParseCommandLineOptions =
+    flip fmap getArgs . parseCommandLineOptions
+    >=>
+    \parse_results →
+        case parse_results of
+            Left error_messages → do
+                putStrLn "Error parsing the command line options:"
+                mapM_ (putStrLn . ("* " ++)) error_messages
+                exitFailure
+            Right options →
+                return options
+-- @-node:gcross.20100903200211.2261:getAndParseCommandLineOptions
+-- @-node:gcross.20100903200211.2255:Functions
 -- @-others
--- @-node:gcross.20100602141408.1273:@thin Options.hs
+-- @-node:gcross.20100903200211.2235:@thin Options.hs
 -- @-leo
