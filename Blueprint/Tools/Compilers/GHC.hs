@@ -170,6 +170,40 @@ data KnownModule =
 -- @+node:gcross.20100630111926.1862:KnownModules
 type KnownModules = Map String KnownModule
 -- @-node:gcross.20100630111926.1862:KnownModules
+-- @+node:gcross.20100905161144.1955:PackageLocality
+data PackageLocality = Global | User deriving (Typeable,Eq)
+
+$(derive makeBinary ''PackageLocality)
+
+instance Show PackageLocality where
+    show User = "user"
+    show Global = "global"
+-- @-node:gcross.20100905161144.1955:PackageLocality
+-- @+node:gcross.20100830091258.2027:GHC
+data GHC = GHC
+    {   ghcVersion :: Version
+    ,   pathToGHC :: FilePath
+    ,   pathToGHCPkg :: FilePath
+    } deriving Typeable; $( derive makeBinary ''GHC )
+-- @-node:gcross.20100830091258.2027:GHC
+-- @+node:gcross.20100831211145.2168:GHCEnvironment
+data GHCEnvironment = GHCEnvironment
+    {   ghcEnvironmentGHC :: GHC
+    ,   ghcEnvironmentPackageDatabase :: PackageDatabase
+    } deriving Typeable
+
+-- @-node:gcross.20100831211145.2168:GHCEnvironment
+-- @+node:gcross.20100905161144.1935:GHCOptions
+data GHCOptions = GHCOptions
+    {   ghcOptionPathToGHC :: Maybe FilePath
+    ,   ghcOptionPathToGHCPkg :: Maybe FilePath
+    ,   ghcOptionDesiredVersion :: Maybe Version
+    ,   ghcOptionSearchPaths :: [FilePath]
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''GHCOptions)
+-- @nonl
+-- @-node:gcross.20100905161144.1935:GHCOptions
 -- @+node:gcross.20100901145855.2053:BuildEnvironment
 data BuildEnvironment = BuildEnvironment
     {   buildEnvironmentGHC :: GHC
@@ -210,30 +244,6 @@ data ProgramComponents = ProgramComponents
     ,   programComponentDependencyDigests :: [MD5Digest]
     } deriving (Eq, Typeable)
 -- @-node:gcross.20100709210816.2222:ProgramComponents
--- @+node:gcross.20100830091258.2027:GHC
-data GHC = GHC
-    {   ghcVersion :: Version
-    ,   pathToGHC :: FilePath
-    ,   pathToGHCPkg :: FilePath
-    } deriving Typeable; $( derive makeBinary ''GHC )
--- @-node:gcross.20100830091258.2027:GHC
--- @+node:gcross.20100831211145.2168:GHCEnvironment
-data GHCEnvironment = GHCEnvironment
-    {   ghcEnvironmentGHC :: GHC
-    ,   ghcEnvironmentPackageDatabase :: PackageDatabase
-    } deriving Typeable
-
--- @-node:gcross.20100831211145.2168:GHCEnvironment
--- @+node:gcross.20100905161144.1935:GHCSearchOptions
-data GHCSearchOptions = GHCSearchOptions
-    {   ghcSearchOptionPathToGHC :: Maybe FilePath
-    ,   ghcSearchOptionPathToGHCPkg :: Maybe FilePath
-    ,   ghcSearchOptionDesiredVersion :: Maybe Version
-    ,   ghcSearchOptionSearchPaths :: [FilePath]
-    } deriving (Eq,Show,Typeable)
-
-$(derive makeBinary ''GHCSearchOptions)
--- @-node:gcross.20100905161144.1935:GHCSearchOptions
 -- @-node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100709210816.2106:Show BuiltModule
@@ -349,7 +359,7 @@ computeProgramComponents dependencies
 -- @+node:gcross.20100831154015.2037:configureGHC
 configureGHC ::
     String →
-    GHCSearchOptions →
+    GHCOptions →
     JobApplicative JobId Dynamic GHC
 configureGHC job_distinguisher search_options =
     JobApplicative
@@ -360,11 +370,16 @@ configureGHC job_distinguisher search_options =
     }
   where
     job@(Job job_names job_runner) = createGHCConfigurationJob job_distinguisher search_options
+-- @nonl
 -- @-node:gcross.20100831154015.2037:configureGHC
+-- @+node:gcross.20100905161144.1956:configureGHCUsingOptions
+configureGHCUsingOptions :: OptionValues → JobApplicative JobId Dynamic GHC
+configureGHCUsingOptions = configureGHC "" . extractGHCOptions
+-- @-node:gcross.20100905161144.1956:configureGHCUsingOptions
 -- @+node:gcross.20100831211145.2170:configureGHCEnvironment
 configureGHCEnvironment ::
     String →
-    GHCSearchOptions →
+    GHCOptions →
     JobApplicative JobId Dynamic GHCEnvironment
 configureGHCEnvironment job_distinguisher search_options =
     configureGHC job_distinguisher search_options
@@ -373,6 +388,10 @@ configureGHCEnvironment job_distinguisher search_options =
         package_database <- configurePackageDatabase job_distinguisher -< ghc
         returnA -< GHCEnvironment ghc package_database
 -- @-node:gcross.20100831211145.2170:configureGHCEnvironment
+-- @+node:gcross.20100905161144.1957:configureGHCEnvironmentUsingOptions
+configureGHCEnvironmentUsingOptions :: OptionValues → JobApplicative JobId Dynamic GHCEnvironment
+configureGHCEnvironmentUsingOptions = configureGHCEnvironment "". extractGHCOptions
+-- @-node:gcross.20100905161144.1957:configureGHCEnvironmentUsingOptions
 -- @+node:gcross.20100831211145.2153:configurePackageDatabase
 configurePackageDatabase ::
     String →
@@ -415,32 +434,32 @@ constructPackageDatabaseFromInstalledPackages =
 -- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
 createGHCConfigurationJob ::
     String →
-    GHCSearchOptions →
+    GHCOptions →
     Job JobId Dynamic
 createGHCConfigurationJob
     job_distinguisher
-    search_options@GHCSearchOptions{..}
+    search_options@GHCOptions{..}
     =
     jobWithCache
         [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
         (liftIO . configureIt >=> \ghc → returnWrappedValueAndCache ghc (search_options,ghc))
  where
-    configureIt :: Maybe (GHCSearchOptions,GHC) → IO GHC
+    configureIt :: Maybe (GHCOptions,GHC) → IO GHC
     configureIt maybe_old_search_paths
       | Just (old_search_options,old_ghc) ← maybe_old_search_paths
       , old_search_options == search_options
         = return old_ghc
-      | Just path_to_ghc ← ghcSearchOptionPathToGHC
-      , Just path_to_ghc_pkg ← ghcSearchOptionPathToGHCPkg
+      | Just path_to_ghc ← ghcOptionPathToGHC
+      , Just path_to_ghc_pkg ← ghcOptionPathToGHCPkg
         = configureUsingBothPaths path_to_ghc path_to_ghc_pkg
-      | Just path_to_ghc ← ghcSearchOptionPathToGHC
+      | Just path_to_ghc ← ghcOptionPathToGHC
         = configureUsingGHCPath path_to_ghc
-      | Just path_to_ghc_pkg ← ghcSearchOptionPathToGHCPkg
+      | Just path_to_ghc_pkg ← ghcOptionPathToGHCPkg
         = configureUsingGHCPkgPath path_to_ghc_pkg
-      | [] ← ghcSearchOptionSearchPaths
+      | [] ← ghcOptionSearchPaths
         = getSearchPath >>= configureUsingSearchPaths
       | otherwise
-        = configureUsingSearchPaths ghcSearchOptionSearchPaths
+        = configureUsingSearchPaths ghcOptionSearchPaths
 
     configureUsingSearchPaths :: [FilePath] → IO GHC
     configureUsingSearchPaths search_paths = runAbortT $ do
@@ -509,7 +528,7 @@ createGHCConfigurationJob
         ghc_pkg_version ← determineGHCVersionOrRethrow path_to_ghc_pkg
         unless (ghc_version == ghc_pkg_version) $
             throwIO (GHCVersionsDontMatch path_to_ghc ghc_version path_to_ghc_pkg ghc_pkg_version)
-        case ghcSearchOptionDesiredVersion of
+        case ghcOptionDesiredVersion of
             Just desired_version
               | desired_version /= ghc_version
                 → throwIO (GHCVersionIsNotDesiredVersion path_to_ghc desired_version ghc_version )
@@ -527,6 +546,7 @@ createGHCConfigurationJob
                 throwIO (GHCVersionParseException filepath output)
             Right version →
                 return version
+-- @nonl
 -- @-node:gcross.20100830091258.2033:createGHCConfigurationJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
@@ -708,9 +728,11 @@ createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
     \path_to_ghc_pkg maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Reading package atoms..."
+        -- let arguments = ["--simple-output",("--" ++ show locality),"list"]
+        let arguments = ["--simple-output","list"]
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $
-            unwords ("(GHC) Executing":path_to_ghc_pkg:["--simple-output","list"])
-        list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg ["--simple-output","list"] "")
+            unwords ("(GHC) Executing":path_to_ghc_pkg:arguments)
+        list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg arguments "")
         installed_packages ← case maybe_cache of
             Just cache@(old_list_of_package_atoms,installed_packages)
                 | old_list_of_package_atoms == list_of_package_atoms → return installed_packages
@@ -723,22 +745,25 @@ createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
         let package_database = constructPackageDatabaseFromInstalledPackages installed_packages
         returnWrappedValueAndCache package_database (list_of_package_atoms,installed_packages)
 -- @-node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
--- @+node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
-createLoadGHCPackageDatabaseJob ::
-    String →
-    FilePath →
-    Job JobId Dynamic
-createLoadGHCPackageDatabaseJob = flip completeJobWith . createLoadGHCPackageDatabaseIncompleteJob
--- @-node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
--- @+node:gcross.20100905161144.1952:extractGHCSearchOptions
-extractGHCSearchOptions :: OptionValues → GHCSearchOptions
-extractGHCSearchOptions =
-    GHCSearchOptions
+-- @+node:gcross.20100905161144.1952:extractGHCOptions
+extractGHCOptions :: OptionValues → GHCOptions
+extractGHCOptions =
+    GHCOptions
         <$> Map.lookup ghc_search_option_path_to_ghc
         <*> Map.lookup ghc_search_option_path_to_ghc_pkg
         <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
--- @-node:gcross.20100905161144.1952:extractGHCSearchOptions
+-- @-node:gcross.20100905161144.1952:extractGHCOptions
+-- @+node:gcross.20100905161144.1958:extractGHCPackageLocality
+extractGHCPackageLocality :: OptionValues → PackageLocality
+extractGHCPackageLocality option_values =
+    case Map.lookup ghc_package_database_option_locality option_values of
+        Nothing → Global
+        Just locality
+          | locality == "user" → User
+          | locality == "global" → Global
+          | otherwise → error $ "GHC package locality must be 'user' or 'global', not '" ++ locality ++ "'."
+-- @-node:gcross.20100905161144.1958:extractGHCPackageLocality
 -- @+node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
 extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
 extractKnownModulesFromInstalledPackage InstalledPackage{..} =
@@ -929,6 +954,7 @@ ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6
 ghc_search_option_path_to_ghc_pkg = identifier "b832666c-f42f-4dc0-8ef9-561987334c37" "path to ghc-pkg"
 ghc_search_option_desired_version = identifier "87cab19e-c87a-4480-8ed3-af04e4c4f6bc" "desired GHC version"
 ghc_search_option_search_paths = identifier "fcb54ad5-4a10-419a-9e8c-12261952cfd9" "path to search for ghc"
+ghc_package_database_option_locality = identifier "4b38e6c5-8162-49ea-9ca0-5a23e58c44b1" "should the local or global GHC package database be used"
 
 ghcOptions =
     Options
@@ -938,6 +964,8 @@ ghcOptions =
             ,("with-ghc-pkg",(ghc_search_option_path_to_ghc_pkg,RequiredArgument "PATH"))
             ,("with-ghc-version",(ghc_search_option_desired_version,RequiredArgument "VERSION"))
             ,("with-ghc-located-in",(ghc_search_option_search_paths,RequiredArgument "DIRECTORY"))
+            -- ,("user",(ghc_package_database_option_locality,NoArgument "user"))
+            -- ,("global",(ghc_package_database_option_locality,NoArgument "global"))
             ]
         )
         (Map.fromList
@@ -945,6 +973,7 @@ ghcOptions =
             ,("tools.ghc.paths.ghc-pkg",ghc_search_option_path_to_ghc_pkg)
             ,("tools.ghc.paths.search",ghc_search_option_search_paths)
             ,("tools.ghc.version",ghc_search_option_desired_version)
+            -- ,("tools.ghc.package-locality",ghc_package_database_option_locality)
             ]
         )
         (Map.fromList
@@ -956,6 +985,7 @@ ghcOptions =
             ,(ghc_search_option_path_to_ghc_pkg,("GHC","Path to ghc-pkg"))
             ,(ghc_search_option_desired_version,("GHC","Required version of GHC"))
             ,(ghc_search_option_search_paths,("GHC","Directories to search for ghc (separated by " ++ [searchPathSeparator] ++ ")"))
+            -- ,(ghc_package_database_option_locality,("GHC","Use the (user|global) package database for both configuration and package installation;  defaults to global."))
             ]
         )
 -- @-node:gcross.20100905161144.1953:Options

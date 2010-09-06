@@ -63,9 +63,7 @@ main = do
     ghc_environment@GHCEnvironment{..} ←
         runJobApplicativeUsingCacheFile 4 "configuration.cache"
         .
-        configureGHCEnvironment ""
-        .
-        extractGHCSearchOptions
+        configureGHCEnvironmentUsingOptions
         $
         options
     (package_description,_) ←
