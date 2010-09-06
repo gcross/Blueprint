@@ -34,6 +34,7 @@ import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
+import Blueprint.Options
 import Blueprint.SourceFile
 import Blueprint.Tools
 import Blueprint.Tools.Compilers.GHC
@@ -58,10 +59,15 @@ main = do
         built_modules =
             map (haskellSourceToBuiltModule object_directory interface_directory)
                 haskell_sources
-    search_paths ← getEnvironmentPath
+    (_,options) ← loadOptions "configuration.cfg" ghcOptions
     ghc_environment@GHCEnvironment{..} ←
-        runJobApplicativeUsingCacheFile 4 "configuration.cache" $
-            configureGHCEnvironment "" search_paths () head
+        runJobApplicativeUsingCacheFile 4 "configuration.cache"
+        .
+        configureGHCEnvironment ""
+        .
+        extractGHCSearchOptions
+        $
+        options
     (package_description,_) ←
         readAndConfigurePackageDescription
             ghc_environment

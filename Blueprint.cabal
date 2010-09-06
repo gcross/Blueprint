@@ -48,6 +48,8 @@ Library
         threads >= 0.3 && < 0.4,
         regex-base == 0.93.*,
         AbortT-transformers == 1.0.*,
-        ConfigFile == 1.0.*
+        GotoT-transformers == 1.0.*,
+        ConfigFile == 1.0.*,
+        split >= 0.1.2 && < 0.2
 -- @-node:gcross.20100901145855.2072:@thin Blueprint.cabal
 -- @-leo

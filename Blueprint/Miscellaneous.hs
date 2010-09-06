@@ -77,6 +77,10 @@ deriving instance Typeable MD5Digest
 -- @-node:gcross.20100624100717.2143:Typeable MD5Digest
 -- @-node:gcross.20100624100717.2142:Instances
 -- @+node:gcross.20100614121927.1662:Functions
+-- @+node:gcross.20100905161144.1954:(≠)
+(≠) :: Eq a => a → a → Bool
+(≠) = (/=)
+-- @-node:gcross.20100905161144.1954:(≠)
 -- @+node:gcross.20100830091258.2038:addExe
 addExe :: String → String
 addExe = id

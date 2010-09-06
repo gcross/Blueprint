@@ -3,6 +3,7 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100830091258.2005:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100830091258.2005:<< Language extensions >>
@@ -12,12 +13,14 @@ module Blueprint.Configuration.Tools where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100830091258.2006:<< Import needed modules >>
+import Control.Exception
 import Control.Monad
 
 import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Data.Maybe
+import Data.Typeable
 import Data.Version
 
 import System.Directory
@@ -33,56 +36,28 @@ import Blueprint.Miscellaneous
 -- @nl
 
 -- @+others
--- @+node:gcross.20100830091258.2017:Types
--- @+node:gcross.20100830091258.2030:VersionExtractor
-data VersionExtractor = VersionExtractor
-    {   versionExtractorOptions :: [String]
-    ,   versionExtractorParseVersion :: (String → Maybe Version)
-    }
--- @-node:gcross.20100830091258.2030:VersionExtractor
--- @+node:gcross.20100830091258.2018:VersionedProgram
-data VersionedProgram = VersionedProgram
-    {   versionedProgramName :: String
-    ,   versionedProgramVersionExtractor :: VersionExtractor
-    }
--- @-node:gcross.20100830091258.2018:VersionedProgram
--- @-node:gcross.20100830091258.2017:Types
--- @+node:gcross.20100830091258.2007:Functions
--- @+node:gcross.20100830091258.2014:getEnvironmentPath
-getEnvironmentPath :: IO [FilePath]
-getEnvironmentPath = fmap splitSearchPath (getEnv "PATH")
+-- @+node:gcross.20100905161144.1938:Exceptions
+-- @+node:gcross.20100905161144.1939:BadProgramVersionException
+data BadProgramVersionException = BadProgramVersionException FilePath String deriving (Show,Eq,Typeable)
 
--- @-node:gcross.20100830091258.2014:getEnvironmentPath
--- @+node:gcross.20100830091258.2010:getProgramVersion
-getProgramVersion :: VersionExtractor → FilePath → IO (Maybe Version)
-getProgramVersion VersionExtractor{..} program_path =
-    fmap versionExtractorParseVersion (readProcess program_path versionExtractorOptions "")
--- @-node:gcross.20100830091258.2010:getProgramVersion
--- @+node:gcross.20100830091258.2011:lookForProgramInPaths
-lookForProgramInPaths :: String → [FilePath] → IO [FilePath]
-lookForProgramInPaths program = filterM (doesFileExist . (</> addExe program))
--- @-node:gcross.20100830091258.2011:lookForProgramInPaths
--- @+node:gcross.20100830091258.2016:lookForVersionedProgramInPaths
-lookForVersionedProgramInPaths :: VersionedProgram → [FilePath] → IO (Map FilePath Version)
-lookForVersionedProgramInPaths VersionedProgram{..} =
-    lookForProgramInPaths versionedProgramName
-    >=>
-    fmap (Map.fromList . catMaybes)
-    .
-    mapM (
-        \path → fmap (fmap ((,) path)) (getProgramVersion versionedProgramVersionExtractor (path </> versionedProgramName))
-    )
--- @-node:gcross.20100830091258.2016:lookForVersionedProgramInPaths
--- @+node:gcross.20100830091258.2042:selectHighestCompatibleVersion
-selectHighestCompatibleVersion :: (Version → Bool) → Map Version [a] → Maybe a
-selectHighestCompatibleVersion isCompatible = go . Map.toDescList
-  where
-    go [] = Nothing
-    go ((_,[]):rest) = go rest
-    go ((version,(item:_)):rest)
-      | isCompatible version = Just item
-      | otherwise            = go rest
--- @-node:gcross.20100830091258.2042:selectHighestCompatibleVersion
+instance Exception BadProgramVersionException
+-- @-node:gcross.20100905161144.1939:BadProgramVersionException
+-- @-node:gcross.20100905161144.1938:Exceptions
+-- @+node:gcross.20100830091258.2007:Functions
+-- @+node:gcross.20100905161144.1941:determineProgramVersion
+determineProgramVersion ::
+    (String → Maybe Version) →
+    [String] →
+    FilePath →
+    IO Version
+determineProgramVersion tryParseVersion arguments program =
+    readProcess program arguments ""
+    >>=
+    \output →
+        case tryParseVersion output of
+            Nothing → throwIO $ BadProgramVersionException program output
+            Just version → return version
+-- @-node:gcross.20100905161144.1941:determineProgramVersion
 -- @-node:gcross.20100830091258.2007:Functions
 -- @-others
 -- @-node:gcross.20100830091258.2004:@thin Tools.hs

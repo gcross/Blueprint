@@ -33,6 +33,7 @@ import Data.Monoid
 import Data.Typeable
 
 import System.Console.GetOpt
+import System.Directory
 import System.Environment
 import System.Exit
 
@@ -80,7 +81,7 @@ data Options = Options
     {   optionShortForms :: Map Char (OptionId,ArgumentType)
     ,   optionLongForms :: Map String (OptionId,ArgumentType)
     ,   optionConfigurationKeys :: Map String OptionId
-    ,   optionConflictResolutions :: Map OptionId ([String] → Either String String)
+    ,   optionValueCombiners :: Map OptionId ([String] → Either String String)
     ,   optionDescriptions :: Map OptionId (String,String)
     }
 -- @-node:gcross.20100903200211.2243:Options
@@ -92,7 +93,7 @@ data Conflicts = Conflicts
     {   conflictingShortForms :: Map Char [OptionId]
     ,   conflictingLongForms :: Map String [OptionId]
     ,   conflictingConfigurationKeys :: Map String [OptionId]
-    ,   conflictingConflictResolutions :: Map OptionId Int
+    ,   conflictingValueCombiners :: Map OptionId Int
     ,   conflictingDescriptions :: Map OptionId [(String,String)]
     } deriving (Eq,Show)
 -- @-node:gcross.20100903200211.2248:Conflicts
@@ -106,7 +107,7 @@ instance Monoid Conflicts where
         {   conflictingShortForms = (Map.unionWith (++) `on` conflictingShortForms) c1 c2
         ,   conflictingLongForms = (Map.unionWith (++) `on` conflictingLongForms) c1 c2
         ,   conflictingConfigurationKeys = (Map.unionWith (++) `on` conflictingConfigurationKeys) c1 c2
-        ,   conflictingConflictResolutions = (Map.unionWith (+) `on` conflictingConflictResolutions) c1 c2
+        ,   conflictingValueCombiners = (Map.unionWith (+) `on` conflictingValueCombiners) c1 c2
         ,   conflictingDescriptions = (Map.unionWith (++) `on` conflictingDescriptions) c1 c2
         }
 -- @-node:gcross.20100903200211.2250:Monoid Conflicts
@@ -118,7 +119,7 @@ instance Monoid Options where
         {   optionShortForms = (Map.union `on` optionShortForms) o1 o2
         ,   optionLongForms = (Map.union `on` optionLongForms) o1 o2
         ,   optionConfigurationKeys = (Map.union `on` optionConfigurationKeys) o1 o2
-        ,   optionConflictResolutions = (Map.union `on` optionConflictResolutions) o1 o2
+        ,   optionValueCombiners = (Map.union `on` optionValueCombiners) o1 o2
         ,   optionDescriptions = (Map.union `on` optionDescriptions) o1 o2
         }
 -- @-node:gcross.20100903200211.2253:Monoid Options
@@ -141,10 +142,10 @@ instance Monoid (Either Conflicts Options) where
                 intersectAndUnion (:)
                     optionConfigurationKeys
                     conflictingConfigurationKeys
-        ,   conflictingConflictResolutions =
+        ,   conflictingValueCombiners =
                 intersectAndUnion (const (+1))
-                    optionConflictResolutions
-                    conflictingConflictResolutions
+                    optionValueCombiners
+                    conflictingValueCombiners
         ,   conflictingDescriptions =
                 intersectAndUnion (:)
                     optionDescriptions
@@ -162,8 +163,8 @@ instance Monoid (Either Conflicts Options) where
                     (Map.intersectionWith (doubleton `on` fst) `on` optionLongForms) o1 o2
             ,   conflictingConfigurationKeys =
                     (Map.intersectionWith doubleton `on` optionConfigurationKeys) o1 o2
-            ,   conflictingConflictResolutions =
-                    (Map.intersectionWith (\_ _ → 2) `on` optionConflictResolutions) o1 o2
+            ,   conflictingValueCombiners =
+                    (Map.intersectionWith (\_ _ → 2) `on` optionValueCombiners) o1 o2
             ,   conflictingDescriptions =
                     (Map.intersectionWith doubleton `on` optionDescriptions) o1 o2
             }
@@ -189,7 +190,7 @@ parseCommandLine Options{..} arguments =
         map (\(option_id,values) →
             case values of
                 [x] → Right (option_id,x)
-                xs → case Map.lookup option_id optionConflictResolutions of
+                xs → case Map.lookup option_id optionValueCombiners of
                     Nothing → Left $
                         "Multiple incompatible values specified for option "
                         ++ show option_id ++
@@ -204,18 +205,26 @@ parseCommandLine Options{..} arguments =
         parsed_options
     (parsed_options,leftovers,parsing_error_messages) = getOpt Permute descriptors arguments
     descriptors =
-        [ Option
-            [short_form]
-            []
+        [ computeOption [short_form] [] option_id argument_type
+        | (short_form,(option_id,argument_type)) ← Map.toList optionShortForms
+        ]
+        ++
+        [ computeOption [] [long_form] option_id argument_type
+        | (long_form,(option_id,argument_type)) ← Map.toList optionLongForms
+        ]
+
+    computeOption :: [Char] → [String] → OptionId → ArgumentType → OptDescr (OptionId,String)
+    computeOption short_forms long_forms option_id argument_type =
+        Option
+            short_forms
+            long_forms
             (case argument_type of
                 NoArgument{..} → NoArg (option_id,argumentDefaultValue)
                 OptionalArgument{..} → OptArg (maybe (option_id,argumentDefaultValue) (option_id,)) undefined
                 RequiredArgument{..} → ReqArg (option_id,) undefined
             )
             undefined
-        | (short_form,(option_id,argument_type)) ← Map.toList optionShortForms
-        ]
--- @nonl
+
 -- @-node:gcross.20100903200211.2259:parseCommandLine
 -- @+node:gcross.20100905161144.1926:parseConfigurationFile
 parseConfigurationFile :: Options → ConfigParser → Either [CPError] OptionValues
@@ -247,14 +256,14 @@ updateConfigurationFile Options{optionConfigurationKeys} cp option_values
   where
     (config_file_updated,new_config_file) = foldl' -- '
         (\same@(config_file_updated,current_config_file) (configuration_key,option_id) →
-            case (Map.lookup option_id option_values
-                 ,interpolatingAccess 10 current_config_file "DEFAULT" configuration_key
-                 ) of
-                (Just new_value,Right old_value)
-                  | new_value /= old_value →
-                        (True
-                        ,fromRight (set current_config_file "DEFAULT" configuration_key new_value)
-                        )
+            case Map.lookup option_id option_values of
+                Just new_value →
+                    case interpolatingAccess 10 current_config_file "DEFAULT" configuration_key of
+                        Right old_value
+                          | new_value == old_value → same
+                        _ → (True
+                            ,fromRight (set current_config_file "DEFAULT" configuration_key new_value)
+                            )
                 _ → same
         )
         (False,cp)
@@ -276,28 +285,19 @@ getAndParseCommandLineOptions =
         )
         return
 -- @-node:gcross.20100903200211.2261:getAndParseCommandLine
--- @+node:gcross.20100905161144.1928:getAndParseConfigurationFile
-getAndParseConfigurationFileOptions :: Options → FilePath → IO OptionValues
-getAndParseConfigurationFileOptions options configuration_filepath =
-    readfile emptyCP configuration_filepath
-    >>=
-    either
-        (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
-        (return . parseConfigurationFile options)
-    >>=
-    either
-        (throwIO . ConfigurationFileErrors configuration_filepath)
-        return
--- @-node:gcross.20100905161144.1928:getAndParseConfigurationFile
 -- @+node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
 getParseAndUpdateConfigurationFile :: Options → FilePath → OptionValues → IO OptionValues
 getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
-    cp ←
-        readfile emptyCP configuration_filepath
-        >>=
-        either
-            (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
-            return
+    cp ← do
+        exists ← doesFileExist configuration_filepath
+        if exists
+            then do
+                readfile emptyCP configuration_filepath
+                >>=
+                either
+                    (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
+                    return
+            else return emptyCP
     new_option_values ←
         either
             (throwIO . ConfigurationFileErrors configuration_filepath)
@@ -309,8 +309,8 @@ getParseAndUpdateConfigurationFile options configuration_filepath old_option_val
     return new_option_values
 -- @-node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
 -- @+node:gcross.20100905161144.1931:loadOptions
-loadOptions :: Options → FilePath → IO ([String],OptionValues)
-loadOptions options configuration_filepath = do
+loadOptions :: FilePath → Options → IO ([String],OptionValues)
+loadOptions configuration_filepath options = do
     (leftovers,command_line_option_values) ← getAndParseCommandLineOptions options
     fmap (leftovers,) $
         getParseAndUpdateConfigurationFile options configuration_filepath command_line_option_values

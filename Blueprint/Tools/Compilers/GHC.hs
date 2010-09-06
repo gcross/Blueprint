@@ -9,6 +9,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TransformListComp #-}
 {-# LANGUAGE TupleSections #-}
@@ -27,6 +28,8 @@ import qualified Control.Concurrent.Thread as Thread
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Abort
+import Control.Monad.Trans.Goto
 import Control.Monad.Trans.Maybe
 
 import Data.Binary
@@ -38,6 +41,7 @@ import Data.Either
 import Data.Either.Unwrap
 import Data.Function
 import Data.List
+import Data.List.Split
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -66,6 +70,7 @@ import System.FilePath
 import System.Log.Logger
 import System.Process
 
+import Text.Printf
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
@@ -78,6 +83,7 @@ import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
+import Blueprint.Options
 import Blueprint.SourceFile
 import Blueprint.Tools
 import Blueprint.Tools.JobAnalyzer
@@ -86,6 +92,52 @@ import Blueprint.Tools.JobAnalyzer
 -- @nl
 
 -- @+others
+-- @+node:gcross.20100905161144.1949:Exceptions
+-- @+node:gcross.20100905161144.1951:GHCConfigurationException
+data GHCConfigurationException =
+    GHCVersionParseException FilePath String
+  | GHCNotFoundAt FilePath
+  | GHCPkgNotFoundAt FilePath
+  | GHCUnableToLocateGHC [FilePath]
+  | GHCUnableToLocateGHCPkg [FilePath]
+  | GHCVersionsDontMatch FilePath Version FilePath Version
+  | GHCVersionIsNotDesiredVersion FilePath Version Version
+  | GHCUnknownException SomeException
+  | GHCMultipleExceptions [GHCConfigurationException]
+  deriving (Typeable)
+
+instance Show GHCConfigurationException where
+    show (GHCVersionParseException program output) =
+        printf "Version string output by %s was \"%s\", which does not parse."
+            program
+            output
+    show (GHCNotFoundAt filepath) =
+         "No file for ghc was found at " ++ filepath
+    show (GHCPkgNotFoundAt filepath) =
+         "No file for ghc-pkg was found at " ++ filepath
+    show (GHCUnableToLocateGHC search_paths) =
+        "Unable to find ghc in " ++ show search_paths
+    show (GHCUnableToLocateGHCPkg search_paths) =
+        "Unable to find ghc-pkg in " ++ show search_paths
+    show (GHCVersionsDontMatch path_to_ghc ghc_version path_to_ghc_pkg ghc_pkg_version) =
+        printf "ghc (at %s) reported version %s, but ghc-pkg (at %s) reported version %s"
+            path_to_ghc
+            (display ghc_version)
+            path_to_ghc_pkg
+            (display ghc_pkg_version)
+    show (GHCVersionIsNotDesiredVersion path_to_ghc desired_version found_version) =
+        printf "GHC (at %s) reported version %s, which is not the required version (%s)"
+            path_to_ghc
+            (display desired_version)
+            (display found_version)
+    show (GHCUnknownException e) =
+        "Unknown exception: " ++ show e
+    show (GHCMultipleExceptions exceptions) =
+        "Unable to configure GHC:\n" ++ concat ["* " ++ show e ++ "\n" | e ← exceptions]
+
+instance Exception GHCConfigurationException
+-- @-node:gcross.20100905161144.1951:GHCConfigurationException
+-- @-node:gcross.20100905161144.1949:Exceptions
 -- @+node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100903104106.2083:InstalledPackage
 data InstalledPackage = InstalledPackage
@@ -161,7 +213,6 @@ data ProgramComponents = ProgramComponents
 -- @+node:gcross.20100830091258.2027:GHC
 data GHC = GHC
     {   ghcVersion :: Version
-    ,   ghcDirectory :: FilePath
     ,   pathToGHC :: FilePath
     ,   pathToGHCPkg :: FilePath
     } deriving Typeable; $( derive makeBinary ''GHC )
@@ -173,10 +224,16 @@ data GHCEnvironment = GHCEnvironment
     } deriving Typeable
 
 -- @-node:gcross.20100831211145.2168:GHCEnvironment
--- @+node:gcross.20100630111926.1875:GHCOptions
-newtype GHCOptions = GHCOptions { unwrapGHCOptions :: Record }
--- @nonl
--- @-node:gcross.20100630111926.1875:GHCOptions
+-- @+node:gcross.20100905161144.1935:GHCSearchOptions
+data GHCSearchOptions = GHCSearchOptions
+    {   ghcSearchOptionPathToGHC :: Maybe FilePath
+    ,   ghcSearchOptionPathToGHCPkg :: Maybe FilePath
+    ,   ghcSearchOptionDesiredVersion :: Maybe Version
+    ,   ghcSearchOptionSearchPaths :: [FilePath]
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''GHCSearchOptions)
+-- @-node:gcross.20100905161144.1935:GHCSearchOptions
 -- @-node:gcross.20100630111926.1861:Types
 -- @+node:gcross.20100709210816.2105:Instances
 -- @+node:gcross.20100709210816.2106:Show BuiltModule
@@ -291,13 +348,10 @@ computeProgramComponents dependencies
 -- @-node:gcross.20100709210816.2223:computeProgramComponents
 -- @+node:gcross.20100831154015.2037:configureGHC
 configureGHC ::
-    (Binary α, Eq α) =>
     String →
-    [FilePath] →
-    α →
-    ([GHC] → GHC) →
+    GHCSearchOptions →
     JobApplicative JobId Dynamic GHC
-configureGHC job_distinguisher search_paths selection_criteria_identifier selectGHC =
+configureGHC job_distinguisher search_options =
     JobApplicative
     {   jobApplicativeJobs = [job]
     ,   jobApplicativeResultJobNames = job_names
@@ -305,21 +359,18 @@ configureGHC job_distinguisher search_paths selection_criteria_identifier select
     ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
     }
   where
-    job@(Job job_names job_runner) = createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC
+    job@(Job job_names job_runner) = createGHCConfigurationJob job_distinguisher search_options
 -- @-node:gcross.20100831154015.2037:configureGHC
 -- @+node:gcross.20100831211145.2170:configureGHCEnvironment
 configureGHCEnvironment ::
-    (Binary α, Eq α) =>
     String →
-    [FilePath] →
-    α →
-    ([GHC] → GHC) →
+    GHCSearchOptions →
     JobApplicative JobId Dynamic GHCEnvironment
-configureGHCEnvironment distinguisher search_paths selection_criteria_identifier selectGHC =
-    configureGHC distinguisher search_paths selection_criteria_identifier selectGHC
+configureGHCEnvironment job_distinguisher search_options =
+    configureGHC job_distinguisher search_options
     ➤
     proc ghc → do
-        package_database <- configurePackageDatabase distinguisher -< ghc
+        package_database <- configurePackageDatabase job_distinguisher -< ghc
         returnA -< GHCEnvironment ghc package_database
 -- @-node:gcross.20100831211145.2170:configureGHCEnvironment
 -- @+node:gcross.20100831211145.2153:configurePackageDatabase
@@ -361,30 +412,122 @@ constructPackageDatabaseFromInstalledPackages =
             ]
         )
 -- @-node:gcross.20100903104106.2084:constructPackageDatabaseFromInstalledPackages
--- @+node:gcross.20100830091258.2033:createFindGHCJob
-createFindGHCJob ::
-    (Binary α, Eq α) =>
+-- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
+createGHCConfigurationJob ::
     String →
-    [FilePath] →
-    α →
-    ([GHC] → GHC) →
+    GHCSearchOptions →
     Job JobId Dynamic
-createFindGHCJob job_distinguisher search_paths selection_criteria_identifier selectGHC =
-    jobWithCache [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
-    $
-    \maybe_old_search_paths → do
-        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "Looking for GHC..."
-        case maybe_old_search_paths of
-            Just (old_cache@(old_search_paths,old_selection_criteria_identifier,ghc))
-              | old_search_paths == search_paths
-              , old_selection_criteria_identifier == selection_criteria_identifier 
-              → returnValueAndCache (toDyn ghc) old_cache
-            _ → liftIO (lookForGHCInPaths search_paths)
-                 >>=
-                 \ghcs →
-                    let ghc = selectGHC ghcs
-                    in returnValueAndCache (toDyn ghc) (search_paths,selection_criteria_identifier,ghc)
--- @-node:gcross.20100830091258.2033:createFindGHCJob
+createGHCConfigurationJob
+    job_distinguisher
+    search_options@GHCSearchOptions{..}
+    =
+    jobWithCache
+        [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
+        (liftIO . configureIt >=> \ghc → returnWrappedValueAndCache ghc (search_options,ghc))
+ where
+    configureIt :: Maybe (GHCSearchOptions,GHC) → IO GHC
+    configureIt maybe_old_search_paths
+      | Just (old_search_options,old_ghc) ← maybe_old_search_paths
+      , old_search_options == search_options
+        = return old_ghc
+      | Just path_to_ghc ← ghcSearchOptionPathToGHC
+      , Just path_to_ghc_pkg ← ghcSearchOptionPathToGHCPkg
+        = configureUsingBothPaths path_to_ghc path_to_ghc_pkg
+      | Just path_to_ghc ← ghcSearchOptionPathToGHC
+        = configureUsingGHCPath path_to_ghc
+      | Just path_to_ghc_pkg ← ghcSearchOptionPathToGHCPkg
+        = configureUsingGHCPkgPath path_to_ghc_pkg
+      | [] ← ghcSearchOptionSearchPaths
+        = getSearchPath >>= configureUsingSearchPaths
+      | otherwise
+        = configureUsingSearchPaths ghcSearchOptionSearchPaths
+
+    configureUsingSearchPaths :: [FilePath] → IO GHC
+    configureUsingSearchPaths search_paths = runAbortT $ do
+        exceptions ←
+            forM search_paths $ \search_path → do
+                ghc_or_error ← liftIO . try . configureUsingGHCPath . (</> "ghc") $ search_path
+                case ghc_or_error of
+                    Right (ghc :: GHC) → abort ghc
+                    Left e
+                      | Just (e_ :: GHCConfigurationException) ← fromException e → return e_
+                      | otherwise → return (GHCUnknownException e)
+        let (ghc_not_found_locations,other_exceptions) =
+                partitionEithers
+                .
+                map (\e →
+                    case e of
+                        GHCNotFoundAt path → Left path
+                        e → Right e
+                )
+                $
+                exceptions
+            final_exceptions =
+                (case ghc_not_found_locations of
+                    [] → id
+                    search_path → (GHCUnableToLocateGHC search_paths:)
+                )
+                other_exceptions
+        liftIO . throwIO $
+            case final_exceptions of
+                [e] → e
+                _ → GHCMultipleExceptions final_exceptions
+
+    configureUsingGHCPath :: FilePath → IO GHC
+    configureUsingGHCPath path_to_ghc = runGotoT $ do
+        exists ← liftIO . doesFileExist $ path_to_ghc
+        unless exists . liftIO . throwIO . GHCNotFoundAt $ path_to_ghc
+        mapM_ tryGHCPkgPath paths_to_try >> (liftIO . throwIO . GHCUnableToLocateGHCPkg $ paths_to_try)
+      where
+        paths_to_try =
+            [replaceFileName path_to_ghc "ghc-pkg"
+            ,path_to_ghc ++ "-pkg"
+            ]
+        tryGHCPkgPath path_to_ghc_pkg = do
+            exists ← liftIO . doesFileExist $ path_to_ghc_pkg
+            when exists . goto . liftIO $ configureUsingBothPaths path_to_ghc path_to_ghc_pkg
+
+    configureUsingGHCPkgPath :: FilePath → IO GHC
+    configureUsingGHCPkgPath path_to_ghc_pkg = runGotoT $ do
+        exists ← liftIO . doesFileExist $ path_to_ghc_pkg
+        unless exists . liftIO . throwIO . GHCPkgNotFoundAt $ path_to_ghc_pkg
+        mapM_ tryGHCPath paths_to_try >> (liftIO . throwIO . GHCUnableToLocateGHC $ paths_to_try)
+      where
+        paths_to_try =
+            replaceFileName path_to_ghc_pkg "ghc"
+            :
+            case split (onSublist "-pkg") path_to_ghc_pkg of
+                (x:y:rest) → [x ++ concat rest]
+                _ → []
+        tryGHCPath path_to_ghc = do
+            exists ← liftIO . doesFileExist $ path_to_ghc
+            when exists . goto . liftIO $ configureUsingBothPaths path_to_ghc path_to_ghc_pkg
+
+    configureUsingBothPaths :: FilePath → FilePath → IO GHC
+    configureUsingBothPaths path_to_ghc path_to_ghc_pkg = do
+        ghc_version ← determineGHCVersionOrRethrow path_to_ghc
+        ghc_pkg_version ← determineGHCVersionOrRethrow path_to_ghc_pkg
+        unless (ghc_version == ghc_pkg_version) $
+            throwIO (GHCVersionsDontMatch path_to_ghc ghc_version path_to_ghc_pkg ghc_pkg_version)
+        case ghcSearchOptionDesiredVersion of
+            Just desired_version
+              | desired_version /= ghc_version
+                → throwIO (GHCVersionIsNotDesiredVersion path_to_ghc desired_version ghc_version )
+            _ → return ()
+        return $
+            GHC ghc_version
+                path_to_ghc
+                path_to_ghc_pkg
+
+    determineGHCVersionOrRethrow :: FilePath → IO Version
+    determineGHCVersionOrRethrow filepath = do
+        result_or_error ← try (determineGHCVersion filepath)
+        case result_or_error of
+            Left (BadProgramVersionException _ output) →
+                throwIO (GHCVersionParseException filepath output)
+            Right version →
+                return version
+-- @-node:gcross.20100830091258.2033:createGHCConfigurationJob
 -- @+node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 createGHCCompileToObjectJob ::
     FilePath →
@@ -587,6 +730,15 @@ createLoadGHCPackageDatabaseJob ::
     Job JobId Dynamic
 createLoadGHCPackageDatabaseJob = flip completeJobWith . createLoadGHCPackageDatabaseIncompleteJob
 -- @-node:gcross.20100831211145.2155:createLoadGHCPackageDatabaseJob
+-- @+node:gcross.20100905161144.1952:extractGHCSearchOptions
+extractGHCSearchOptions :: OptionValues → GHCSearchOptions
+extractGHCSearchOptions =
+    GHCSearchOptions
+        <$> Map.lookup ghc_search_option_path_to_ghc
+        <*> Map.lookup ghc_search_option_path_to_ghc_pkg
+        <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
+        <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
+-- @-node:gcross.20100905161144.1952:extractGHCSearchOptions
 -- @+node:gcross.20100901145855.2063:extractKnownModulesFromInstalledPackage
 extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
 extractKnownModulesFromInstalledPackage InstalledPackage{..} =
@@ -634,6 +786,13 @@ haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSou
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
+-- @+node:gcross.20100905161144.1936:parseGHCVersion
+parseGHCVersion = extractVersion ghc_version_regex
+-- @-node:gcross.20100905161144.1936:parseGHCVersion
+-- @+node:gcross.20100905161144.1937:determineGHCVersion
+determineGHCVersion :: FilePath → IO Version
+determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
+-- @-node:gcross.20100905161144.1937:determineGHCVersion
 -- @+node:gcross.20100831211145.2139:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
 loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
@@ -651,25 +810,6 @@ loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
         ,   installedPackageModules = map display exposedModules
         }
 -- @-node:gcross.20100831211145.2139:loadInstalledPackageInformation
--- @+node:gcross.20100830091258.2029:lookForGHCInPaths
-lookForGHCInPaths :: [FilePath] → IO [GHC]
-lookForGHCInPaths paths =
-    fmap (
-        sortBy (compare `on` ghcVersion)
-        .
-        map (\(path,version) → GHC version path (path </> "ghc") (path </> "ghc-pkg"))
-        .
-        Map.toList
-    )
-    .
-    liftIO
-    $
-    (
-        liftM2 Map.intersection
-            (lookForVersionedProgramInPaths ghc_program paths)
-            (lookForVersionedProgramInPaths ghc_pkg_program paths)
-    )
--- @-node:gcross.20100830091258.2029:lookForGHCInPaths
 -- @+node:gcross.20100901145855.2058:lookupDependencyJobIdInBuiltModules
 lookupDependencyJobIdInBuiltModules :: [BuiltModule] → (Dependency → Maybe JobId)
 lookupDependencyJobIdInBuiltModules =
@@ -783,19 +923,42 @@ ghc_runtime_dependency_name = "Haskell (GHC)"
 -- @+node:gcross.20100630111926.1887:ghc_runtime_dependency
 ghc_runtime_dependency = Dependency runtime_dependency_type ghc_runtime_dependency_name
 -- @-node:gcross.20100630111926.1887:ghc_runtime_dependency
--- @+node:gcross.20100830091258.2031:ghc_version_extractor
-ghc_version_extractor = VersionExtractor ["--version"] (extractVersion ghc_version_regex)
-
--- @-node:gcross.20100830091258.2031:ghc_version_extractor
--- @+node:gcross.20100830091258.2032:ghc_program
-ghc_program = VersionedProgram "ghc" ghc_version_extractor
--- @nonl
--- @-node:gcross.20100830091258.2032:ghc_program
--- @+node:gcross.20100830091258.2036:ghc_pkg_program
-ghc_pkg_program = VersionedProgram "ghc-pkg" ghc_version_extractor
--- @nonl
--- @-node:gcross.20100830091258.2036:ghc_pkg_program
 -- @-node:gcross.20100611224425.1613:Values
+-- @+node:gcross.20100905161144.1953:Options
+ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"
+ghc_search_option_path_to_ghc_pkg = identifier "b832666c-f42f-4dc0-8ef9-561987334c37" "path to ghc-pkg"
+ghc_search_option_desired_version = identifier "87cab19e-c87a-4480-8ed3-af04e4c4f6bc" "desired GHC version"
+ghc_search_option_search_paths = identifier "fcb54ad5-4a10-419a-9e8c-12261952cfd9" "path to search for ghc"
+
+ghcOptions =
+    Options
+        Map.empty
+        (Map.fromList
+            [("with-ghc",(ghc_search_option_path_to_ghc,RequiredArgument "PATH"))
+            ,("with-ghc-pkg",(ghc_search_option_path_to_ghc_pkg,RequiredArgument "PATH"))
+            ,("with-ghc-version",(ghc_search_option_desired_version,RequiredArgument "VERSION"))
+            ,("with-ghc-located-in",(ghc_search_option_search_paths,RequiredArgument "DIRECTORY"))
+            ]
+        )
+        (Map.fromList
+            [("tools.ghc.paths.ghc",ghc_search_option_path_to_ghc)
+            ,("tools.ghc.paths.ghc-pkg",ghc_search_option_path_to_ghc_pkg)
+            ,("tools.ghc.paths.search",ghc_search_option_search_paths)
+            ,("tools.ghc.version",ghc_search_option_desired_version)
+            ]
+        )
+        (Map.fromList
+            [(ghc_search_option_search_paths,Right . intercalate [searchPathSeparator])
+            ]
+        )
+        (Map.fromList
+            [(ghc_search_option_path_to_ghc,("GHC","Path to ghc"))
+            ,(ghc_search_option_path_to_ghc_pkg,("GHC","Path to ghc-pkg"))
+            ,(ghc_search_option_desired_version,("GHC","Required version of GHC"))
+            ,(ghc_search_option_search_paths,("GHC","Directories to search for ghc (separated by " ++ [searchPathSeparator] ++ ")"))
+            ]
+        )
+-- @-node:gcross.20100905161144.1953:Options
 -- @-others
 -- @-node:gcross.20100611224425.1610:@thin GHC.hs
 -- @-leo
