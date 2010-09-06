@@ -50,6 +50,7 @@
 <v t="gcross.20100630111926.2023"><vh>@thin SourceFile.hs</vh></v>
 <v t="gcross.20100624100717.2132"><vh>@thin Tools.hs</vh></v>
 <v t="gcross.20100611224425.1603"><vh>@path Tools</vh>
+<v t="gcross.20100906112631.1936"><vh>@thin Ar.hs</vh></v>
 <v t="gcross.20100611224425.1700"><vh>@thin Compilers.hs</vh></v>
 <v t="gcross.20100611224425.1604"><vh>@path Compilers</vh>
 <v t="gcross.20100611224425.1610"><vh>@thin GHC.hs</vh></v>

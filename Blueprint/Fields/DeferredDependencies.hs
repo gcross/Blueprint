@@ -32,6 +32,10 @@ _deferred_dependencies = field "deferred dependencies" "9b9241ac-fd7f-4852-a8b8-
 getDeferredDependencies :: FieldValue entity [Dependency] ⇒ Table entity → [Dependency]
 getDeferredDependencies = fromMaybe [] . getField _deferred_dependencies
 -- @-node:gcross.20100624100717.2128:getDeferredDependencies
+-- @+node:gcross.20100906112631.1959:setDeferredDependencies
+setDeferredDependencies :: FieldValue entity [Dependency] ⇒ [Dependency] → Table entity → Table entity
+setDeferredDependencies = setField _deferred_dependencies
+-- @-node:gcross.20100906112631.1959:setDeferredDependencies
 -- @+node:gcross.20100708102250.2006:addDeferredDependency
 addDeferredDependency :: FieldValue entity [Dependency] ⇒ Dependency → Table entity → Table entity
 addDeferredDependency new_dependency record =
