@@ -167,7 +167,10 @@ readProcessByteString program arguments input = do
 -- @-node:gcross.20100614121927.2360:readProcessByteString
 -- @+node:gcross.20100709210816.2203:readVersion
 readVersion :: String -> Version
-readVersion = fromJust . tryReadVersion
+readVersion s =
+    fromMaybe
+        (error $ "Unable to parse version string '" ++ s ++ "'")
+        (tryReadVersion s)
 -- @-node:gcross.20100709210816.2203:readVersion
 -- @+node:gcross.20100830091258.2024:tryReadVersion
 tryReadVersion :: String → Maybe Version
