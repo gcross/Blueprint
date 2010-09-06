@@ -84,6 +84,9 @@ data Options = Options
     ,   optionDescriptions :: Map OptionId (String,String)
     }
 -- @-node:gcross.20100903200211.2243:Options
+-- @+node:gcross.20100905161144.1934:OptionValues
+type OptionValues = Map OptionId String
+-- @-node:gcross.20100905161144.1934:OptionValues
 -- @+node:gcross.20100903200211.2248:Conflicts
 data Conflicts = Conflicts
     {   conflictingShortForms :: Map Char [OptionId]
@@ -172,7 +175,7 @@ extractOptionsOrError :: Either Conflicts Options → Options
 extractOptionsOrError = either (throw . ConflictingOptionsException) id
 -- @-node:gcross.20100903200211.2256:extractOptionsOrError
 -- @+node:gcross.20100903200211.2259:parseCommandLine
-parseCommandLine :: Options → [String] → Either [String] ([String],Map OptionId String)
+parseCommandLine :: Options → [String] → Either [String] ([String],OptionValues)
 parseCommandLine Options{..} arguments =
     case error_messages of
         [] → Right (leftovers,options)
@@ -215,7 +218,7 @@ parseCommandLine Options{..} arguments =
 -- @nonl
 -- @-node:gcross.20100903200211.2259:parseCommandLine
 -- @+node:gcross.20100905161144.1926:parseConfigurationFile
-parseConfigurationFile :: Options → ConfigParser → Either [CPError] (Map OptionId String)
+parseConfigurationFile :: Options → ConfigParser → Either [CPError] OptionValues
 parseConfigurationFile Options{optionConfigurationKeys} cp =
     let (parse_errors,values) =
             partitionEithers
@@ -237,7 +240,7 @@ parseConfigurationFile Options{optionConfigurationKeys} cp =
         errors → Left errors
 -- @-node:gcross.20100905161144.1926:parseConfigurationFile
 -- @+node:gcross.20100905161144.1929:updateConfigurationFile
-updateConfigurationFile :: Options → ConfigParser → Map OptionId String → Maybe ConfigParser
+updateConfigurationFile :: Options → ConfigParser → OptionValues → Maybe ConfigParser
 updateConfigurationFile Options{optionConfigurationKeys} cp option_values
   | config_file_updated = Just new_config_file
   | otherwise           = Nothing
@@ -261,7 +264,7 @@ updateConfigurationFile Options{optionConfigurationKeys} cp option_values
         optionConfigurationKeys
 -- @-node:gcross.20100905161144.1929:updateConfigurationFile
 -- @+node:gcross.20100903200211.2261:getAndParseCommandLine
-getAndParseCommandLineOptions :: Options → IO ([String],Map OptionId String)
+getAndParseCommandLineOptions :: Options → IO ([String],OptionValues)
 getAndParseCommandLineOptions =
     flip fmap getArgs . parseCommandLine
     >=>
@@ -274,7 +277,7 @@ getAndParseCommandLineOptions =
         return
 -- @-node:gcross.20100903200211.2261:getAndParseCommandLine
 -- @+node:gcross.20100905161144.1928:getAndParseConfigurationFile
-getAndParseConfigurationFileOptions :: Options → FilePath → IO (Map OptionId String)
+getAndParseConfigurationFileOptions :: Options → FilePath → IO OptionValues
 getAndParseConfigurationFileOptions options configuration_filepath =
     readfile emptyCP configuration_filepath
     >>=
@@ -287,7 +290,7 @@ getAndParseConfigurationFileOptions options configuration_filepath =
         return
 -- @-node:gcross.20100905161144.1928:getAndParseConfigurationFile
 -- @+node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
-getParseAndUpdateConfigurationFile :: Options → FilePath → Map OptionId String → IO (Map OptionId String)
+getParseAndUpdateConfigurationFile :: Options → FilePath → OptionValues → IO OptionValues
 getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
     cp ←
         readfile emptyCP configuration_filepath
@@ -306,7 +309,7 @@ getParseAndUpdateConfigurationFile options configuration_filepath old_option_val
     return new_option_values
 -- @-node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
 -- @+node:gcross.20100905161144.1931:loadOptions
-loadOptions :: Options → FilePath → IO ([String],Map OptionId String)
+loadOptions :: Options → FilePath → IO ([String],OptionValues)
 loadOptions options configuration_filepath = do
     (leftovers,command_line_option_values) ← getAndParseCommandLineOptions options
     fmap (leftovers,) $
