@@ -260,6 +260,10 @@ updateConfigurationFile Options{optionConfigurationKeys} cp option_values
                 Just new_value →
                     case interpolatingAccess 10 current_config_file "DEFAULT" configuration_key of
                         Right old_value
+                          | new_value == "" →
+                            (True
+                            ,fromRight (remove_option current_config_file "DEFAULT" configuration_key)
+                            )
                           | new_value == old_value → same
                         _ → (True
                             ,fromRight (set current_config_file "DEFAULT" configuration_key new_value)
@@ -306,7 +310,7 @@ getParseAndUpdateConfigurationFile options configuration_filepath old_option_val
     case updateConfigurationFile options cp new_option_values of
         Nothing → return ()
         Just updated_cp → writeFile configuration_filepath (to_string updated_cp)
-    return new_option_values
+    return . Map.filter (/= "") $ new_option_values
 -- @-node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
 -- @+node:gcross.20100905161144.1931:loadOptions
 loadOptions :: FilePath → Options → IO ([String],OptionValues)
