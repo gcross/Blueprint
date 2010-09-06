@@ -451,7 +451,7 @@ createGHCConfigurationJob
                     Right (ghc :: GHC) → abort ghc
                     Left e
                       | Just (e_ :: GHCConfigurationException) ← fromException e → return e_
-                      | otherwise → return (GHCUnknownException e)
+                      | otherwise → liftIO $ throwIO e
         let (ghc_not_found_locations,other_exceptions) =
                 partitionEithers
                 .
