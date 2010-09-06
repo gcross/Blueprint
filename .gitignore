@@ -10,3 +10,6 @@ objects
 libraries
 dist
 test
+build
+*.cfg
+*.cache
