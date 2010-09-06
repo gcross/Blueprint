@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -20,6 +21,7 @@ import Control.Arrow
 import Control.Exception
 import Control.Monad
 
+import Data.ConfigFile
 import Data.Either
 import Data.Either.Unwrap
 import Data.Function
@@ -41,12 +43,18 @@ import Blueprint.Miscellaneous
 
 -- @+others
 -- @+node:gcross.20100903200211.2257:Exceptions
--- @+node:gcross.20100903200211.2258:OptionConflictsExceptions
+-- @+node:gcross.20100903200211.2258:OptionConflictsException
 data ConflictingOptionsException = ConflictingOptionsException Conflicts deriving (Typeable,Show)
 
 instance Exception ConflictingOptionsException
 
--- @-node:gcross.20100903200211.2258:OptionConflictsExceptions
+-- @-node:gcross.20100903200211.2258:OptionConflictsException
+-- @+node:gcross.20100905161144.1927:ConfigurationFileException
+data ConfigurationFileErrors = ConfigurationFileErrors FilePath [CPError] deriving (Show,Eq,Typeable)
+
+instance Exception ConfigurationFileErrors
+
+-- @-node:gcross.20100905161144.1927:ConfigurationFileException
 -- @-node:gcross.20100903200211.2257:Exceptions
 -- @+node:gcross.20100903200211.2238:Types
 -- @+node:gcross.20100903200211.2240:OptionId
@@ -163,9 +171,9 @@ instance Monoid (Either Conflicts Options) where
 extractOptionsOrError :: Either Conflicts Options → Options
 extractOptionsOrError = either (throw . ConflictingOptionsException) id
 -- @-node:gcross.20100903200211.2256:extractOptionsOrError
--- @+node:gcross.20100903200211.2259:parseCommandLineOptions
-parseCommandLineOptions :: Options → [String] → Either [String] ([String],Map OptionId String)
-parseCommandLineOptions Options{..} arguments =
+-- @+node:gcross.20100903200211.2259:parseCommandLine
+parseCommandLine :: Options → [String] → Either [String] ([String],Map OptionId String)
+parseCommandLine Options{..} arguments =
     case error_messages of
         [] → Right (leftovers,options)
         _ → Left error_messages
@@ -205,21 +213,105 @@ parseCommandLineOptions Options{..} arguments =
         | (short_form,(option_id,argument_type)) ← Map.toList optionShortForms
         ]
 -- @nonl
--- @-node:gcross.20100903200211.2259:parseCommandLineOptions
--- @+node:gcross.20100903200211.2261:getAndParseCommandLineOptions
+-- @-node:gcross.20100903200211.2259:parseCommandLine
+-- @+node:gcross.20100905161144.1926:parseConfigurationFile
+parseConfigurationFile :: Options → ConfigParser → Either [CPError] (Map OptionId String)
+parseConfigurationFile Options{optionConfigurationKeys} cp =
+    let (parse_errors,values) =
+            partitionEithers
+            .
+            catMaybes
+            .
+            map (\(configuration_key,option_id) →
+                case interpolatingAccess 10 cp "DEFAULT" configuration_key of
+                    Right value → Just (Right (option_id,value))
+                    Left (NoOption _,_) → Nothing
+                    Left cp_error → Just (Left cp_error)
+            )
+            .
+            Map.toList
+            $
+            optionConfigurationKeys
+    in case parse_errors of
+        [] → Right (Map.fromList values)
+        errors → Left errors
+-- @-node:gcross.20100905161144.1926:parseConfigurationFile
+-- @+node:gcross.20100905161144.1929:updateConfigurationFile
+updateConfigurationFile :: Options → ConfigParser → Map OptionId String → Maybe ConfigParser
+updateConfigurationFile Options{optionConfigurationKeys} cp option_values
+  | config_file_updated = Just new_config_file
+  | otherwise           = Nothing
+  where
+    (config_file_updated,new_config_file) = foldl' -- '
+        (\same@(config_file_updated,current_config_file) (configuration_key,option_id) →
+            case (Map.lookup option_id option_values
+                 ,interpolatingAccess 10 current_config_file "DEFAULT" configuration_key
+                 ) of
+                (Just new_value,Right old_value)
+                  | new_value /= old_value →
+                        (True
+                        ,fromRight (set current_config_file "DEFAULT" configuration_key new_value)
+                        )
+                _ → same
+        )
+        (False,cp)
+        .
+        Map.toList
+        $
+        optionConfigurationKeys
+-- @-node:gcross.20100905161144.1929:updateConfigurationFile
+-- @+node:gcross.20100903200211.2261:getAndParseCommandLine
 getAndParseCommandLineOptions :: Options → IO ([String],Map OptionId String)
 getAndParseCommandLineOptions =
-    flip fmap getArgs . parseCommandLineOptions
+    flip fmap getArgs . parseCommandLine
     >=>
-    \parse_results →
-        case parse_results of
-            Left error_messages → do
-                putStrLn "Error parsing the command line options:"
-                mapM_ (putStrLn . ("* " ++)) error_messages
-                exitFailure
-            Right options →
-                return options
--- @-node:gcross.20100903200211.2261:getAndParseCommandLineOptions
+    either
+        (\error_messages → do
+            putStrLn "Error parsing the command line options:"
+            mapM_ (putStrLn . ("* " ++)) error_messages
+            exitFailure
+        )
+        return
+-- @-node:gcross.20100903200211.2261:getAndParseCommandLine
+-- @+node:gcross.20100905161144.1928:getAndParseConfigurationFile
+getAndParseConfigurationFileOptions :: Options → FilePath → IO (Map OptionId String)
+getAndParseConfigurationFileOptions options configuration_filepath =
+    readfile emptyCP configuration_filepath
+    >>=
+    either
+        (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
+        (return . parseConfigurationFile options)
+    >>=
+    either
+        (throwIO . ConfigurationFileErrors configuration_filepath)
+        return
+-- @-node:gcross.20100905161144.1928:getAndParseConfigurationFile
+-- @+node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
+getParseAndUpdateConfigurationFile :: Options → FilePath → Map OptionId String → IO (Map OptionId String)
+getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
+    cp ←
+        readfile emptyCP configuration_filepath
+        >>=
+        either
+            (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
+            return
+    new_option_values ←
+        either
+            (throwIO . ConfigurationFileErrors configuration_filepath)
+            (return . mappend old_option_values)
+        (parseConfigurationFile options cp)
+    case updateConfigurationFile options cp new_option_values of
+        Nothing → return ()
+        Just updated_cp → writeFile configuration_filepath (to_string updated_cp)
+    return new_option_values
+-- @-node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
+-- @+node:gcross.20100905161144.1931:loadOptions
+loadOptions :: Options → FilePath → IO ([String],Map OptionId String)
+loadOptions options configuration_filepath = do
+    (leftovers,command_line_option_values) ← getAndParseCommandLineOptions options
+    fmap (leftovers,) $
+        getParseAndUpdateConfigurationFile options configuration_filepath command_line_option_values
+-- @-node:gcross.20100905161144.1931:loadOptions
 -- @-node:gcross.20100903200211.2255:Functions
 -- @-others
 -- @-node:gcross.20100903200211.2235:@thin Options.hs
