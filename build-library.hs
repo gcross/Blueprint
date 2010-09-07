@@ -51,8 +51,8 @@ main = do
     updateGlobalLogger rootLoggerName (setLevel DEBUG)
     sources ← getAllSourceFilesAndPrependParentIn (Seq.singleton "Blueprint") "Blueprint"
     let haskell_sources = extractHaskellSources sources
-        object_directory = "build" </> "program" </> "objects"
-        interface_directory = "build" </> "program" </> "interfaces"
+        object_directory = "build" </> "library" </> "objects"
+        interface_directory = "build" </> "library" </> "interfaces"
         built_modules =
             map (haskellSourceToBuiltModule object_directory interface_directory)
                 haskell_sources
@@ -78,7 +78,7 @@ main = do
                 []
                 interface_directory
         compilation_jobs = createGHCCompileToObjectJobsFromBuildEnvironment build_environment
-        built_archive = builtArchive "libBlueprint.a"
+        built_archive = builtArchive ("build" </> "library" </> "archive" </> "libBlueprint.a")
         archive_jobs =
             createArFetchDeferredDependencesAndMakeArchiveJobs
                 ar_configuration

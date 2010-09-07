@@ -146,9 +146,9 @@ createDependencyDeclarations uuid_as_string name = do
     let dependency_type = wordsToUnderscores name ++ "_dependency_type"
         dependency_type_name = mkName dependency_type
         dependency_type_name_var = return . VarE $ dependency_type_name
-        dependency_type_name_lit = return . LitE . StringL $ dependency_type
+        name_lit = return . LitE . StringL $ name
         dependency_wrapper_fn_name = mkName (wordsToCamelCase name ++ "Dependency")
-    dependency_type_qexp ← [|identifier uuid_as_string $(dependency_type_name_lit)|]
+    dependency_type_qexp ← [|identifier uuid_as_string $(name_lit)|]
     dependency_wrapper_fn_qexp ← [|Dependency $(dependency_type_name_var)|]
     return
         [ValD (VarP dependency_type_name) (NormalB dependency_type_qexp) []

@@ -95,7 +95,7 @@ main = do
     withJobServerUsingCacheFile 4 "build.cache" $ do
         mapM_ (submitJob . createSourceFileDigestJob) sources
         mapM_ submitJob (compilation_jobs ++ link_jobs)
-        requestJobResult . builtJobId $ built_program
+        requestJobResult . builtProductJobId $ built_program
 -- @-node:gcross.20100709210816.2100:main
 -- @-others
 -- @-node:gcross.20100709210816.2097:@thin build-test.hs
