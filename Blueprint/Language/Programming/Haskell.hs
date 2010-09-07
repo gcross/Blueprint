@@ -23,8 +23,6 @@ import Text.Regex.PCRE.String
 import Blueprint.Dependency
 import Blueprint.Identifier
 import Blueprint.Jobs
-import Blueprint.Language
-import Blueprint.Language.Programming
 import Blueprint.Miscellaneous
 import Blueprint.Record
 import Blueprint.SourceFile
@@ -32,20 +30,6 @@ import Blueprint.SourceFile
 -- @nl
 
 -- @+others
--- @+node:gcross.20100615082419.1704:Languages
--- @+node:gcross.20100615082419.1707:Haskell
-data Haskell
-
-instance Language Haskell where
-    languageUUID _ = uuid "5fb30321-bfcd-488e-b798-6c000a22b47f"
-    languageName _ = "Haskell"
-    languageFileExtensions _ = ["hs"]
-
-instance ProgrammingLanguage Haskell where
-    languageHelloWorldScript _ = scriptFromLines $ ["main = putStrLn \"Hello, world!\""]
--- @nonl
--- @-node:gcross.20100615082419.1707:Haskell
--- @-node:gcross.20100615082419.1704:Languages
 -- @+node:gcross.20100630111926.2042:Types
 -- @+node:gcross.20100630111926.2043:HaskellSource
 data HaskellSource = HaskellSource

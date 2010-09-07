@@ -75,7 +75,6 @@ import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
-import Blueprint.Tools.Compilers
 import Blueprint.Tools.Compilers.GHC
 import Blueprint.IOTask
 import Blueprint.Jobs

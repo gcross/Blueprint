@@ -37,9 +37,7 @@
 <v t="gcross.20100831211145.2022"><vh>@path Jobs</vh>
 <v t="gcross.20100831211145.2026"><vh>@thin Combinators.hs</vh></v>
 </v>
-<v t="gcross.20100611224425.1634"><vh>@thin Language.hs</vh></v>
 <v t="gcross.20100611224425.1587"><vh>@path Language</vh>
-<v t="gcross.20100616175443.1689"><vh>@thin Programming.hs</vh></v>
 <v t="gcross.20100616175443.1685"><vh>@path Programming</vh>
 <v t="gcross.20100611224425.1682"><vh>@thin Haskell.hs</vh></v>
 </v>
@@ -58,7 +56,6 @@
 <v t="gcross.20100624100717.2132"><vh>@thin Tools.hs</vh></v>
 <v t="gcross.20100611224425.1603"><vh>@path Tools</vh>
 <v t="gcross.20100906112631.1936"><vh>@thin Ar.hs</vh></v>
-<v t="gcross.20100611224425.1700"><vh>@thin Compilers.hs</vh></v>
 <v t="gcross.20100611224425.1604"><vh>@path Compilers</vh>
 <v t="gcross.20100611224425.1610"><vh>@thin GHC.hs</vh></v>
 </v>
