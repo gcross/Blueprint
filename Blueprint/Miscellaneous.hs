@@ -41,6 +41,8 @@ import Data.Version
 
 import Debug.Trace
 
+import Language.Haskell.TH hiding (match)
+
 import System.Directory
 import System.Exit
 import System.FilePath
@@ -115,6 +117,9 @@ doubleton x y = [x,y]
 -- @+node:gcross.20100614121927.2357:echo
 echo x = trace (show x) x
 -- @-node:gcross.20100614121927.2357:echo
+-- @+node:gcross.20100906112631.2130:emptyType
+emptyType name = NewtypeD [] name [] (NormalC name [(NotStrict,TupleT 0)]) []
+-- @-node:gcross.20100906112631.2130:emptyType
 -- @+node:gcross.20100830091258.2026:extractVersion
 extractVersion ::
     RegexLike regex String =>

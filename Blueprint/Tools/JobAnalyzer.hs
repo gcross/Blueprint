@@ -113,7 +113,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        rebuildProductsIfNecessary
+        reBuiltProductsIfNecessary
             (builder . map fst $ requiredImmediateDependencies)
             checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
@@ -162,7 +162,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        rebuildProductsIfNecessary
+        reBuiltProductsIfNecessary
             builder
             checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
@@ -180,6 +180,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
         product_digests
  where
     dependency_digests_field = field "depedency digests" "da0f7975-5565-43ba-a253-746d37cf5ca8"
+-- @nonl
 -- @-node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2045:checkForChangesIn
 checkForChangesIn ::
@@ -223,7 +224,7 @@ compareToCacheAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        rebuildProductsIfNecessary
+        reBuiltProductsIfNecessary
             builder
             checkIfProductsMatch
             cached_information_has_changed
@@ -239,6 +240,7 @@ compareToCacheAndRebuildIfNecessary
         )
         $
         product_digests
+-- @nonl
 -- @-node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2044:fetchDigestsAndCheckForChanges
 fetchDigestsAndCheckForChanges ::
@@ -278,13 +280,13 @@ readRequiredAndCache field = do
     writeToCache field value
     return value
 -- @-node:gcross.20100705185804.2050:readRequiredAndCache
--- @+node:gcross.20100705185804.2040:rebuildProductsIfNecessary
-rebuildProductsIfNecessary ::
+-- @+node:gcross.20100705185804.2040:reBuiltProductsIfNecessary
+reBuiltProductsIfNecessary ::
     ToolJobTask [MD5Digest] →
     ([MD5Digest] → ToolJobTask Bool) →
     Bool →
     JobAnalyzer [MD5Digest]
-rebuildProductsIfNecessary
+reBuiltProductsIfNecessary
     builder
     checkIfProductsMatch
     always_rebuild
@@ -302,7 +304,8 @@ rebuildProductsIfNecessary
         builder
   where
     product_digests_field = field "product digests" "101ba0a4-35a9-44f7-98c0-87d26027a375"
--- @-node:gcross.20100705185804.2040:rebuildProductsIfNecessary
+-- @nonl
+-- @-node:gcross.20100705185804.2040:reBuiltProductsIfNecessary
 -- @+node:gcross.20100705185804.2047:rerunTaskAndCacheResultOnlyIf
 rerunTaskAndCacheResultOnlyIf ::
     (Typeable a, Binary a) ⇒

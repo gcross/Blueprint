@@ -12,6 +12,7 @@
 <v t="gcross.20100521181123.1261"><vh>@chapters</vh></v>
 <v t="gcross.20100901145855.2072"><vh>@thin Blueprint.cabal</vh></v>
 <v t="gcross.20100709210816.2097"><vh>@thin build-test.hs</vh></v>
+<v t="gcross.20100906112631.2146"><vh>@thin build-library.hs</vh></v>
 <v t="gcross.20100602141408.1272"><vh>@path Blueprint</vh>
 <v t="gcross.20100830091258.2021"><vh>@path Configuration</vh>
 <v t="gcross.20100830091258.2004"><vh>@thin Tools.hs</vh></v>
@@ -40,14 +41,6 @@
 <v t="gcross.20100611224425.1587"><vh>@path Language</vh>
 <v t="gcross.20100616175443.1689"><vh>@thin Programming.hs</vh></v>
 <v t="gcross.20100616175443.1685"><vh>@path Programming</vh>
-<v t="gcross.20100611224425.1588"><vh>@thin C.hs</vh></v>
-<v t="gcross.20100611224425.1664"><vh>@thin CPP.hs</vh></v>
-<v t="gcross.20100614121927.1746"><vh>@thin Fortran.hs</vh></v>
-<v t="gcross.20100614121927.1735"><vh>@path Fortran</vh>
-<v t="gcross.20100614121927.1756"><vh>@thin F77.hs</vh></v>
-<v t="gcross.20100614172544.1694"><vh>@thin F90.hs</vh></v>
-<v t="gcross.20100614172544.1704"><vh>@thin F95.hs</vh></v>
-</v>
 <v t="gcross.20100611224425.1682"><vh>@thin Haskell.hs</vh></v>
 </v>
 </v>
@@ -97,7 +90,6 @@ module Blueprint.Module where
 <t tx="gcross.20100611224425.1694">{-# LANGUAGE UnicodeSyntax #-}
 </t>
 <t tx="gcross.20100611224425.1696"></t>
-<t tx="gcross.20100614121927.1735"></t>
 <t tx="gcross.20100616175443.1685"></t>
 <t tx="gcross.20100624100717.2080"></t>
 <t tx="gcross.20100830091258.2021"></t>

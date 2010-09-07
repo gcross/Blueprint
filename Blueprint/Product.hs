@@ -23,24 +23,24 @@ import Blueprint.Miscellaneous
 
 -- @+others
 -- @+node:gcross.20100906112631.2067:Types
--- @+node:gcross.20100906112631.2070:Built
-data Built a = Built
-    {   builtName :: String
-    ,   builtJobId :: JobId
+-- @+node:gcross.20100906112631.2070:BuiltProduct
+data BuiltProduct a = BuiltProduct
+    {   builtProductName :: String
+    ,   builtProductJobId :: JobId
     }
--- @-node:gcross.20100906112631.2070:Built
--- @+node:gcross.20100906112631.2069:BuiltOf
-type BuiltOf a = String → Built a
--- @-node:gcross.20100906112631.2069:BuiltOf
+-- @-node:gcross.20100906112631.2070:BuiltProduct
+-- @+node:gcross.20100906112631.2069:ProductBuilder
+type ProductBuilder a = String → BuiltProduct a
+-- @-node:gcross.20100906112631.2069:ProductBuilder
 -- @-node:gcross.20100906112631.2067:Types
 -- @+node:gcross.20100906112631.2064:Functions
--- @+node:gcross.20100906112631.2066:built
-built :: (String → String → JobId) → String → String → Built a
-built jobIdOf product_kind product_name =
-    Built
+-- @+node:gcross.20100906112631.2066:builtProduct
+builtProduct :: (String → String → JobId) → String → String → BuiltProduct a
+builtProduct jobIdOf product_kind product_name =
+    BuiltProduct
         product_name
         (jobIdOf product_name ("Building " ++ product_kind ++ " " ++ product_name))
--- @-node:gcross.20100906112631.2066:built
+-- @-node:gcross.20100906112631.2066:builtProduct
 -- @+node:gcross.20100906112631.2105:createProductDeclarations
 createProductDeclarations :: String → String → Q [Dec]
 createProductDeclarations uuid_string name = do
@@ -56,17 +56,17 @@ createProductDeclarations uuid_string name = do
         name_qexp = return . LitE . StringL $ name
     uuid_exp ← [|uuid uuid_string|]
     jobId_exp ← [|jobIdInNamespace $(namespace_qexp)|]
-    built_type ← [t|BuiltOf $(product_datatype_qtype)|]
+    built_type ← [t|ProductBuilder $(product_datatype_qtype)|]
     built_exp ←
         [|\product_name →
-            Built
+            BuiltProduct
                 product_name
                 ($(jobId_qexp) product_name ("Building " ++ $(name_qexp) ++ " " ++ product_name))
         |]
     return
         [ValD (VarP namespace_name) (NormalB uuid_exp) []
         ,ValD (VarP jobId_name) (NormalB jobId_exp) []
-        ,NewtypeD [] product_datatype_name [] (NormalC product_datatype_name [(NotStrict,TupleT 0)]) []
+        ,emptyType product_datatype_name
         ,SigD built_name built_type
         ,ValD (VarP built_name) (NormalB built_exp) []
         ]

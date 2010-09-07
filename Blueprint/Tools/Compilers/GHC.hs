@@ -648,21 +648,21 @@ createGHCCompileToObjectJobsFromBuildEnvironment BuildEnvironment{..} =
 createGHCFetchDeferredDependencesAndLinkProgramJobs ::
     FilePath →
     [String] →
-    Built Program →
+    BuiltProduct Program →
     (Dependency → Maybe JobId) →
     [Dependency] →
     [ToolJob]
 createGHCFetchDeferredDependencesAndLinkProgramJobs
     path_to_ghc
     options_arguments
-    built_program@Built{..}
+    built_program@BuiltProduct{..}
     lookupDependencyJobIds
     starting_dependencies
     =
     fmap
         (computeProgramComponents . Map.toList)
         (fetchAllDeferredDependenciesAndTheirDigests
-            builtName
+            builtProductName
             lookupDependencyJobIds
             starting_dependencies
         )
@@ -672,19 +672,20 @@ createGHCFetchDeferredDependencesAndLinkProgramJobs
         options_arguments
         built_program
     ]
+-- @nonl
 -- @-node:gcross.20100903104106.2080:createGHCFetchDeferredDependencesAndLinkProgramJobs
 -- @+node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
 createGHCLinkProgramIncompleteJob ::
     FilePath →
     [String] →
-    Built Program →
+    BuiltProduct Program →
     IncompleteToolJob ProgramComponents
 createGHCLinkProgramIncompleteJob
     path_to_ghc
     options_arguments
-    Built{..}
+    BuiltProduct{..}
     =
-    incompleteJobWithCache [builtJobId]
+    incompleteJobWithCache [builtProductJobId]
     $
     \program_components@ProgramComponents{..} →
         let ghc_arguments =
@@ -694,27 +695,27 @@ createGHCLinkProgramIncompleteJob
                 ++
                 concat [["-package",package] | package ← programComponentPackages]
                 ++
-                ["-o",builtName]
+                ["-o",builtProductName]
                 ++
                 options_arguments
             builder = liftIO $ do
                 noticeM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Linking program "
-                    ++ builtName
+                    ++ builtProductName
                 infoM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
                 runProductionCommandAndDigestOutputs
-                    [builtName]
+                    [builtProductName]
                     []
                     path_to_ghc
                     ghc_arguments
         in  runJobAnalyzer
             .
-            fmap (zipWith ($) [setFilePath builtName])
+            fmap (zipWith ($) [setFilePath builtProductName])
             $
             compareToCacheAndRebuildIfNecessary
                 builder
-                (liftIO . checkDigestsOfFilesIfExisting [builtName])
+                (liftIO . checkDigestsOfFilesIfExisting [builtProductName])
                 program_components
 -- @nonl
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
@@ -808,6 +809,18 @@ haskellSourceToBuiltModule object_subdirectory interface_subdirectory HaskellSou
     interface_file_path = interface_subdirectory </> haskell_module_path <.> "hi"
     display_name = "Compile " ++ haskellSourceModuleName
 -- @-node:gcross.20100708192404.2001:haskellSourceToBuiltModule
+-- @+node:gcross.20100906112631.2162:lookupObjectJobIdInBuiltModules
+lookupObjectJobIdInBuiltModules :: [BuiltModule] → FilePath → Maybe JobId
+lookupObjectJobIdInBuiltModules built_modules =
+    flip Map.lookup object_job_ids
+  where
+    object_job_ids =
+        Map.fromList
+        .
+        map (builtModuleObjectFilePath &&& builtModuleObjectJobId)
+        $
+        built_modules
+-- @-node:gcross.20100906112631.2162:lookupObjectJobIdInBuiltModules
 -- @+node:gcross.20100708215239.2093:interfaceJobId
 interfaceJobId = identifierInNamespace interface_namespace
 -- @-node:gcross.20100708215239.2093:interfaceJobId
