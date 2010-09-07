@@ -18,15 +18,16 @@ import Data.Monoid
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Options
-import Blueprint.Target
+import Blueprint.Phase
 import Blueprint.Wrapper
+-- @nonl
 -- @-node:gcross.20100906112631.2214:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20100906112631.2215:Functions
--- @+node:gcross.20100906112631.2216:configurationTarget
-configurationTarget ::
+-- @+node:gcross.20100906112631.2216:configurationPhase
+configurationPhase ::
     (Ord jobid
     ,Show jobid
     ,Typeable jobid
@@ -38,16 +39,16 @@ configurationTarget ::
     FilePath →
     Options →
     (OptionValues → JobApplicative jobid result a) →
-    Target a
-configurationTarget
+    Phase a
+configurationPhase
     configuration_filepath
     cache_filepath
     options
     configurer
     =
-    Target $ \is_primary_target → do
+    Phase $ \is_primary_Phase → do
         options ←
-            if is_primary_target
+            if is_primary_Phase
                 then fmap snd (loadOptions configuration_filepath options)
                 else getAndParseConfigurationFile options configuration_filepath
         runJobApplicativeUsingCacheFile 4 cache_filepath
@@ -55,7 +56,8 @@ configurationTarget
             configurer
             $
             options
--- @-node:gcross.20100906112631.2216:configurationTarget
+-- @nonl
+-- @-node:gcross.20100906112631.2216:configurationPhase
 -- @-node:gcross.20100906112631.2215:Functions
 -- @-others
 -- @-node:gcross.20100906112631.2212:@thin Configuration.hs

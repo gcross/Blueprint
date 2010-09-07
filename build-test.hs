@@ -40,30 +40,33 @@ import Blueprint.Options
 import Blueprint.Product
 import Blueprint.Product.File.Program
 import Blueprint.SourceFile
-import Blueprint.Target
+import Blueprint.Phase
 import Blueprint.Tools
 import Blueprint.Tools.Compilers.GHC
+-- @nonl
 -- @-node:gcross.20100709210816.2099:<< Import needed modules >>
 -- @nl
 
 -- @+others
 -- @+node:gcross.20100709210816.2100:main
 main = runMain
-    [("configure",runTarget configure)
-    ,("build",runTarget (configure >>= build))
+    [("configure",runPhase configure)
+    ,("build",runPhase (configure >>= build))
     ]
+-- @nonl
 -- @-node:gcross.20100709210816.2100:main
--- @+node:gcross.20100906112631.2217:Targets
+-- @+node:gcross.20100906112631.2217:Phases
 -- @+node:gcross.20100906112631.2218:configure
 configure =
-    configurationTarget
+    configurationPhase
         "configuration.cfg"
         "configuration.cache"
         ghcOptions
         configureGHCEnvironmentUsingOptions
+-- @nonl
 -- @-node:gcross.20100906112631.2218:configure
 -- @+node:gcross.20100906112631.2219:build
-build ghc_environment@GHCEnvironment{..} = Target . const $ do
+build ghc_environment@GHCEnvironment{..} = Phase . const $ do
     sources ←
         fmap ((sourceFile "test.hs" (Seq.singleton "Main"):) . concat)
         .
@@ -105,8 +108,9 @@ build ghc_environment@GHCEnvironment{..} = Target . const $ do
         mapM_ (submitJob . createSourceFileDigestJob) sources
         mapM_ submitJob (compilation_jobs ++ link_jobs)
         requestJobResult . builtProductJobId $ built_program
+-- @nonl
 -- @-node:gcross.20100906112631.2219:build
--- @-node:gcross.20100906112631.2217:Targets
+-- @-node:gcross.20100906112631.2217:Phases
 -- @-others
 -- @-node:gcross.20100709210816.2097:@thin build-test.hs
 -- @-leo
