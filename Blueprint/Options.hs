@@ -292,16 +292,7 @@ getAndParseCommandLineOptions =
 -- @+node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
 getParseAndUpdateConfigurationFile :: Options → FilePath → OptionValues → IO OptionValues
 getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
-    cp ← do
-        exists ← doesFileExist configuration_filepath
-        if exists
-            then do
-                readfile emptyCP configuration_filepath
-                >>=
-                either
-                    (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
-                    return
-            else return emptyCP
+    cp ← getConfigurationFile configuration_filepath
     new_option_values ←
         either
             (throwIO . ConfigurationFileErrors configuration_filepath)
@@ -312,6 +303,30 @@ getParseAndUpdateConfigurationFile options configuration_filepath old_option_val
         Just updated_cp → writeFile configuration_filepath (to_string updated_cp)
     return . Map.filter (/= "") $ new_option_values
 -- @-node:gcross.20100905161144.1930:getParseAndUpdateConfigurationFile
+-- @+node:gcross.20100906112631.2165:getAndParseConfigurationFile
+getAndParseConfigurationFile :: Options → FilePath → IO OptionValues
+getAndParseConfigurationFile options configuration_filepath = do
+    getConfigurationFile configuration_filepath
+    >>=
+    either
+        (throwIO . ConfigurationFileErrors configuration_filepath)
+        return
+    .
+    parseConfigurationFile options
+-- @-node:gcross.20100906112631.2165:getAndParseConfigurationFile
+-- @+node:gcross.20100906112631.2163:getConfigurationFile
+getConfigurationFile :: FilePath → IO ConfigParser
+getConfigurationFile configuration_filepath = do
+    exists ← doesFileExist configuration_filepath
+    if exists
+        then do
+            readfile emptyCP configuration_filepath
+            >>=
+            either
+                (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
+                return
+        else return emptyCP
+-- @-node:gcross.20100906112631.2163:getConfigurationFile
 -- @+node:gcross.20100905161144.1931:loadOptions
 loadOptions :: FilePath → Options → IO ([String],OptionValues)
 loadOptions configuration_filepath options = do

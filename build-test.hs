@@ -26,19 +26,21 @@ import Data.Version
 import System.Directory
 import System.Exit
 import System.FilePath
-import System.Log.Logger
 
+import Blueprint.Configuration
 import Blueprint.Configuration.Tools
 import Blueprint.Dependency.File.Object
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
+import Blueprint.Main
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Product
 import Blueprint.Product.File.Program
 import Blueprint.SourceFile
+import Blueprint.Target
 import Blueprint.Tools
 import Blueprint.Tools.Compilers.GHC
 -- @-node:gcross.20100709210816.2099:<< Import needed modules >>
@@ -46,8 +48,22 @@ import Blueprint.Tools.Compilers.GHC
 
 -- @+others
 -- @+node:gcross.20100709210816.2100:main
-main = do
-    updateGlobalLogger rootLoggerName (setLevel DEBUG)
+main = runMain
+    [("configure",runTarget configure)
+    ,("build",runTarget (configure >>= build))
+    ]
+-- @-node:gcross.20100709210816.2100:main
+-- @+node:gcross.20100906112631.2217:Targets
+-- @+node:gcross.20100906112631.2218:configure
+configure =
+    configurationTarget
+        "configuration.cfg"
+        "configuration.cache"
+        ghcOptions
+        configureGHCEnvironmentUsingOptions
+-- @-node:gcross.20100906112631.2218:configure
+-- @+node:gcross.20100906112631.2219:build
+build ghc_environment@GHCEnvironment{..} = Target . const $ do
     sources ←
         fmap ((sourceFile "test.hs" (Seq.singleton "Main"):) . concat)
         .
@@ -62,13 +78,6 @@ main = do
         built_modules =
             map (haskellSourceToBuiltModule object_directory interface_directory)
                 haskell_sources
-    (_,options) ← loadOptions "configuration.cfg" ghcOptions
-    ghc_environment@GHCEnvironment{..} ←
-        runJobApplicativeUsingCacheFile 4 "configuration.cache"
-        .
-        configureGHCEnvironmentUsingOptions
-        $
-        options
     (package_description,_) ←
         readAndConfigurePackageDescription
             ghc_environment
@@ -96,7 +105,8 @@ main = do
         mapM_ (submitJob . createSourceFileDigestJob) sources
         mapM_ submitJob (compilation_jobs ++ link_jobs)
         requestJobResult . builtProductJobId $ built_program
--- @-node:gcross.20100709210816.2100:main
+-- @-node:gcross.20100906112631.2219:build
+-- @-node:gcross.20100906112631.2217:Targets
 -- @-others
 -- @-node:gcross.20100709210816.2097:@thin build-test.hs
 -- @-leo
