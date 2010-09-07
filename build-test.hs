@@ -29,12 +29,15 @@ import System.FilePath
 import System.Log.Logger
 
 import Blueprint.Configuration.Tools
+import Blueprint.Dependency.File.Object
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
 import Blueprint.Options
+import Blueprint.Product
+import Blueprint.Product.File.Program
 import Blueprint.SourceFile
 import Blueprint.Tools
 import Blueprint.Tools.Compilers.GHC
@@ -92,7 +95,7 @@ main = do
     withJobServerUsingCacheFile 4 "build.cache" $ do
         mapM_ (submitJob . createSourceFileDigestJob) sources
         mapM_ submitJob (compilation_jobs ++ link_jobs)
-        requestJobResult . builtProgramJobId $ built_program
+        requestJobResult . builtJobId $ built_program
 -- @-node:gcross.20100709210816.2100:main
 -- @-others
 -- @-node:gcross.20100709210816.2097:@thin build-test.hs

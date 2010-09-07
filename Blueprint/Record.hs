@@ -36,9 +36,9 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
 import Data.UUID (UUID)
-import qualified Data.UUID as UUID
-import Data.UUID.V5 (generateNamed)
 import Data.Vec ((:.)(..))
+
+import Blueprint.Miscellaneous
 -- @-node:gcross.20100903163533.2081:<< Import needed modules >>
 -- @nl
 
@@ -257,14 +257,6 @@ withField ::
     Table entity
 withField field value = setField field value emptyTable
 -- @-node:gcross.20100903163533.2109:withField
--- @+node:gcross.20100903163533.2110:uuid
-uuid :: String → UUID
-uuid = fromJust . UUID.fromString
--- @-node:gcross.20100903163533.2110:uuid
--- @+node:gcross.20100903163533.2111:uuidInNamespace
-uuidInNamespace :: UUID → UUID → UUID
-uuidInNamespace namespace = generateNamed namespace . L.unpack . UUID.toByteString
--- @-node:gcross.20100903163533.2111:uuidInNamespace
 -- @-node:gcross.20100903163533.2102:Functions
 -- @+node:gcross.20100903163533.2112:Values
 -- @+node:gcross.20100903163533.2113:emptyTable

@@ -76,6 +76,9 @@ import Text.Regex.PCRE.String
 
 import Blueprint.Configuration.Tools
 import Blueprint.Dependency
+import Blueprint.Dependency.Library
+import Blueprint.Dependency.Runtime
+import Blueprint.Dependency.File.Object
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Fields.FilePath
 import Blueprint.Identifier
@@ -83,6 +86,9 @@ import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Language.Programming.Haskell
 import Blueprint.Miscellaneous
+import Blueprint.Product
+import Blueprint.Product.File.Object
+import Blueprint.Product.File.Program
 import Blueprint.Options
 import Blueprint.SourceFile
 import Blueprint.Tools
@@ -230,12 +236,6 @@ data BuiltModule = BuiltModule
     ,   builtModuleInterfaceJobId :: JobId
     }
 -- @-node:gcross.20100708215239.2085:BuiltModule
--- @+node:gcross.20100902220655.2075:BuiltProgram
-data BuiltProgram = BuiltProgram
-    {   builtProgramFilePath :: FilePath
-    ,   builtProgramJobId :: JobId
-    }
--- @-node:gcross.20100902220655.2075:BuiltProgram
 -- @+node:gcross.20100709210816.2222:ProgramComponents
 data ProgramComponents = ProgramComponents
     {   programComponentObjectFilePaths :: [FilePath]
@@ -255,6 +255,10 @@ instance Show BuiltModule where
 $( derive makeBinary ''ProgramComponents )
 -- @-node:gcross.20100902134026.2123:Binary ProgramComponents
 -- @-node:gcross.20100709210816.2105:Instances
+-- @+node:gcross.20100906112631.2114:Dependency Types
+createDependencyDeclarations "b0094d7f-1cf0-4cbf-8938-e40bf38a6e81" "package"
+createDependencyDeclarations "17047d2b-e8e2-4220-bd83-d61cda2fcbdc" "interface"
+-- @-node:gcross.20100906112631.2114:Dependency Types
 -- @+node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100708102250.2756:builtModulesToKnownModules
 builtModulesToKnownModules :: [BuiltModule] → KnownModules
@@ -270,13 +274,6 @@ builtModulesToKnownModules =
             builtModuleObjectFilePath
     )
 -- @-node:gcross.20100708102250.2756:builtModulesToKnownModules
--- @+node:gcross.20100902220655.2076:builtProgram
-builtProgram :: FilePath → BuiltProgram
-builtProgram program_filepath =
-    BuiltProgram
-        program_filepath
-        (programJobId program_filepath ("Building program " ++ program_filepath))
--- @-node:gcross.20100902220655.2076:builtProgram
 -- @+node:gcross.20100901145855.2052:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
 checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
@@ -339,15 +336,15 @@ computeProgramComponents dependencies
         ProgramComponents
         {   programComponentObjectFilePaths = map fst object_dependencies
         ,   programComponentLibraries = map fst library_dependencies
-        ,   programComponentPackages = map fst haskell_package_dependencies
+        ,   programComponentPackages = map fst package_dependencies
         ,   programComponentDependencyDigests = catMaybes . map snd . concat $ all_dependencies
         }
 
   where
-    all_dependencies@[runtime_dependencies,object_dependencies,library_dependencies,haskell_package_dependencies] =
+    all_dependencies@[runtime_dependencies,object_dependencies,library_dependencies,package_dependencies] =
         classifyTaggedDependenciesAndRejectUnrecognizedTypes
             "GHC program linker"
-            [runtime_dependency_type,object_dependency_type,library_dependency_type,haskell_package_dependency_type]
+            [runtime_dependency_type,object_dependency_type,library_dependency_type,package_dependency_type]
             dependencies
 
     unrecognized_runtime_dependencies =
@@ -355,6 +352,7 @@ computeProgramComponents dependencies
         | (dependency_name,_) ← runtime_dependencies
         , dependency_name /= ghc_runtime_dependency_name
         ]
+-- @nonl
 -- @-node:gcross.20100709210816.2223:computeProgramComponents
 -- @+node:gcross.20100831154015.2037:configureGHC
 configureGHC ::
@@ -583,7 +581,7 @@ createGHCCompileToObjectJob
         let [package_names,_] =
                 classifyDependenciesAndRejectUnrecognizedTypes
                     "GHC object compiler"
-                    [haskell_package_dependency_type,haskell_interface_dependency_type]
+                    [package_dependency_type,interface_dependency_type]
                     dependencies
         noticeM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Compiling "
@@ -632,6 +630,7 @@ createGHCCompileToObjectJob
         extractRequiredDependenciesOrError
         .
         map (resolveModuleDependency package_database known_modules)
+-- @nonl
 -- @-node:gcross.20100630111926.1874:createGHCCompileToObjectJob
 -- @+node:gcross.20100901145855.2080:createGHCCompileToObjectJobsFromBuildEnvironment
 createGHCCompileToObjectJobsFromBuildEnvironment :: BuildEnvironment → [ToolJob]
@@ -649,21 +648,21 @@ createGHCCompileToObjectJobsFromBuildEnvironment BuildEnvironment{..} =
 createGHCFetchDeferredDependencesAndLinkProgramJobs ::
     FilePath →
     [String] →
-    BuiltProgram →
+    Built Program →
     (Dependency → Maybe JobId) →
     [Dependency] →
     [ToolJob]
 createGHCFetchDeferredDependencesAndLinkProgramJobs
     path_to_ghc
     options_arguments
-    built_program@BuiltProgram{..}
+    built_program@Built{..}
     lookupDependencyJobIds
     starting_dependencies
     =
     fmap
         (computeProgramComponents . Map.toList)
         (fetchAllDeferredDependenciesAndTheirDigests
-            builtProgramFilePath
+            builtName
             lookupDependencyJobIds
             starting_dependencies
         )
@@ -678,14 +677,14 @@ createGHCFetchDeferredDependencesAndLinkProgramJobs
 createGHCLinkProgramIncompleteJob ::
     FilePath →
     [String] →
-    BuiltProgram →
+    Built Program →
     IncompleteToolJob ProgramComponents
 createGHCLinkProgramIncompleteJob
     path_to_ghc
     options_arguments
-    BuiltProgram{..}
+    Built{..}
     =
-    incompleteJobWithCache [builtProgramJobId]
+    incompleteJobWithCache [builtJobId]
     $
     \program_components@ProgramComponents{..} →
         let ghc_arguments =
@@ -695,28 +694,29 @@ createGHCLinkProgramIncompleteJob
                 ++
                 concat [["-package",package] | package ← programComponentPackages]
                 ++
-                ["-o",builtProgramFilePath]
+                ["-o",builtName]
                 ++
                 options_arguments
             builder = liftIO $ do
                 noticeM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Linking program "
-                    ++ builtProgramFilePath
+                    ++ builtName
                 infoM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
                 runProductionCommandAndDigestOutputs
-                    [builtProgramFilePath]
+                    [builtName]
                     []
                     path_to_ghc
                     ghc_arguments
         in  runJobAnalyzer
             .
-            fmap (zipWith ($) [setFilePath builtProgramFilePath])
+            fmap (zipWith ($) [setFilePath builtName])
             $
             compareToCacheAndRebuildIfNecessary
                 builder
-                (liftIO . checkDigestsOfFilesIfExisting [builtProgramFilePath])
+                (liftIO . checkDigestsOfFilesIfExisting [builtName])
                 program_components
+-- @nonl
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
 -- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
 createLoadGHCPackageDatabaseIncompleteJob ::
@@ -844,7 +844,8 @@ lookupDependencyJobIdInBuiltModules =
     .
     liftA2 (++)
         (map ((objectDependency . builtModuleObjectFilePath) &&& builtModuleObjectJobId))
-        (map ((haskellInterfaceDependency . builtModuleInterfaceFilePath) &&& builtModuleInterfaceJobId))
+        (map ((interfaceDependency . builtModuleInterfaceFilePath) &&& builtModuleInterfaceJobId))
+-- @nonl
 -- @-node:gcross.20100901145855.2058:lookupDependencyJobIdInBuiltModules
 -- @+node:gcross.20100901145855.2088:lookupPackageNamed
 lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])]
@@ -882,22 +883,23 @@ resolveModuleDependency PackageDatabase{..} known_modules module_name =
             Right
             $
             RequiredDependencies
-                [(haskellPackageDependency package_name,Nothing)]
-                [haskellPackageDependency package_name]
+                [(packageDependency package_name,Nothing)]
+                [packageDependency package_name]
         Just KnownModuleInProject{..} →
             Right
             $
             RequiredDependencies
-                [(haskellInterfaceDependency knownModuleInterfaceFilePath,Just knownModuleInterfaceJobId)]
+                [(interfaceDependency knownModuleInterfaceFilePath,Just knownModuleInterfaceJobId)]
                 [objectDependency knownModuleObjectFilePath]
         Nothing →
             Left
             .
-            UnknownDependency (haskellModuleDependency module_name)
+            UnknownDependency (moduleDependency module_name)
             .
-            fmap (DependencyExporters haskell_package_dependency_type . map installedPackageQualifiedName)
+            fmap (DependencyExporters package_dependency_type . map installedPackageQualifiedName)
             $
             Map.lookup module_name packageDatabaseIndexedByModuleName
+-- @nonl
 -- @-node:gcross.20100630111926.1863:resolveModuleDependency
 -- @-node:gcross.20100628115452.1853:Functions
 -- @+node:gcross.20100901145855.2091:Exceptions

@@ -54,6 +54,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
+import Data.UUID (UUID)
 
 import Debug.Trace
 import System.Directory
@@ -484,6 +485,10 @@ postprocessJobResultWith f Job{..} = Job { jobRunner = postprocessJobRunnerResul
 postprocessJobTaskResultWith :: ([result] → [result]) → JobTaskResult label result cache → JobTaskResult label result cache
 postprocessJobTaskResultWith f = fmap (\JobResults{..} → JobResults { jobResults = f jobResults, .. })
 -- @-node:gcross.20100902134026.2125:postprocessJobTaskResultWith
+-- @+node:gcross.20100906112631.2076:jobId
+jobIdInNamespace :: UUID → String → String → JobId
+jobIdInNamespace = identifierInNamespace
+-- @-node:gcross.20100906112631.2076:jobId
 -- @-node:gcross.20100607083309.1404:Interface
 -- @+node:gcross.20100607083309.1405:Implementation
 -- @+node:gcross.20100604204549.7666:failJobWithExceptions

@@ -34,6 +34,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
 
+import Language.Haskell.TH
+
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
@@ -138,6 +140,21 @@ instance Monoid RequiredDependencies where
 -- @-node:gcross.20100902134026.2106:Monoid RequiredDependencies
 -- @-node:gcross.20100624100717.2149:Instances
 -- @+node:gcross.20100624100717.2066:Functions
+-- @+node:gcross.20100906112631.2092:createDependencyDeclarations
+createDependencyDeclarations :: String → String → Q [Dec]
+createDependencyDeclarations uuid_as_string name = do
+    let dependency_type = wordsToUnderscores name ++ "_dependency_type"
+        dependency_type_name = mkName dependency_type
+        dependency_type_name_var = return . VarE $ dependency_type_name
+        dependency_type_name_lit = return . LitE . StringL $ dependency_type
+        dependency_wrapper_fn_name = mkName (wordsToCamelCase name ++ "Dependency")
+    dependency_type_qexp ← [|identifier uuid_as_string $(dependency_type_name_lit)|]
+    dependency_wrapper_fn_qexp ← [|Dependency $(dependency_type_name_var)|]
+    return
+        [ValD (VarP dependency_type_name) (NormalB dependency_type_qexp) []
+        ,ValD (VarP dependency_wrapper_fn_name) (NormalB dependency_wrapper_fn_qexp) []
+        ]
+-- @-node:gcross.20100906112631.2092:createDependencyDeclarations
 -- @+node:gcross.20100902134026.2101:classifyDependenciesAndRejectUnrecognizedTypes
 classifyDependenciesAndRejectUnrecognizedTypes :: String → [DependencyType] → [Dependency] → [[String]]
 classifyDependenciesAndRejectUnrecognizedTypes actor_name recognized_dependency_types =

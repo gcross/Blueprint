@@ -5,6 +5,7 @@
 -- @+node:gcross.20100830091258.2005:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100830091258.2005:<< Language extensions >>
 -- @nl
@@ -19,6 +20,8 @@ import Control.Monad
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Data.Binary
+import Data.DeriveTH
 import Data.Maybe
 import Data.Typeable
 import Data.Version
@@ -42,7 +45,36 @@ data BadProgramVersionException = BadProgramVersionException FilePath String der
 
 instance Exception BadProgramVersionException
 -- @-node:gcross.20100905161144.1939:BadProgramVersionException
+-- @+node:gcross.20100906112631.1979:ProgramDoesNotExistException
+data ProgramDoesNotExistException = ProgramDoesNotExistException FilePath deriving (Show,Eq,Typeable)
+
+instance Exception ProgramDoesNotExistException
+
+-- @-node:gcross.20100906112631.1979:ProgramDoesNotExistException
+-- @+node:gcross.20100906112631.1980:UnableToLocateProgramException
+data UnableToLocateProgramException = UnableToLocateProgramException FilePath deriving (Eq,Show,Typeable)
+
+instance Exception UnableToLocateProgramException
+-- @nonl
+-- @-node:gcross.20100906112631.1980:UnableToLocateProgramException
 -- @-node:gcross.20100905161144.1938:Exceptions
+-- @+node:gcross.20100906112631.1981:Types
+-- @+node:gcross.20100906112631.1982:ProgramSearchOptions
+data ProgramSearchOptions a = ProgramSearchOptions
+    {   searchOptionProgramLocation :: FilePath
+    ,   searchOptionSearchPaths :: [FilePath]
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''ProgramSearchOptions)
+-- @-node:gcross.20100906112631.1982:ProgramSearchOptions
+-- @+node:gcross.20100906112631.1985:ProgramConfiguration
+data ProgramConfiguration a = ProgramConfiguration
+    {   programFilePath :: FilePath
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''ProgramConfiguration)
+-- @-node:gcross.20100906112631.1985:ProgramConfiguration
+-- @-node:gcross.20100906112631.1981:Types
 -- @+node:gcross.20100830091258.2007:Functions
 -- @+node:gcross.20100905161144.1941:determineProgramVersion
 determineProgramVersion ::

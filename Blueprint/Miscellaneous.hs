@@ -24,7 +24,8 @@ import Control.Parallel.Strategies
 
 import Data.Binary
 import qualified Data.ByteString.Char8 as S
-import qualified Data.ByteString.Lazy.Char8 as L
+import qualified Data.ByteString.Lazy as L
+import Data.Char
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Function
@@ -33,7 +34,9 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
-import Data.UUID
+import Data.UUID (UUID)
+import qualified Data.UUID as UUID
+import Data.UUID.V5 (generateNamed)
 import Data.Version
 
 import Debug.Trace
@@ -85,6 +88,11 @@ deriving instance Typeable MD5Digest
 addExe :: String → String
 addExe = id
 -- @-node:gcross.20100830091258.2038:addExe
+-- @+node:gcross.20100906112631.2094:capitalize
+capitalize :: String → String
+capitalize [] = []
+capitalize (x:xs) = toUpper x:xs
+-- @-node:gcross.20100906112631.2094:capitalize
 -- @+node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
 checkDigestsOfFilesIfExisting :: [FilePath] → [MD5Digest] → IO Bool
 checkDigestsOfFilesIfExisting file_paths old_digests = runAbortT $
@@ -187,6 +195,25 @@ withTemporaryFile extension thunk = do
     filepath ← fmap ((directory </>) . (<.> extension) . show) (randomIO :: IO UUID)
     (thunk filepath) `finally` (doesFileExist filepath >>= flip when (removeFile filepath))
 -- @-node:gcross.20100614121927.1663:withTemporaryFile
+-- @+node:gcross.20100906112631.2111:uuid
+uuid :: String → UUID
+uuid = fromJust . UUID.fromString
+-- @-node:gcross.20100906112631.2111:uuid
+-- @+node:gcross.20100906112631.2112:uuidInNamespace
+uuidInNamespace :: UUID → UUID → UUID
+uuidInNamespace namespace = generateNamed namespace . L.unpack . UUID.toByteString
+-- @-node:gcross.20100906112631.2112:uuidInNamespace
+-- @+node:gcross.20100906112631.2093:wordsToCamelCase
+wordsToCamelCase :: String → String
+wordsToCamelCase s =
+    case words s of
+        [] → []
+        (x:xs) → concat (x:map capitalize xs)
+-- @-node:gcross.20100906112631.2093:wordsToCamelCase
+-- @+node:gcross.20100906112631.2096:wordsToUnderscores
+wordsToUnderscores :: String → String
+wordsToUnderscores = intercalate "_" . words
+-- @-node:gcross.20100906112631.2096:wordsToUnderscores
 -- @-node:gcross.20100614121927.1662:Functions
 -- @-others
 -- @-node:gcross.20100614121927.1659:@thin Miscellaneous.hs

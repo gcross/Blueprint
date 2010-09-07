@@ -25,6 +25,7 @@ import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Language
 import Blueprint.Language.Programming
+import Blueprint.Miscellaneous
 import Blueprint.Record
 import Blueprint.SourceFile
 -- @-node:gcross.20100611224425.1684:<< Import needed modules >>
@@ -92,18 +93,6 @@ extractHaskellSources source_files =
     , sourceFileExtension == ".hs"
     ]
 -- @-node:gcross.20100630111926.2041:extractHaskellSources
--- @+node:gcross.20100902134026.2108:haskellInterfaceDependency
-haskellInterfaceDependency :: String → Dependency
-haskellInterfaceDependency = Dependency haskell_interface_dependency_type
--- @-node:gcross.20100902134026.2108:haskellInterfaceDependency
--- @+node:gcross.20100902134026.2110:haskellModuleDependency
-haskellModuleDependency :: String → Dependency
-haskellModuleDependency = Dependency haskell_module_dependency_type
--- @-node:gcross.20100902134026.2110:haskellModuleDependency
--- @+node:gcross.20100709210816.2211:haskellPackageDependency
-haskellPackageDependency :: String → Dependency
-haskellPackageDependency = Dependency haskell_package_dependency_type
--- @-node:gcross.20100709210816.2211:haskellPackageDependency
 -- @-node:gcross.20100615082419.1705:Functions
 -- @+node:gcross.20100611224425.1689:Values
 -- @+node:gcross.20100611224425.1708:regular expression
@@ -112,9 +101,7 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @-node:gcross.20100611224425.1708:regular expression
 -- @-node:gcross.20100611224425.1689:Values
 -- @+node:gcross.20100630111926.1880:Dependency Types
-haskell_module_dependency_type = identifier "450299f0-5957-4e05-a185-88d765a032b8" "haskell module"
-haskell_package_dependency_type = identifier "b0094d7f-1cf0-4cbf-8938-e40bf38a6e81" "haskell package"
-haskell_interface_dependency_type = identifier "17047d2b-e8e2-4220-bd83-d61cda2fcbdc" "haskell interface file"
+createDependencyDeclarations "450299f0-5957-4e05-a185-88d765a032b8" "module"
 -- @-node:gcross.20100630111926.1880:Dependency Types
 -- @-others
 -- @-node:gcross.20100611224425.1682:@thin Haskell.hs

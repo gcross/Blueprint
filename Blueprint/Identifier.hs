@@ -22,12 +22,12 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
-import Blueprint.Record (uuid)
 import Data.Typeable
 import Data.UUID
 import qualified Data.UUID as UUID
 import Data.UUID.V5 (generateNamed)
--- @nonl
+
+import Blueprint.Miscellaneous
 -- @-node:gcross.20100624100717.1733:<< Import needed modules >>
 -- @nl
 
