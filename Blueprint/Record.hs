@@ -11,9 +11,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100903163533.2080:<< Language extensions >>
@@ -53,7 +50,7 @@ data FieldNotFoundError = ∀ a. Typeable a => FieldNotFoundError (Field a) deri
 instance Eq FieldNotFoundError
 
 instance Show FieldNotFoundError where
-    show (FieldNotFoundError (Field{..} :: Field a)) =
+    show (FieldNotFoundError (Field{..})) =
         "Field " ++ fieldName ++ " does not exist."
 
 instance Exception FieldNotFoundError
@@ -64,7 +61,7 @@ data TypeError = ∀ a. Typeable a => TypeError (Field a) deriving (Typeable)
 instance Eq TypeError
 
 instance Show TypeError where
-    show (TypeError (Field{..} :: Field a)) =
+    show (TypeError (Field{..})) =
         "TypeError:  Unable to cast field named " ++ fieldName
 
 instance Exception TypeError
@@ -81,34 +78,9 @@ class Typeable entity => Castable entity cls where
     toRecord :: cls → Table entity
     fromRecord :: Table entity → Maybe cls
 -- @-node:gcross.20100903163533.2089:Castable
--- @+node:gcross.20100903163533.2090:RecordFields
-class RecordFields entity fields record where
-    type RecordBuilder fields record
-    fromRecordUsingFields :: fields → RecordBuilder fields record → Table entity → Maybe record
-    toRecordUsingFields :: fields → record → Table entity
-
-instance Typeable entity => RecordFields entity () record where
-    type RecordBuilder () record = record
-    fromRecordUsingFields _ result _ = Just result
-    toRecordUsingFields _ _ = Table (Map.empty)
-
-instance (FieldValue entity value
-         ,RecordFields entity rest_fields record
-         ) => RecordFields entity ((Field value,record → value) :. rest_fields) record
-  where
-    type RecordBuilder ((Field value,record → value) :. rest_fields) record =
-            value → RecordBuilder rest_fields record
-    fromRecordUsingFields ((field,_) :. rest_fields) f table =
-        case getField field table of
-            Nothing → Nothing
-            Just value → fromRecordUsingFields rest_fields (f value) table
-    toRecordUsingFields ((field,getter) :. rest_fields) x =
-        setField field (getter x) (toRecordUsingFields rest_fields x)
--- @nonl
--- @-node:gcross.20100903163533.2090:RecordFields
 -- @+node:gcross.20100907112603.1949:End
-class End f where
-    end :: f ()
+class End a where
+    end :: a
 -- @-node:gcross.20100907112603.1949:End
 -- @-node:gcross.20100903163533.2085:Classes
 -- @+node:gcross.20100903163533.2091:Types
@@ -129,6 +101,14 @@ data Field value = Field
     ,   fieldId :: UUID
     } deriving (Show,Eq)
 -- @-node:gcross.20100903163533.2093:Field
+-- @+node:gcross.20100907112603.1965:FieldExtractors
+data FieldExtractors entity source maker where
+    EndOfFieldExtractors :: forall entity source. FieldExtractors entity source source
+    (:.:) :: forall entity value source maker. FieldValue entity value => 
+        (Field value, source → value) → FieldExtractors entity source maker → FieldExtractors entity source (value → maker)
+
+infixr :.:
+-- @-node:gcross.20100907112603.1965:FieldExtractors
 -- @+node:gcross.20100907112603.1960:FieldAndValue
 data FieldAndValue entity = forall value. FieldValue entity value => FV (Field value) value
 -- @-node:gcross.20100907112603.1960:FieldAndValue
@@ -194,11 +174,14 @@ instance (Binary value, Typeable value) => FieldValue Entity value where
             else Nothing
 -- @-node:gcross.20100903163533.2101:FieldValue Entity
 -- @+node:gcross.20100907112603.1950:End Maybes
-instance End Maybes where end = EndOfMaybes
+instance End (Maybes ()) where end = EndOfMaybes
 -- @-node:gcross.20100907112603.1950:End Maybes
 -- @+node:gcross.20100907112603.1952:End Fields
-instance End (Fields entity) where end = EndOfFields
+instance End (Fields entity ()) where end = EndOfFields
 -- @-node:gcross.20100907112603.1952:End Fields
+-- @+node:gcross.20100907112603.1969:End Fields
+instance End (FieldExtractors entity source source) where end = EndOfFieldExtractors
+-- @-node:gcross.20100907112603.1969:End Fields
 -- @+node:gcross.20100907112603.1948:Eq Maybes
 instance Eq (Maybes ()) where
     (==) _ _ = True
@@ -288,6 +271,19 @@ withField ::
     Table entity
 withField field value = setField field value emptyTable
 -- @-node:gcross.20100903163533.2109:withField
+-- @+node:gcross.20100907112603.1966:fromRecordUsingFields
+fromRecordUsingFields :: FieldExtractors entity source maker → maker → Table entity → Maybe source
+fromRecordUsingFields EndOfFieldExtractors result _ = Just result
+fromRecordUsingFields ((field,_):.: rest) f table =
+    case getField field table of
+        Nothing → Nothing
+        Just value → fromRecordUsingFields rest (f value) table
+-- @-node:gcross.20100907112603.1966:fromRecordUsingFields
+-- @+node:gcross.20100907112603.1967:toRecordUsingFields
+toRecordUsingFields :: Typeable entity => FieldExtractors entity source maker → source → Table entity
+toRecordUsingFields EndOfFieldExtractors _ = mempty
+toRecordUsingFields ((field,extract):.: rest) source = setField field (extract source) (toRecordUsingFields rest source)
+-- @-node:gcross.20100907112603.1967:toRecordUsingFields
 -- @-node:gcross.20100903163533.2102:Functions
 -- @+node:gcross.20100903163533.2112:Values
 -- @+node:gcross.20100903163533.2113:emptyTable

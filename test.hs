@@ -217,7 +217,8 @@ data TestRecord = TestRecord
     ,   t_b :: Char
     } deriving (Eq,Show)
 
-fields = (_a,t_a) :. (_b,t_b) :. ()
+fields :: (Typeable entity, FieldValue entity Int, FieldValue entity Char) => FieldExtractors entity TestRecord (Int → Char → TestRecord)
+fields = (_a,t_a) :.: (_b,t_b) :.: end
 
 instance Castable Dynamic TestRecord where
     toRecord = toRecordUsingFields fields
