@@ -5,7 +5,9 @@
 -- @+node:gcross.20100903163533.2080:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -34,6 +36,7 @@ import Data.Maybe
 import Data.Monoid
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.List
 import Data.Typeable
 import Data.UUID (UUID)
 import Data.Vec ((:.)(..))
@@ -68,32 +71,6 @@ instance Exception TypeError
 -- @-node:gcross.20100903163533.2084:TypeError
 -- @-node:gcross.20100903163533.2082:Exceptions
 -- @+node:gcross.20100903163533.2085:Classes
--- @+node:gcross.20100903163533.2086:Fields
-class Fields entity fields where
-    type FieldValues fields
-    getFields :: fields -> Table entity -> FieldValues fields
-
-instance Typeable entity => Fields entity () where
-    type FieldValues () = ()
-    getFields _ _ = ()
-
-instance (FieldValue entity value, Fields entity rest_fields) => Fields entity (Field value :. rest_fields) where
-    type FieldValues (Field value :. rest_fields) = Maybe value :. FieldValues rest_fields
-    getFields (field :. rest_fields) table = getField field table :. getFields rest_fields table
--- @-node:gcross.20100903163533.2086:Fields
--- @+node:gcross.20100903163533.2087:FieldsAndValues
-class Typeable entity => FieldsAndValues entity field_and_values where
-    setFields :: field_and_values -> Table entity -> Table entity
-
-instance Typeable entity => FieldsAndValues entity () where
-    setFields _ table = table
-
-instance (FieldValue entity value
-         ,FieldsAndValues entity rest_fields
-         ) => FieldsAndValues entity ((Field value,value) :. rest_fields)
-  where
-    setFields ((field,value) :. rest_fields) table = setFields rest_fields (setField field value table)
--- @-node:gcross.20100903163533.2087:FieldsAndValues
 -- @+node:gcross.20100903163533.2088:FieldValue
 class (Typeable entity, Typeable value) => FieldValue entity value where
     toEntity :: value -> entity
@@ -129,6 +106,10 @@ instance (FieldValue entity value
         setField field (getter x) (toRecordUsingFields rest_fields x)
 -- @nonl
 -- @-node:gcross.20100903163533.2090:RecordFields
+-- @+node:gcross.20100907112603.1949:End
+class End f where
+    end :: f ()
+-- @-node:gcross.20100907112603.1949:End
 -- @-node:gcross.20100903163533.2085:Classes
 -- @+node:gcross.20100903163533.2091:Types
 -- @+node:gcross.20100903163533.2092:Entity
@@ -148,6 +129,23 @@ data Field value = Field
     ,   fieldId :: UUID
     } deriving (Show,Eq)
 -- @-node:gcross.20100903163533.2093:Field
+-- @+node:gcross.20100907112603.1960:FieldAndValue
+data FieldAndValue entity = forall value. FieldValue entity value => FV (Field value) value
+-- @-node:gcross.20100907112603.1960:FieldAndValue
+-- @+node:gcross.20100907112603.1937:Fields
+data Fields entity a where
+    EndOfFields :: Fields entity ()
+    (:&:) :: forall entity x xs.  FieldValue entity x => Field x → Fields entity xs → Fields entity (x :. xs)
+
+infixr :&:
+-- @-node:gcross.20100907112603.1937:Fields
+-- @+node:gcross.20100907112603.1947:Maybes
+data Maybes a where
+    EndOfMaybes :: Maybes ()
+    (:?:) :: forall x xs. Maybe x -> Maybes xs -> Maybes (x :. xs)
+
+infixr :?:
+-- @-node:gcross.20100907112603.1947:Maybes
 -- @+node:gcross.20100903163533.2094:Table
 newtype Typeable entity => Table entity = Table (Map UUID entity) deriving (Typeable)
 -- @-node:gcross.20100903163533.2094:Table
@@ -195,6 +193,26 @@ instance (Binary value, Typeable value) => FieldValue Entity value where
             then Just x
             else Nothing
 -- @-node:gcross.20100903163533.2101:FieldValue Entity
+-- @+node:gcross.20100907112603.1950:End Maybes
+instance End Maybes where end = EndOfMaybes
+-- @-node:gcross.20100907112603.1950:End Maybes
+-- @+node:gcross.20100907112603.1952:End Fields
+instance End (Fields entity) where end = EndOfFields
+-- @-node:gcross.20100907112603.1952:End Fields
+-- @+node:gcross.20100907112603.1948:Eq Maybes
+instance Eq (Maybes ()) where
+    (==) _ _ = True
+
+instance (Eq a, Eq (Maybes b)) => Eq (Maybes (a :. b)) where
+    (x :?: xs) == (y :?: ys) = (x == y) && (xs == ys)
+-- @-node:gcross.20100907112603.1948:Eq Maybes
+-- @+node:gcross.20100907112603.1956:Show Maybes
+instance Show (Maybes ()) where
+    show _ = "()"
+
+instance (Show a, Show (Maybes b)) => Show (Maybes (a :. b)) where
+    show (x :?: xs) = show x ++ " :?: " ++ show xs
+-- @-node:gcross.20100907112603.1956:Show Maybes
 -- @-node:gcross.20100903163533.2096:Instances
 -- @+node:gcross.20100903163533.2102:Functions
 -- @+node:gcross.20100903163533.2103:getField
@@ -213,6 +231,11 @@ getField (field@Field {..}) (Table fields) =
                 Nothing → throw (TypeError field)
                 Just value → Just value
 -- @-node:gcross.20100903163533.2103:getField
+-- @+node:gcross.20100907112603.1942:getFields
+getFields :: Typeable entity => Fields entity a → Table entity → Maybes a
+getFields EndOfFields _ = EndOfMaybes
+getFields (x :&: xs) table = getField x table :?: getFields xs table
+-- @-node:gcross.20100907112603.1942:getFields
 -- @+node:gcross.20100903163533.2104:getRequiredField
 getRequiredField ::
     (FieldValue entity value
@@ -235,6 +258,14 @@ setField ::
 setField (Field {..}) new_value (Table fields) =
     Table (Map.insert fieldId (toEntity new_value) fields)
 -- @-node:gcross.20100903163533.2105:setField
+-- @+node:gcross.20100907112603.1944:setFields
+setFields :: Typeable entity => [FieldAndValue entity] → Table entity → Table entity
+setFields fields_and_values table =
+    foldl' -- '
+        (\table (FV label value) → setField label value table)
+        table
+        fields_and_values
+-- @-node:gcross.20100907112603.1944:setFields
 -- @+node:gcross.20100903163533.2106:field
 field :: String → String → Field value
 field name = Field name . uuid
@@ -244,8 +275,8 @@ updateRecordWith :: (Typeable entity, Castable entity record) => record → Tabl
 updateRecordWith x = (`mappend` toRecord x)
 -- @-node:gcross.20100903163533.2107:updateRecordWith
 -- @+node:gcross.20100903163533.2108:withFields
-withFields :: FieldsAndValues entity fields => fields -> Table entity
-withFields fields = setFields fields mempty
+withFields :: Typeable entity => [FieldAndValue entity] → Table entity
+withFields = flip setFields mempty
 -- @-node:gcross.20100903163533.2108:withFields
 -- @+node:gcross.20100903163533.2109:withField
 withField ::

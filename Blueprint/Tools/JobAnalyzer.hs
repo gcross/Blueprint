@@ -122,11 +122,10 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     return
         .
         map (\digest →
-            withFields (
-                (_digest,digest)
-             :. (_deferred_dependencies,requiredDeferredDependencies)
-             :. ()
-            )
+            withFields
+                [FV _digest digest
+                ,FV _deferred_dependencies requiredDeferredDependencies
+                ]
         )
         $
         product_digests
@@ -170,12 +169,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
     -- Return the results
     return
         .
-        map (\digest →
-            withFields (
-                (_digest,digest)
-             :. ()
-            )
-        )
+        map (withField _digest)
         $
         product_digests
  where
@@ -232,15 +226,9 @@ compareToCacheAndRebuildIfNecessary
     -- Return the results
     return
         .
-        map (\digest →
-            withFields (
-                (_digest,digest)
-             :. ()
-            )
-        )
+        map (withField _digest)
         $
         product_digests
--- @nonl
 -- @-node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
 -- @+node:gcross.20100705185804.2044:fetchDigestsAndCheckForChanges
 fetchDigestsAndCheckForChanges ::

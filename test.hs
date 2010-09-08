@@ -291,10 +291,10 @@ main = defaultMain
                     -- @+node:gcross.20100609163522.1733:getFields . setFields
                     ,testProperty "getFields . setFields" $
                         \a c ->
-                            (Just a :. Nothing :. Just c :. ()) == 
-                                (getFields (_a :. _b :. _c :. ())
+                            (Just a :?: Nothing :?: Just c :?: EndOfMaybes) == 
+                                (getFields (_a :&: _b :&: _c :&: end)
                                  .
-                                 setFields ((_a,a) :. (_c,c) :. ())
+                                 setFields [FV _a a, FV _c c]
                                 ) emptyRecord
                     -- @-node:gcross.20100609163522.1733:getFields . setFields
                     -- @+node:gcross.20100609163522.1719:field lists
@@ -336,44 +336,39 @@ main = defaultMain
                         -- @    @+others
                         -- @+node:gcross.20100609203325.1471:a + a
                         [testProperty "a + a" $
-                            \a1 a2 -> Just a2 == getField _a ((withFields ((_a,a1::Int):.())) `mappend` (withFields ((_a,a2):.())) `mappend` emptyRecord)
-                        -- @nonl
+                            \a1 a2 -> Just a2 == getField _a (withField _a a1 `mappend` withField _a a2 :: Record)
                         -- @-node:gcross.20100609203325.1471:a + a
                         -- @+node:gcross.20100609203325.1475:a + b
                         ,testProperty "a + b" $
-                            \a b -> (Just a :. Just b :. ()) == getFields (_a :. _b :. ()) ((withFields ((_a,a):.())) `mappend` (withFields ((_b,b::Char):.())) `mappend` emptyRecord)
-                        -- @nonl
+                            \a b -> (Just a :?: Just b :?: EndOfMaybes) == getFields (_a :&: _b :&: end) (withField _a a `mappend` withField _b b :: Record)
                         -- @-node:gcross.20100609203325.1475:a + b
                         -- @+node:gcross.20100609203325.1477:(a,b) + (b,c)
                         ,testProperty "(a,b) + (b,c)" $
                             \a b1 b2 c ->
-                                (Just a :. Just b2 :. Just c :. ()) ==
-                                    getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a):.(_b,b1::Char):.())) `mappend` (withFields ((_b,b2):.(_c,c):.())) `mappend` emptyRecord)
-                        -- @nonl
+                                (Just a :?: Just b2 :?: Just c :?: EndOfMaybes) ==
+                                    getFields (_a :&: _b :&: _c :&: end)
+                                        (withFields [FV _a a, FV _b b1] `mappend` withFields [FV _b b2, FV _c c] :: Record)
                         -- @-node:gcross.20100609203325.1477:(a,b) + (b,c)
                         -- @+node:gcross.20100609203325.1479:(a,b) + (a,c)
                         ,testProperty "(a,b) + (a,c)" $
                             \a1 a2 b c ->
-                                (Just a2 :. Just b :. Just c :. ()) ==
-                                    getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a1::Int):.(_b,b):.())) `mappend` (withFields ((_a,a2::Int):.(_c,c):.())) `mappend` emptyRecord)
-                        -- @nonl
+                                (Just a2 :?: Just b :?: Just c :?: EndOfMaybes) ==
+                                    getFields (_a :&: _b :&: _c :&: end)
+                                        (withFields [FV _a a1, FV _b b] `mappend` withFields [FV _a a2, FV _c c] :: Record)
                         -- @-node:gcross.20100609203325.1479:(a,b) + (a,c)
                         -- @+node:gcross.20100609203325.1481:(a,b) + (a,c)
                         ,testProperty "(a,c) + (a,b)" $
                             \a1 a2 b c ->
-                                (Just a1 :. Just b :. Just c :. ()) ==
-                                    getFields (_a :. _b :. _c :. ())
-                                        ((withFields ((_a,a2::Int):.(_c,c):.())) `mappend` (withFields ((_a,a1::Int):.(_b,b):.())) `mappend` emptyRecord)
+                                (Just a1 :?: Just b :?: Just c :?: EndOfMaybes) ==
+                                    getFields (_a :&: _b :&: _c :&: end)
+                                        (withFields [FV _a a2, FV _c c] `mappend` withFields [FV _a a1, FV _b b] :: Record)
                         -- @-node:gcross.20100609203325.1481:(a,b) + (a,c)
                         -- @+node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
                         ,testProperty "(a,c) `mappend` (TestRecord)" $
                             \a b c a_ ->
-                                (Just a :. Just b :. Just c :. ()) ==
-                                    getFields (_a :. _b :. _c :. ())
-                                    ((withFields ((_a,(a_::Int)) :. (_c,c) :. ())) `mappend` (toRecord (TestRecord a b)) `mappend` emptyRecord)
-                        -- @nonl
+                                (Just a :?: Just b :?: Just c :?: EndOfMaybes) ==
+                                    getFields (_a :&: _b :&: _c :&: end)
+                                        (withFields [FV _a a_, FV _c c] `mappend` (toRecord (TestRecord a b)) :: Record)
                         -- @-node:gcross.20100609203325.1473:(a,c) `mappend` (TestRecord)
                         -- @-others
                         ]
@@ -398,15 +393,14 @@ main = defaultMain
                         -- @+node:gcross.20100609203325.1469:set a, set c, updateRecordWith (TestRecord a b)
                         ,testProperty "set a, set c, updateRecordWith (TestRecord a b)" $
                             \a b c a_ ->
-                                (Just a :. Just b :. Just c :. ()) ==
+                                (Just a :?: Just b :?: Just c :?: EndOfMaybes) ==
                                   (
-                                    getFields (_a :. _b :. _c :. ())
+                                    getFields (_a :&: _b :&: _c :&: end)
                                     .
                                     (mappend emptyRecord)
                                     .
                                     updateRecordWith (TestRecord a b)
-                                  ) (withFields ((_a,(a_::Int)) :. (_c,c) :. ()))
-                        -- @nonl
+                                  ) (withFields [FV _a a_, FV _c c])
                         -- @-node:gcross.20100609203325.1469:set a, set c, updateRecordWith (TestRecord a b)
                         -- @-others
                         ]
