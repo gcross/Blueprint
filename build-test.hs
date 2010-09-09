@@ -17,6 +17,7 @@ import Control.Arrow
 import Control.Monad
 
 import Data.Binary
+import Data.Dynamic
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
@@ -62,8 +63,7 @@ configure =
         "configuration.cfg"
         "configuration.cache"
         ghcOptions
-        configureGHCEnvironmentUsingOptions
--- @nonl
+        (configureGHCEnvironmentUsingOptions :: Configurer JobId Dynamic GHCEnvironment)
 -- @-node:gcross.20100906112631.2218:configure
 -- @+node:gcross.20100906112631.2219:build
 build ghc_environment@GHCEnvironment{..} = Phase . const $ do

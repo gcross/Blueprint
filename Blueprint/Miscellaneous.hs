@@ -52,6 +52,10 @@ import System.Random
 
 import Text.ParserCombinators.ReadP (readP_to_S)
 import Text.Regex.Base
+
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
+
 -- @-node:gcross.20100614121927.1661:<< Import needed modules >>
 -- @nl
 
@@ -96,9 +100,9 @@ capitalize [] = []
 capitalize (x:xs) = toUpper x:xs
 -- @-node:gcross.20100906112631.2094:capitalize
 -- @+node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
-checkDigestsOfFilesIfExisting :: [FilePath] → [MD5Digest] → IO Bool
+checkDigestsOfFilesIfExisting :: Eq (TaggedList n MD5Digest) => TaggedList n FilePath → TaggedList n MD5Digest → IO Bool
 checkDigestsOfFilesIfExisting file_paths old_digests = runAbortT $
-    mapM (liftIO . doesFileExist >=> flip unless (abort False)) file_paths
+    T.mapM (liftIO . doesFileExist >=> flip unless (abort False)) file_paths
     >>
     liftIO (digestFiles file_paths) >>= return . (== old_digests)
 -- @-node:gcross.20100630111926.1890:checkDigestsOfFilesIfExisting
@@ -107,9 +111,8 @@ digestFile :: FilePath → IO MD5Digest
 digestFile = L.readFile >=> (return .|| rwhnf) md5
 -- @-node:gcross.20100624100717.2077:digestFile
 -- @+node:gcross.20100624100717.2079:digestFiles
-digestFiles :: [FilePath] → IO [MD5Digest]
-digestFiles = mapM digestFile
--- @nonl
+digestFiles :: TaggedList n FilePath → IO (TaggedList n MD5Digest)
+digestFiles = T.mapM digestFile
 -- @-node:gcross.20100624100717.2079:digestFiles
 -- @+node:gcross.20100903200211.2254:doubleton
 doubleton x y = [x,y]

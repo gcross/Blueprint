@@ -25,6 +25,11 @@ import Blueprint.Wrapper
 -- @nl
 
 -- @+others
+-- @+node:gcross.20100908110213.2029:Types
+-- @+node:gcross.20100908110213.2030:Configurer
+type Configurer jobid result a = OptionValues → JobApplicative jobid result a
+-- @-node:gcross.20100908110213.2030:Configurer
+-- @-node:gcross.20100908110213.2029:Types
 -- @+node:gcross.20100906112631.2215:Functions
 -- @+node:gcross.20100906112631.2216:configurationPhase
 configurationPhase ::
@@ -38,7 +43,7 @@ configurationPhase ::
     FilePath →
     FilePath →
     Options →
-    (OptionValues → JobApplicative jobid result a) →
+    Configurer jobid result a →
     Phase a
 configurationPhase
     configuration_filepath
@@ -56,7 +61,6 @@ configurationPhase
             configurer
             $
             options
--- @nonl
 -- @-node:gcross.20100906112631.2216:configurationPhase
 -- @-node:gcross.20100906112631.2215:Functions
 -- @-others

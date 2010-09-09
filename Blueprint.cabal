@@ -51,6 +51,8 @@ Library
         GotoT-transformers == 1.0.*,
         ConfigFile == 1.0.*,
         split >= 0.1.2 && < 0.2,
-        template-haskell == 2.4.*
+        template-haskell == 2.4.*,
+        type-level-natural-number == 1.0.*
+
 -- @-node:gcross.20100901145855.2072:@thin Blueprint.cabal
 -- @-leo

@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100830091258.2005:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -44,6 +45,9 @@ import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
 import Blueprint.Miscellaneous
 import Blueprint.Options
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
+import Blueprint.Wrapper
 -- @-node:gcross.20100830091258.2006:<< Import needed modules >>
 -- @nl
 
@@ -105,23 +109,27 @@ newtype OptionsFor a = OptionsFor { unwrapOptions :: Options }
 -- @+node:gcross.20100830091258.2007:Functions
 -- @+node:gcross.20100906112631.2118:configureProgram
 configureProgram ::
-    ProgramName a =>
+    (ProgramName a
+    ,Wrapper result (ProgramConfiguration a)
+    ,Wrapper result (ProgramConfigurationOptions a)
+    ) =>
     String →
     ProgramConfigurationOptions a →
-    JobApplicative JobId Dynamic (ProgramConfiguration a)
+    JobApplicative JobId result (ProgramConfiguration a)
 configureProgram job_distinguisher configuration_options =
-    JobApplicative
-    {   jobApplicativeJobs = [job]
-    ,   jobApplicativeResultJobNames = job_names
-    ,   jobApplicativeResultExtractorJobName =
-            identifierInNamespace
-                program_configuration_namespace
-                (job_distinguisher ++ program_name ++ "Y")
-                ("configure " ++ program_name)
-    ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
-    }
+    case createProgramConfigurationJob job_distinguisher configuration_options of
+        job@(Job job_names job_runner) →
+            JobApplicative
+            {   jobApplicativeJobs = [job]
+            ,   jobApplicativeResultJobNames = job_names
+            ,   jobApplicativeResultExtractorJobName =
+                    identifierInNamespace
+                        program_configuration_namespace
+                        (job_distinguisher ++ program_name ++ "Y")
+                        ("configure " ++ program_name)
+            ,   jobApplicativeResultExtractor = unwrap . T.head
+            }
   where
-    job@(Job job_names job_runner) = createProgramConfigurationJob job_distinguisher configuration_options
     program_name = programNameFrom configuration_options
 -- @-node:gcross.20100906112631.2118:configureProgram
 -- @+node:gcross.20100906112631.2136:configureProgramUsingOptions
@@ -136,20 +144,23 @@ configureProgramUsingOptions =
 -- @-node:gcross.20100906112631.2136:configureProgramUsingOptions
 -- @+node:gcross.20100906112631.2116:createProgramConfigurationJob
 createProgramConfigurationJob ::
-    ProgramName a =>
+    (ProgramName a
+    ,Wrapper result (ProgramConfigurationOptions a)
+    ,Wrapper result (ProgramConfiguration a)
+    ) =>
     String →
     ProgramConfigurationOptions a →
-    Job JobId Dynamic
+    Job JobId result
 createProgramConfigurationJob
     job_distinguisher
     options@ProgramConfigurationOptions{..}
     =
     jobWithCache
-        [identifierInNamespace
+        (identifierInNamespace
             program_configuration_namespace
             (program_name ++ job_distinguisher ++ "X")
             (program_name ++ " configuration")
-        ]
+        )
         (liftIO . configureIt
          >=>
          \path_to_program →

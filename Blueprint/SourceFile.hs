@@ -32,7 +32,7 @@ import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
--- @nonl
+import Blueprint.TaggedList (TaggedList(..))
 -- @-node:gcross.20100630111926.2025:<< Import needed modules >>
 -- @nl
 
@@ -104,7 +104,7 @@ computeJobIdOfSourceFileDigest file_path =
 -- @+node:gcross.20100709210816.2113:createSourceFileDigestJob
 createSourceFileDigestJob :: SourceFile → Job JobId Record
 createSourceFileDigestJob SourceFile{..} =
-    job [sourceFileDigestJobId] $
+    job sourceFileDigestJobId $
     liftIO (digestFile sourceFilePath)
     >>=
     returnValue . withField _digest

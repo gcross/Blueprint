@@ -7,6 +7,7 @@
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RelaxedPolyRec #-}
@@ -44,6 +45,7 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Dynamic
 import Data.Either
+import qualified Data.Foldable as Fold
 import Data.Function
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -60,9 +62,13 @@ import Debug.Trace
 import System.Directory
 import System.IO
 
+import TypeLevel.NaturalNumber
+
 import Blueprint.Identifier
 import Blueprint.IOTask
 import Blueprint.Miscellaneous
+import Blueprint.TaggedList (TaggedList(..),UntaggedList(..))
+import qualified Blueprint.TaggedList as T
 import Blueprint.Wrapper
 -- @-node:gcross.20100604184944.1292:<< Import needed modules >>
 -- @nl
@@ -138,9 +144,9 @@ instance Exception ReturnedWrongNumberOfResults
 type Cache label = Map [label] ByteString
 -- @-node:gcross.20100901145855.2069:Cache
 -- @+node:gcross.20100709210816.2107:Job
-data Job label result = Job
-    {   jobNames :: [label]
-    ,   jobRunner :: JobRunner label result
+data Job label result = forall n. Job
+    {   jobNames :: TaggedList (SuccessorTo n) label
+    ,   jobRunner :: JobRunner label (SuccessorTo n) result
     }
 -- @-node:gcross.20100709210816.2107:Job
 -- @+node:gcross.20100624100717.2145:JobId
@@ -148,23 +154,23 @@ data OfJob deriving Typeable
 type JobId = Identifier OfJob
 -- @-node:gcross.20100624100717.2145:JobId
 -- @+node:gcross.20100624100717.1751:JobResults
-data JobResults result cache = JobResults
-    {   jobResults :: [result]
+data JobResults n result cache = JobResults
+    {   jobResults :: TaggedList n result
     ,   jobCache :: cache
     }
 -- @-node:gcross.20100624100717.1751:JobResults
 -- @+node:gcross.20100624100717.1749:JobTask
 data JobTask label result a =
-    Request [label] ([result] → JobTask label result a)
+    ∀ n. Request (TaggedList n label) (TaggedList n result → JobTask label result a)
   | ∀ b. PerformIO (IO b) (b → JobTask label result a)
   | Return a
 -- @-node:gcross.20100624100717.1749:JobTask
 -- @+node:gcross.20100624100717.1747:JobTaskResult
-type JobTaskResult label result cache = JobTask label result (JobResults result cache)
+type JobTaskResult label n result cache = JobTask label result (JobResults n result cache)
 -- @-node:gcross.20100624100717.1747:JobTaskResult
 -- @+node:gcross.20100624100717.1753:JobStatus
 data JobStatus label result =
-    Pending (JobRunner label result)
+    ∀ n. Pending (JobRunner label n result)
   | Running [Int] [(Int,MVar (Either SomeException result))]
   | Succeeded [result]
   | Failed (IntMap SomeException) CombinedException
@@ -175,21 +181,21 @@ data JobQueueEntry label result =
   | JobFailure Int (IntMap SomeException)
   | ExternalRequest label (MVar (Either SomeException result))
   | ExternalRequestForCache (MVar (Map [label] ByteString))
-  | ∀ cache. Binary cache => JobTask Int (JobTaskResult label result cache)
+  | ∀ n cache. Binary cache => JobTask Int (JobTaskResult label n result cache)
 -- @-node:gcross.20100604204549.1368:JobQueueEntry
 -- @+node:gcross.20100624100717.1743:JobRunner
-data JobRunner label result =
-    JobRunner (JobTaskResult label result ())
- |  forall cache. Binary cache => JobRunnerWithCache (Maybe cache → JobTaskResult label result cache)
+data JobRunner label n result =
+    JobRunner (JobTaskResult label n result ())
+ |  ∀ cache. Binary cache => JobRunnerWithCache (Maybe cache → JobTaskResult label n result cache)
 -- @-node:gcross.20100624100717.1743:JobRunner
 -- @+node:gcross.20100607083309.1398:JobServer
 data JobServer label result = JobServer (Chan (JobQueueEntry label result)) [ThreadId]
 -- @-node:gcross.20100607083309.1398:JobServer
 -- @+node:gcross.20100624100717.1755:PausedJob
-data PausedJob label result = ∀ cache. Binary cache => PausedJob
+data PausedJob label result = ∀ cache m n. Binary cache => PausedJob
     {   pausedJobPendingRequests :: IntSet
-    ,   pausedJobRequests :: [(Int,Int)]
-    ,   pausedJobComputeTask :: [result] → JobTask label result (JobResults result cache)
+    ,   pausedJobRequests :: TaggedList m (Int,Int)
+    ,   pausedJobComputeTask :: TaggedList m result → JobTask label result (JobResults n result cache)
     }
 -- @-node:gcross.20100624100717.1755:PausedJob
 -- @+node:gcross.20100604204549.1375:JobServerState
@@ -210,14 +216,14 @@ $( deriveAccessors ''JobServerState )
 type JobServerMonad label result = ReaderT (JobServer label result) IO
 -- @-node:gcross.20100709210816.2224:JobServerMonad
 -- @+node:gcross.20100831154015.2050:IncompleteJobRunner
-data IncompleteJobRunner label result α =
-    IncompleteJobRunner (α → JobTaskResult label result ())
- |  forall cache. Binary cache => IncompleteJobRunnerWithCache (α → Maybe cache → JobTaskResult label result cache)
+data IncompleteJobRunner label n result α =
+    IncompleteJobRunner (α → JobTaskResult label n result ())
+ |  ∀ cache. Binary cache => IncompleteJobRunnerWithCache (α → Maybe cache → JobTaskResult label n result cache)
 -- @-node:gcross.20100831154015.2050:IncompleteJobRunner
 -- @+node:gcross.20100831211145.2075:IncompleteJob
-data IncompleteJob label result α = IncompleteJob
-    {   incompleteJobNames :: [label]
-    ,   incompleteJobRunner :: IncompleteJobRunner label result α
+data IncompleteJob label result α = ∀ n. IncompleteJob
+    {   incompleteJobNames :: TaggedList (SuccessorTo n) label
+    ,   incompleteJobRunner :: IncompleteJobRunner label (SuccessorTo n) result α
     }
 -- @-node:gcross.20100831211145.2075:IncompleteJob
 -- @-node:gcross.20100604184944.1293:Types
@@ -243,7 +249,7 @@ instance MonadIO (JobTask label result) where
     liftIO task = PerformIO task return
 -- @-node:gcross.20100604184944.1306:MonadIO JobTask
 -- @+node:gcross.20100831211145.2131:Cofunctor IncompleteJobRunner
-instance Cofunctor (IncompleteJobRunner label result) where
+instance Cofunctor (IncompleteJobRunner label n result) where
     cofmap f (IncompleteJobRunner runJob) = IncompleteJobRunner (runJob . f)
     cofmap f (IncompleteJobRunnerWithCache runJob) = IncompleteJobRunnerWithCache (runJob . f)
 -- @-node:gcross.20100831211145.2131:Cofunctor IncompleteJobRunner
@@ -383,10 +389,10 @@ requestJobCache :: JobServerMonad label result (Cache label)
 requestJobCache = ReaderT requestJobCacheFromServer
 -- @-node:gcross.20100607205618.1429:requestJobCache
 -- @+node:gcross.20100831211145.2145:returnWrappedValueAndCache
-returnWrappedValueAndCache value cache = value `par` cache `par` return (JobResults [wrap value] cache)
+returnWrappedValueAndCache value cache = value `par` cache `par` return (JobResults (wrap value :. E) cache)
 -- @-node:gcross.20100831211145.2145:returnWrappedValueAndCache
 -- @+node:gcross.20100607083309.1414:returnWrappedValuesAndCache
-returnWrappedValuesAndCache values cache = values `par` cache `par` return (JobResults (map wrap values) cache)
+returnWrappedValuesAndCache values cache = values `par` cache `par` return (JobResults (fmap wrap values) cache)
 -- @-node:gcross.20100607083309.1414:returnWrappedValuesAndCache
 -- @+node:gcross.20100831211145.2147:returnWrappedValue
 returnWrappedValue value = returnWrappedValueAndCache value ()
@@ -395,7 +401,7 @@ returnWrappedValue value = returnWrappedValueAndCache value ()
 returnWrappedValues values = returnWrappedValuesAndCache values ()
 -- @-node:gcross.20100831211145.2149:returnWrappedValues
 -- @+node:gcross.20100607205618.1443:returnValueAndCache
-returnValueAndCache value cache = value `par` cache `par` return (JobResults [value] cache)
+returnValueAndCache value cache = value `par` cache `par` return (JobResults (value :. E) cache)
 -- @-node:gcross.20100607205618.1443:returnValueAndCache
 -- @+node:gcross.20100831211145.2143:returnValuesAndCache
 returnValuesAndCache values cache = values `par` cache `par` return (JobResults values cache)
@@ -407,37 +413,69 @@ returnValue value = returnValueAndCache value ()
 returnValues values = returnValuesAndCache values ()
 -- @-node:gcross.20100607205618.1441:returnValues
 -- @+node:gcross.20100607083309.1417:request
-request :: [label] → JobTask label result [result]
-request [] = return []
+request :: TaggedList n label → JobTask label result (TaggedList n result)
+request E = return E
 request requests = Request requests return
 -- @-node:gcross.20100607083309.1417:request
+-- @+node:gcross.20100908110213.2028:requestOne
+requestOne :: label → JobTask label result result
+requestOne = fmap T.head . request . (:. E)
+-- @-node:gcross.20100908110213.2028:requestOne
+-- @+node:gcross.20100908110213.1993:requestList
+requestList :: [label] → JobTask label result [result]
+requestList requests_as_list =
+    case T.fromListAsUntagged requests_as_list of
+        UntaggedList requests → Request requests (return . T.toList)
+-- @-node:gcross.20100908110213.1993:requestList
 -- @+node:gcross.20100831211145.2157:incompleteJob
 incompleteJob ::
-    [jobid] → (α → JobTaskResult jobid result ()) →
+    jobid → (α → JobTaskResult jobid One result ()) →
     IncompleteJob jobid result α
-incompleteJob job_names = IncompleteJob job_names . IncompleteJobRunner
+incompleteJob job_name = IncompleteJob (job_name :. E) . IncompleteJobRunner
 -- @-node:gcross.20100831211145.2157:incompleteJob
--- @+node:gcross.20100831211145.2160:incompleteJobWithCache
+-- @+node:gcross.20100908110213.1985:incompleteJobs
+incompleteJobs ::
+    TaggedList (SuccessorTo n) jobid → (α → JobTaskResult jobid (SuccessorTo n) result ()) →
+    IncompleteJob jobid result α
+incompleteJobs job_names = IncompleteJob job_names . IncompleteJobRunner
+-- @-node:gcross.20100908110213.1985:incompleteJobs
+-- @+node:gcross.20100908110213.1987:incompleteJobWithCache
 incompleteJobWithCache ::
     Binary cache =>
-    [jobid] →
-    (α → Maybe cache → JobTaskResult jobid result cache) →
+    jobid →
+    (α → Maybe cache → JobTaskResult jobid One result cache) →
     IncompleteJob jobid result α
-incompleteJobWithCache job_names = IncompleteJob job_names . IncompleteJobRunnerWithCache
--- @-node:gcross.20100831211145.2160:incompleteJobWithCache
--- @+node:gcross.20100831154015.2053:job
-job :: [jobid] → JobTaskResult jobid result () → Job jobid result
-job job_names = Job job_names . JobRunner
--- @-node:gcross.20100831154015.2053:job
--- @+node:gcross.20100831211145.2071:jobWithCache
-jobWithCache :: Binary cache => [jobid] → (Maybe cache → JobTaskResult jobid result cache) → Job jobid result
-jobWithCache job_names = Job job_names . JobRunnerWithCache
--- @-node:gcross.20100831211145.2071:jobWithCache
+incompleteJobWithCache job_name = IncompleteJob (job_name :. E) . IncompleteJobRunnerWithCache
+-- @-node:gcross.20100908110213.1987:incompleteJobWithCache
+-- @+node:gcross.20100831211145.2160:incompleteJobsWithCache
+incompleteJobsWithCache ::
+    Binary cache =>
+    TaggedList (SuccessorTo n) jobid →
+    (α → Maybe cache → JobTaskResult jobid (SuccessorTo n) result cache) →
+    IncompleteJob jobid result α
+incompleteJobsWithCache job_names = IncompleteJob job_names . IncompleteJobRunnerWithCache
+-- @-node:gcross.20100831211145.2160:incompleteJobsWithCache
+-- @+node:gcross.20100908110213.1981:job
+job :: jobid → JobTaskResult jobid One result () → Job jobid result
+job job_name = Job (job_name :. E) . JobRunner
+-- @-node:gcross.20100908110213.1981:job
+-- @+node:gcross.20100831154015.2053:jobs
+jobs :: TaggedList (SuccessorTo n) jobid → JobTaskResult jobid (SuccessorTo n) result () → Job jobid result
+jobs job_names = Job job_names . JobRunner
+-- @-node:gcross.20100831154015.2053:jobs
+-- @+node:gcross.20100908110213.1983:jobWithCache
+jobWithCache :: Binary cache => jobid → (Maybe cache → JobTaskResult jobid One result cache) → Job jobid result
+jobWithCache job_name = Job (job_name :. E) . JobRunnerWithCache
+-- @-node:gcross.20100908110213.1983:jobWithCache
+-- @+node:gcross.20100831211145.2071:jobsWithCache
+jobsWithCache :: Binary cache => TaggedList (SuccessorTo n) jobid → (Maybe cache → JobTaskResult jobid (SuccessorTo n) result cache) → Job jobid result
+jobsWithCache job_names = Job job_names . JobRunnerWithCache
+-- @-node:gcross.20100831211145.2071:jobsWithCache
 -- @+node:gcross.20100831211145.2165:completeJobRunnerWith
 completeJobRunnerWith ::
     α →
-    IncompleteJobRunner label result α →
-    JobRunner label result
+    IncompleteJobRunner label n result α →
+    JobRunner label n result
 completeJobRunnerWith x incomplete_runner =
     case incomplete_runner of
         IncompleteJobRunner runJob → JobRunner (runJob x)
@@ -445,10 +483,10 @@ completeJobRunnerWith x incomplete_runner =
 -- @-node:gcross.20100831211145.2165:completeJobRunnerWith
 -- @+node:gcross.20100831211145.2125:completeJobRunnerUsing
 completeJobRunnerUsing ::
-    ([result] → α) →
-    [label] →
-    IncompleteJobRunner label result α →
-    JobRunner label result
+    (TaggedList m result → α) →
+    (TaggedList m label) →
+    IncompleteJobRunner label n result α →
+    JobRunner label n result
 completeJobRunnerUsing computeResult requests incomplete_runner =
     case incomplete_runner of
         IncompleteJobRunner runJob → JobRunner (request requests >>= runJob . computeResult)
@@ -463,26 +501,22 @@ completeJobWith x (IncompleteJob job_names incomplete_runner) = Job job_names (c
 -- @-node:gcross.20100831211145.2127:completeJobWith
 -- @+node:gcross.20100831211145.2167:completeJobUsing
 completeJobUsing ::
-    ([result] → α) →
-    [label] →
+    (TaggedList n result → α) →
+    TaggedList n label →
     IncompleteJob label result α →
     Job label result
 completeJobUsing computeResult requests (IncompleteJob job_names incomplete_runner) =
     Job job_names (completeJobRunnerUsing computeResult requests incomplete_runner)
 -- @-node:gcross.20100831211145.2167:completeJobUsing
 -- @+node:gcross.20100902134026.2114:postprocessJobRunnerResultWith
-postprocessJobRunnerResultWith :: ([result] → [result]) → JobRunner label result → JobRunner label result
+postprocessJobRunnerResultWith :: (TaggedList n result → TaggedList n result) → JobRunner label n result → JobRunner label n result
 postprocessJobRunnerResultWith f job_runner =
     case job_runner of
         JobRunner runner → JobRunner (postprocessJobTaskResultWith f runner)
         JobRunnerWithCache runJob → JobRunnerWithCache (postprocessJobTaskResultWith f . runJob)
 -- @-node:gcross.20100902134026.2114:postprocessJobRunnerResultWith
--- @+node:gcross.20100902134026.2116:postprocessJobResultWith
-postprocessJobResultWith :: ([result] → [result]) → Job label result → Job label result
-postprocessJobResultWith f Job{..} = Job { jobRunner = postprocessJobRunnerResultWith f jobRunner, .. }
--- @-node:gcross.20100902134026.2116:postprocessJobResultWith
 -- @+node:gcross.20100902134026.2125:postprocessJobTaskResultWith
-postprocessJobTaskResultWith :: ([result] → [result]) → JobTaskResult label result cache → JobTaskResult label result cache
+postprocessJobTaskResultWith :: (TaggedList n result → TaggedList n result) → JobTaskResult label n result cache → JobTaskResult label n result cache
 postprocessJobTaskResultWith f = fmap (\JobResults{..} → JobResults { jobResults = f jobResults, .. })
 -- @-node:gcross.20100902134026.2125:postprocessJobTaskResultWith
 -- @+node:gcross.20100906112631.2076:jobId
@@ -524,17 +558,13 @@ fetchResultsAndRunJobTask ::
     ,Binary cache
     ) =>
     Int →
-    [(Int,Int)] →
-    ([result] → JobTaskResult label result cache) →
+    TaggedList m (Int,Int) →
+    (TaggedList m result → JobTaskResult label n result cache) →
     StateT (JobServerState label result) IO ()
 fetchResultsAndRunJobTask job_id requests computeTask = do
     server_job_statuses ← get serverJobStatuses
-    let (exceptions,results) =
-            first IntMap.unions
-            .
-            partitionEithers
-            .
-            map (
+    let result_or_exceptions = 
+            T.map (
                 \(job_id,result_number) →
                     case fromJust (IntMap.lookup job_id server_job_statuses) of
                         Failed exceptions _ → Left exceptions
@@ -542,12 +572,11 @@ fetchResultsAndRunJobTask job_id requests computeTask = do
             )
             $
             requests
-    if (not . IntMap.null) exceptions
-        then failJobWithExceptions job_id exceptions
-        else do
+    case T.unwrapRights result_or_exceptions of
+        Left exceptions → failJobWithExceptions job_id (IntMap.unions exceptions)
+        Right results → do
             server_job_queue ← get serverJobQueue
             (liftIO . writeChan server_job_queue . JobTask job_id . computeTask) $|| rwhnf $ results
--- @nonl
 -- @-node:gcross.20100604204549.1388:fetchResultsAndRunJobTask
 -- @+node:gcross.20100604204549.1387:combineExceptions
 combineExceptions ::
@@ -601,7 +630,7 @@ startJobTask ::
     ,Show label
     ) =>
     Int →
-    JobRunner label result →
+    JobRunner label n result →
     StateT (JobServerState label result) IO ()
 startJobTask job_id runner = do
     server_job_names ← get serverJobKeys
@@ -661,9 +690,10 @@ processJobQueueEntry ::
     StateT (JobServerState label result) IO ()
 -- @+others
 -- @+node:gcross.20100604204549.7660:JobSubmission
-processJobQueueEntry (JobSubmission (Job names runner) thread_id) = do
+processJobQueueEntry (JobSubmission (Job names_as_tagged_list runner) thread_id) = do
     server_job_ids ← get serverJobIds
-    case filter (flip Map.member server_job_ids) names of
+    let names = T.toList names_as_tagged_list
+    case filter (flip Map.member server_job_ids) $ names of
         [] → do
             job_id ← getAndModify serverNextJobId (+1)
             serverJobIds %:
@@ -687,7 +717,6 @@ processJobQueueEntry (JobSubmission (Job names runner) thread_id) = do
                 ConflictingJobException names
                 $
                 conflicting_names
--- @nonl
 -- @-node:gcross.20100604204549.7660:JobSubmission
 -- @+node:gcross.20100604204549.7661:ExternalRequest
 processJobQueueEntry (ExternalRequest name destination_var) = do
@@ -754,24 +783,23 @@ processJobQueueEntry (JobTask job_id task) =
         Request requested_job_names computeTask → do
             -- @    << Fetch ids of the requested jobs. >>
             -- @+node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
-            (non_existing_jobs,requests) ← get serverJobIds >>= \server_job_ids →
-                return
-                .
-                partitionEithers
-                .
-                map (
-                    \request_name →
-                        maybe (Left request_name) Right
-                        $
-                        Map.lookup request_name server_job_ids
-                )
-                $
-                requested_job_names
-            let requested_job_ids = nub . map fst $ requests
+            non_existing_jobs_or_requests ←
+                fmap (\server_job_ids →
+                    T.unwrapRights
+                    .
+                    T.map (
+                        \request_name →
+                            maybe (Left request_name) Right
+                            $
+                            Map.lookup request_name server_job_ids
+                    )
+                    $
+                    requested_job_names
+                ) (get serverJobIds)
             -- @-node:gcross.20100604204549.7673:<< Fetch ids of the requested jobs. >>
             -- @nl
-            if (not . null) non_existing_jobs
-                then
+            case non_existing_jobs_or_requests of
+                Left non_existing_jobs →
                     failJobWithExceptions job_id
                     .
                     IntMap.singleton job_id
@@ -779,9 +807,11 @@ processJobQueueEntry (JobTask job_id task) =
                     toException
                     .
                     NoSuchJobsException
+                    .
+                    nub
                     $
                     non_existing_jobs
-                else do
+                Right requests → do
                     -- @            << Look up statuses of the requested job ids. >>
                     -- @+node:gcross.20100604204549.7670:<< Look up statuses of the requested job ids. >>
                     pending_job_ids ← get serverJobStatuses >>= \server_job_statuses →
@@ -795,7 +825,14 @@ processJobQueueEntry (JobTask job_id task) =
                                     Succeeded _ → return False
                                     Failed exceptions _ → return False
                             )
-                            requested_job_ids
+                            .
+                            nub
+                            .
+                            map fst
+                            .
+                            T.toList
+                            $
+                            requests
                     -- @-node:gcross.20100604204549.7670:<< Look up statuses of the requested job ids. >>
                     -- @nl
                     if null pending_job_ids
@@ -868,21 +905,7 @@ processJobQueueEntry (JobTask job_id task) =
         -- @-node:gcross.20100604204549.7667:Request
         -- @+node:gcross.20100604204549.1382:Return
         Return (JobResults results_ cache_) → do
-            results ← liftIO . evaluate $ results_
-            let number_of_returned_results = length results
-            number_of_expected_results ←
-                fmap (
-                    length
-                    .
-                    fromJust
-                    .
-                    IntMap.lookup job_id
-                )
-                $
-                get serverJobKeys
-            when (number_of_returned_results /= number_of_expected_results) $
-                liftIO . throwIO $
-                    ReturnedWrongNumberOfResults number_of_returned_results number_of_expected_results
+            results ← liftIO . mapM evaluate . T.toList $ results_
             Just (Running requesting_job_ids listeners) ←
                 fmap (IntMap.lookup job_id)
                 .
@@ -902,7 +925,6 @@ processJobQueueEntry (JobTask job_id task) =
             if L.null cache
                 then serverJobCache %: (Map.delete names)
                 else serverJobCache %: (Map.insert names cache)
-        -- @nonl
         -- @-node:gcross.20100604204549.1382:Return
         -- @+node:gcross.20100604204549.7663:PerformIO
         PerformIO action computeTask →
