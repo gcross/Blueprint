@@ -3,6 +3,8 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100831211145.2027:<< Language extensions >>
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -27,6 +29,8 @@ import Data.Typeable
 
 import Blueprint.Jobs
 import Blueprint.Miscellaneous
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
 import Blueprint.Wrapper
 -- @-node:gcross.20100831211145.2028:<< Import needed modules >>
 -- @nl
@@ -36,32 +40,30 @@ import Blueprint.Wrapper
 -- @+node:gcross.20100831211145.2112:JobArrow
 data JobArrow jobid result α β =
     NullJobArrow (α → β)
- |  JobArrow
+ |  ∀ n. JobArrow
     {   jobArrowIndependentJobs :: [Job jobid result]
     ,   jobArrowDependentJobs :: [IncompleteJob jobid result α]
-    ,   jobArrowResultJobNames :: [jobid]
+    ,   jobArrowResultJobNames :: TaggedList n jobid
     ,   jobArrowResultExtractorJobName :: jobid → jobid
-    ,   jobArrowResultExtractor :: α → [result] → β
+    ,   jobArrowResultExtractor :: α → TaggedList n result → β
     }
--- @nonl
 -- @-node:gcross.20100831211145.2112:JobArrow
 -- @+node:gcross.20100831211145.2035:JobApplicative
 data JobApplicative jobid result α =
     NullJobApplicative α
- |  JobApplicative
+ |  ∀ n. JobApplicative
     {   jobApplicativeJobs :: [Job jobid result]
-    ,   jobApplicativeResultJobNames :: [jobid]
+    ,   jobApplicativeResultJobNames :: TaggedList n jobid
     ,   jobApplicativeResultExtractorJobName :: jobid
-    ,   jobApplicativeResultExtractor :: [result] → α
+    ,   jobApplicativeResultExtractor :: TaggedList n result → α
     }
--- @nonl
 -- @-node:gcross.20100831211145.2035:JobApplicative
 -- @-node:gcross.20100831211145.2034:Types
 -- @+node:gcross.20100831211145.2043:Instances
 -- @+node:gcross.20100831211145.2044:Functor JobApplicative
 instance Ord jobid => Functor (JobApplicative jobid result) where
     fmap f (NullJobApplicative x) = NullJobApplicative (f x)
-    fmap f a@JobApplicative{..} = a { jobApplicativeResultExtractor = f . jobApplicativeResultExtractor }
+    fmap f JobApplicative{..} = JobApplicative { jobApplicativeResultExtractor = f . jobApplicativeResultExtractor, .. }
 
     x <$ _ = NullJobApplicative x
 -- @-node:gcross.20100831211145.2044:Functor JobApplicative
@@ -79,26 +81,27 @@ instance (Ord jobid, Monoid jobid) => Applicative (JobApplicative jobid result) 
         {   jobApplicativeResultExtractor = ($ x) . jobApplicativeResultExtractor
         ,   ..
         }
-    a1 <*> a2 =
-        JobApplicative
-        {   jobApplicativeJobs = jobApplicativeJobs a1 ++ jobApplicativeJobs a2
-        ,   jobApplicativeResultJobNames = jobApplicativeResultJobNames a1 ++ jobApplicativeResultJobNames a2
-        ,   jobApplicativeResultExtractorJobName = jobApplicativeResultExtractorJobName a1 `mappend` jobApplicativeResultExtractorJobName a2
-        ,   jobApplicativeResultExtractor =
-                uncurry ($)
-                .
-                (jobApplicativeResultExtractor a1 *** jobApplicativeResultExtractor a2)
-                .
-                splitAt (length . jobApplicativeResultJobNames $ a1)
-        }
+    (JobApplicative jobApplicativeJobs1 jobApplicativeResultJobNames1 jobApplicativeResultExtractorJobName1 jobApplicativeResultExtractor1) <*> (JobApplicative jobApplicativeJobs2 jobApplicativeResultJobNames2 jobApplicativeResultExtractorJobName2 jobApplicativeResultExtractor2)
+        =
+        let (joined_names,split) = T.join jobApplicativeResultJobNames1 jobApplicativeResultJobNames2
+        in JobApplicative
+            {   jobApplicativeJobs = jobApplicativeJobs1 ++ jobApplicativeJobs2
+            ,   jobApplicativeResultJobNames = joined_names
+            ,   jobApplicativeResultExtractorJobName = jobApplicativeResultExtractorJobName1 `mappend` jobApplicativeResultExtractorJobName2
+            ,   jobApplicativeResultExtractor =
+                    uncurry ($)
+                    .
+                    (jobApplicativeResultExtractor1 *** jobApplicativeResultExtractor2)
+                    .
+                    split
+            }
     _ *> a = a
     a <* _ = a
--- @nonl
 -- @-node:gcross.20100831211145.2045:Applicative JobApplicative
 -- @+node:gcross.20100831211145.2119:Functor JobArrow
 instance Ord jobid => Functor (JobArrow jobid result α) where
     fmap f (NullJobArrow g) = NullJobArrow (f . g)
-    fmap f a@JobArrow{..} = a { jobArrowResultExtractor = \x → f . jobArrowResultExtractor x}
+    fmap f JobArrow{..} = JobArrow { jobArrowResultExtractor = \x → f . jobArrowResultExtractor x, .. }
 
     x <$ _ = NullJobArrow (const x)
 -- @-node:gcross.20100831211145.2119:Functor JobArrow
@@ -116,22 +119,25 @@ instance (Ord jobid, Monoid jobid) => Applicative (JobArrow jobid result α) whe
         {   jobArrowResultExtractor = \x → ($ f x) . jobArrowResultExtractor x
         ,   ..
         }
-    a1 <*> a2 =
-        JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
-        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
-        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
-        ,   jobArrowResultExtractor = \x →
-                uncurry ($)
-                .
-                (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 x)
-                .
-                splitAt (length . jobArrowResultJobNames $ a1)
-        }
+    (JobArrow jobArrowIndependentJobs1 jobArrowDependentJobs1 jobArrowResultJobNames1 jobArrowResultExtractorJobName1 jobArrowResultExtractor1) <*> (JobArrow jobArrowIndependentJobs2 jobArrowDependentJobs2 jobArrowResultJobNames2 jobArrowResultExtractorJobName2 jobArrowResultExtractor2) =
+        let (joined_names,split) = T.join jobArrowResultJobNames1 jobArrowResultJobNames2
+        in JobArrow
+            {   jobArrowIndependentJobs = jobArrowIndependentJobs1 ++ jobArrowIndependentJobs2
+            ,   jobArrowDependentJobs = jobArrowDependentJobs1 ++ jobArrowDependentJobs2
+            ,   jobArrowResultJobNames = joined_names
+            ,   jobArrowResultExtractorJobName =
+                    liftA2 mappend
+                        jobArrowResultExtractorJobName1
+                        jobArrowResultExtractorJobName2
+            ,   jobArrowResultExtractor = \x →
+                    uncurry ($)
+                    .
+                    (jobArrowResultExtractor1 x *** jobArrowResultExtractor2 x)
+                    .
+                    split
+            }
     _ *> a = a
     a <* _ = a
--- @nonl
 -- @-node:gcross.20100831211145.2120:Applicative JobArrow
 -- @+node:gcross.20100831211145.2121:Category JobArrow
 instance Ord jobid => Category (JobArrow jobid result) where
@@ -148,35 +154,36 @@ instance Ord jobid => Category (JobArrow jobid result) where
         {   jobArrowResultExtractor = \x → f . jobArrowResultExtractor x
         ,   ..
         }
-    a2 . a1 =
+    (JobArrow jobArrowIndependentJobs2 jobArrowDependentJobs2 jobArrowResultJobNames2 jobArrowResultExtractorJobName2 jobArrowResultExtractor2) . (JobArrow jobArrowIndependentJobs1 jobArrowDependentJobs1 jobArrowResultJobNames1 jobArrowResultExtractorJobName1 jobArrowResultExtractor1)
+        =
         JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ new_a2_dependent_jobs
-        ,   jobArrowResultJobNames = jobArrowResultJobNames a2
-        ,   jobArrowResultExtractorJobName = jobArrowResultExtractorJobName a2 . jobArrowResultExtractorJobName a1
+        {   jobArrowIndependentJobs = jobArrowIndependentJobs1 ++ jobArrowIndependentJobs2
+        ,   jobArrowDependentJobs = jobArrowDependentJobs1 ++ new_a2_dependent_jobs
+        ,   jobArrowResultJobNames = joined_names
+        ,   jobArrowResultExtractorJobName = jobArrowResultExtractorJobName2 . jobArrowResultExtractorJobName1
         ,   jobArrowResultExtractor = new_a2_job_extractor
         }
       where
+        (joined_names,split) = T.join jobArrowResultJobNames1 jobArrowResultJobNames2
         new_a2_dependent_jobs =
             map (\(IncompleteJob job_names incomplete_job_runner) →
                 IncompleteJob job_names $
                 case incomplete_job_runner of
                     IncompleteJobRunner runJob → IncompleteJobRunner $ \x → do
-                        results ← request (jobArrowResultJobNames a1)
-                        let y = jobArrowResultExtractor a1 x results
+                        results ← request jobArrowResultJobNames1
+                        let y = jobArrowResultExtractor1 x results
                         runJob y
                     IncompleteJobRunnerWithCache runJob → IncompleteJobRunnerWithCache $ \x maybe_cache → do
-                        results ← request (jobArrowResultJobNames a1)
-                        let y = jobArrowResultExtractor a1 x results
+                        results ← request jobArrowResultJobNames1
+                        let y = jobArrowResultExtractor1 x results
                         runJob y maybe_cache
-            ) (jobArrowDependentJobs a2)
+            ) jobArrowDependentJobs2
         new_a2_job_extractor x =
-            uncurry (jobArrowResultExtractor a2)
+            uncurry jobArrowResultExtractor2
             .
-            (first (jobArrowResultExtractor a1 x))
+            (first $ jobArrowResultExtractor1 x)
             .
-            splitAt (length . jobArrowResultJobNames $ a1)
--- @nonl
+            split
 -- @-node:gcross.20100831211145.2121:Category JobArrow
 -- @+node:gcross.20100831211145.2122:Arrow JobArrow
 instance (Ord jobid, Monoid jobid) => Arrow (JobArrow jobid result) where
@@ -205,17 +212,18 @@ instance (Ord jobid, Monoid jobid) => Arrow (JobArrow jobid result) where
         {   jobArrowResultExtractor = \x results → (jobArrowResultExtractor x results, g x)
         ,   ..
         }
-    a1 &&& a2 =
-        JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs = jobArrowDependentJobs a1 ++ jobArrowDependentJobs a2
-        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
-        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
-        ,   jobArrowResultExtractor = \x →
-                (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 x)
-                .
-                splitAt (length . jobArrowResultJobNames $ a1)
-        }
+    (JobArrow jobArrowIndependentJobs1 jobArrowDependentJobs1 jobArrowResultJobNames1 jobArrowResultExtractorJobName1 jobArrowResultExtractor1) &&& (JobArrow jobArrowIndependentJobs2 jobArrowDependentJobs2 jobArrowResultJobNames2 jobArrowResultExtractorJobName2 jobArrowResultExtractor2) =
+        let (joined_names,split) = T.join jobArrowResultJobNames1 jobArrowResultJobNames2
+        in JobArrow
+            {   jobArrowIndependentJobs = jobArrowIndependentJobs1 ++ jobArrowIndependentJobs2
+            ,   jobArrowDependentJobs = jobArrowDependentJobs1 ++ jobArrowDependentJobs2
+            ,   jobArrowResultJobNames = joined_names
+            ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName1) (jobArrowResultExtractorJobName2)
+            ,   jobArrowResultExtractor = \x →
+                    (jobArrowResultExtractor1 x *** jobArrowResultExtractor2 x)
+                    .
+                    split
+            }
 
     (NullJobArrow f) *** (NullJobArrow g) = NullJobArrow (f *** g)
     (NullJobArrow f) *** JobArrow{..} =
@@ -230,20 +238,21 @@ instance (Ord jobid, Monoid jobid) => Arrow (JobArrow jobid result) where
         ,   jobArrowResultExtractor = \(x,y) results → (jobArrowResultExtractor x results, g y)
         ,   ..
         }
-    a1 *** a2 =
-        JobArrow
-        {   jobArrowIndependentJobs = jobArrowIndependentJobs a1 ++ jobArrowIndependentJobs a2
-        ,   jobArrowDependentJobs =
-                map (cofmap fst) (jobArrowDependentJobs a1)
-                ++
-                map (cofmap snd) (jobArrowDependentJobs a2)
-        ,   jobArrowResultJobNames = jobArrowResultJobNames a1 ++ jobArrowResultJobNames a2
-        ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName a1) (jobArrowResultExtractorJobName a2)
-        ,   jobArrowResultExtractor = \(x,y) →
-                (jobArrowResultExtractor a1 x *** jobArrowResultExtractor a2 y)
-                .
-                splitAt (length . jobArrowResultJobNames $ a1)
-        }
+    (JobArrow jobArrowIndependentJobs1 jobArrowDependentJobs1 jobArrowResultJobNames1 jobArrowResultExtractorJobName1 jobArrowResultExtractor1) *** (JobArrow jobArrowIndependentJobs2 jobArrowDependentJobs2 jobArrowResultJobNames2 jobArrowResultExtractorJobName2 jobArrowResultExtractor2) =
+        let (joined_names,split) = T.join jobArrowResultJobNames1 jobArrowResultJobNames2
+        in JobArrow
+            {   jobArrowIndependentJobs = jobArrowIndependentJobs1 ++ jobArrowIndependentJobs2
+            ,   jobArrowDependentJobs =
+                    map (cofmap fst) (jobArrowDependentJobs1)
+                    ++
+                    map (cofmap snd) (jobArrowDependentJobs2)
+            ,   jobArrowResultJobNames = joined_names
+            ,   jobArrowResultExtractorJobName = liftA2 mappend (jobArrowResultExtractorJobName1) (jobArrowResultExtractorJobName2)
+            ,   jobArrowResultExtractor = \(x,y) →
+                    (jobArrowResultExtractor1 x *** jobArrowResultExtractor2 y)
+                    .
+                    split
+            }
 -- @nonl
 -- @-node:gcross.20100831211145.2122:Arrow JobArrow
 -- @-node:gcross.20100831211145.2043:Instances
@@ -276,15 +285,15 @@ JobApplicative{..} ➤ JobArrow{..} =
             ++
             jobArrowIndependentJobs
             ++
-            map (completeJobUsing (unwrap . head) applicative_job_names)
+            map (completeJobUsing (unwrap . T.head) (jobApplicativeResultExtractorJobName :. E))
                 jobArrowDependentJobs
-    ,   jobApplicativeResultJobNames = applicative_job_names ++ jobArrowResultJobNames
+    ,   jobApplicativeResultJobNames = jobApplicativeResultExtractorJobName :. jobArrowResultJobNames
     ,   jobApplicativeResultExtractorJobName = jobArrowResultExtractorJobName jobApplicativeResultExtractorJobName
-    ,   jobApplicativeResultExtractor = \(x_dyn:results) → jobArrowResultExtractor (unwrap x_dyn) results
+    ,   jobApplicativeResultExtractor = \z → case z of {(x_dyn :. results) → jobArrowResultExtractor (unwrap x_dyn) results}
     }
   where
-    applicative_job@(Job applicative_job_names _) =
-        job [jobApplicativeResultExtractorJobName] $
+    applicative_job =
+        job jobApplicativeResultExtractorJobName $
             request jobApplicativeResultJobNames
             >>=
             returnValue . wrap . jobApplicativeResultExtractor
@@ -301,10 +310,10 @@ JobApplicative{..} ➤ JobArrow{..} =
     .
     (++ jobApplicativeJobs)
     .
-    map (completeJobUsing (unwrap . head) applicative_job_names)
+    map (completeJobUsing (unwrap . T.head) (jobApplicativeResultExtractorJobName :. E))
   where
-    applicative_job@(Job applicative_job_names _) =
-        job [jobApplicativeResultExtractorJobName] $
+    applicative_job =
+        job jobApplicativeResultExtractorJobName $
             request jobApplicativeResultJobNames
             >>=
             returnValue . wrap . jobApplicativeResultExtractor
@@ -316,7 +325,7 @@ extractJobsFromJobApplicative ::
     [Job jobid result]
 extractJobsFromJobApplicative (NullJobApplicative _) = []
 extractJobsFromJobApplicative JobApplicative{..} =
-    job [jobApplicativeResultExtractorJobName] (
+    job jobApplicativeResultExtractorJobName (
         request jobApplicativeResultJobNames
         >>=
         returnValue . wrap . jobApplicativeResultExtractor
@@ -363,10 +372,10 @@ runJobApplicativeUsingCacheFile number_of_io_slaves path_to_cache job_applicativ
 jobApplicativeFromJobTask :: Wrapper result α => jobid → jobid → JobTask jobid result α → JobApplicative jobid result α
 jobApplicativeFromJobTask task_name extractor_name task =
     JobApplicative
-    {   jobApplicativeJobs = [job [task_name] (task >>= returnWrappedValue)]
-    ,   jobApplicativeResultJobNames = [task_name]
+    {   jobApplicativeJobs = [job task_name (task >>= returnWrappedValue)]
+    ,   jobApplicativeResultJobNames = (task_name :. E)
     ,   jobApplicativeResultExtractorJobName = extractor_name
-    ,   jobApplicativeResultExtractor = unwrap . head
+    ,   jobApplicativeResultExtractor = unwrap . T.head
     }
 -- @-node:gcross.20100902134026.2088:simpleJobApplicative
 -- @-node:gcross.20100831211145.2123:Functions

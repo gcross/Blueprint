@@ -36,6 +36,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Digest.Pure.MD5
 import Data.Dynamic
 import Data.Either.Unwrap
+import qualified Data.Foldable as Fold
 import Data.IORef
 import Data.List
 import Data.Map (Map)
@@ -47,7 +48,6 @@ import qualified Data.Set as Set
 import Data.Typeable
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
-import Data.Vec ((:.)(..))
 import Data.Version
 
 import Debug.Trace
@@ -80,9 +80,10 @@ import Blueprint.IOTask
 import Blueprint.Jobs
 import Blueprint.Options
 import Blueprint.SourceFile
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
 import Blueprint.Tools
 import Blueprint.Tools.JobAnalyzer
--- @nonl
 -- @-node:gcross.20100602152546.1869:<< Import needed modules >>
 -- @nl
 
@@ -646,7 +647,7 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607083309.1479:return cached value (Nothing)
             [testCase "return cached value (Nothing)" . withJobServer 1 Map.empty $ do
-                submitJob . jobWithCache ["job"] $ \maybe_cached_value →
+                submitJob . jobWithCache "job" $ \maybe_cached_value →
                     returnValue maybe_cached_value
                 requestJobResult "job"
                     >>=
@@ -661,7 +662,7 @@ main = defaultMain
             ,testCase "read/write MVar" . withJobServer 1 Map.empty $ do
                 in_var ← liftIO newEmptyMVar
                 out_var ← liftIO newEmptyMVar
-                submitJob . job ["job"] $
+                submitJob . job "job" $
                     liftIO $ do
                         value ← takeMVar in_var
                         putMVar out_var (value+1)
@@ -676,19 +677,18 @@ main = defaultMain
                 -- @    @+others
                 -- @+node:gcross.20100607083309.1482:self
                 [testCase "self" . withJobServer 1 Map.empty $ do
-                    submitJob . job ["job"] $ do
-                        request ["non-existent job"]
+                    submitJob . job "job" $ do
+                        requestOne "non-existent job"
                         returnValue ()
                     assertThrows
                         (CombinedException [(["job"],toException . NoSuchJobsException $ ["non-existent job"])])
                         (requestJobResult "job")
-                    assertJobCacheEmpty 
-                -- @nonl
+                    assertJobCacheEmpty
                 -- @-node:gcross.20100607083309.1482:self
                 -- @+node:gcross.20100607083309.1483:cyclic dependency
                 ,testCase "cyclic dependency" . withJobServer 1 Map.empty $ do
-                    submitJob . job ["job"] $ do
-                        request ["job"]
+                    submitJob . job "job" $ do
+                        requestOne "job"
                         returnValue ()
                     assertThrows
                         (CombinedException [(["job"],toException CyclicDependencyException)])
@@ -701,7 +701,7 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1481:bad requests
             -- @+node:gcross.20100607083309.1484:IO thrown exception
             ,testCase "IO thrown exception" . withJobServer 1 Map.empty $ do
-                submitJob . job ["job"] $
+                submitJob . job "job" $
                     liftIO $ do
                         throwIO TestException
                         returnValue ()
@@ -713,8 +713,8 @@ main = defaultMain
             -- @-node:gcross.20100607083309.1484:IO thrown exception
             -- @+node:gcross.20100607205618.1445:multiple results
             ,testCase "multiple results" . withJobServer 0 Map.empty $ do
-                submitJob . job ["job1","job2"] $
-                    returnValues [1,2]
+                submitJob . jobs ("job1" :. "job2" :. E) $
+                    returnValues (1 :. 2 :. E)
                 requestJobResult "job1"
                     >>=
                     liftIO
@@ -732,26 +732,6 @@ main = defaultMain
                 assertJobCacheEmpty 
             -- @nonl
             -- @-node:gcross.20100607205618.1445:multiple results
-            -- @+node:gcross.20100607205618.1447:too many results
-            ,testCase "too many results" . withJobServer 0 Map.empty $ do
-                submitJob . job ["job"] $
-                    returnValues [1,2::Int]
-                assertThrows
-                    (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 2 1)])
-                    (requestJobResult "job")
-                assertJobCacheEmpty 
-            -- @nonl
-            -- @-node:gcross.20100607205618.1447:too many results
-            -- @+node:gcross.20100607205618.1449:too few results
-            ,testCase "too few results" . withJobServer 0 Map.empty $ do
-                submitJob . job ["job"] $
-                    returnValues ([] :: [()])
-                assertThrows
-                    (CombinedException [(["job"],toException $ ReturnedWrongNumberOfResults 0 1)])
-                    (requestJobResult "job")
-                assertJobCacheEmpty 
-            -- @nonl
-            -- @-node:gcross.20100607205618.1449:too few results
             -- @-others
             ]
         -- @-node:gcross.20100607083309.1478:single job
@@ -760,26 +740,25 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607083309.1489:simple request
             [testCase "simple request" . withJobServer 1 Map.empty $  do
-                submitJob . job ["job1"] $
+                submitJob . job "job1" $
                     returnValue 1
-                submitJob . job ["job2"] $
-                    request ["job1"] >>= returnValue . head
-                requestJobResult  "job2"
+                submitJob . job "job2" $
+                    requestOne "job1" >>= returnValue
+                requestJobResult "job2"
                     >>=
                     liftIO
                     .
                     assertEqual
                         "Is the job's result correct?"
                         (1 :: Int)
-                assertJobCacheEmpty 
-            -- @nonl
+                assertJobCacheEmpty
             -- @-node:gcross.20100607083309.1489:simple request
             -- @+node:gcross.20100607205618.1451:simple request, multiple results
             ,testCase "simple request, multiple results" . withJobServer 1 Map.empty $  do
-                submitJob . job ["job1A","job1B"] $
-                    returnValues [1,2]
-                submitJob . job ["job2"] $
-                    request ["job1B"] >>= returnValue . head
+                submitJob . jobs ("job1A" :. "job1B" :. E) $
+                    returnValues (1 :. 2 :. E)
+                submitJob . job "job2" $
+                    requestOne "job1B" >>= returnValue
                 requestJobResult  "job2"
                     >>=
                     liftIO
@@ -787,105 +766,100 @@ main = defaultMain
                     assertEqual
                         "Is the job's result correct?"
                         (2 :: Int)
-                assertJobCacheEmpty 
-            -- @nonl
+                assertJobCacheEmpty
             -- @-node:gcross.20100607205618.1451:simple request, multiple results
             -- @+node:gcross.20100607083309.1490:cyclic request
             ,testCase "cyclic request" . withJobServer 1 Map.empty $  do
                 dummy ← liftIO newEmptyMVar
-                submitJob . job ["job1"] $ do
+                submitJob . job "job1" $ do
                     liftIO $ takeMVar dummy
-                    request ["job2"] >>= returnValue . head
-                submitJob . job ["job2"] $ do
-                    request ["job1"] >>= returnValue . head
+                    requestOne "job2" >>= returnValue
+                submitJob . job "job2" $ do
+                    requestOne "job1" >>= returnValue
                 liftIO $ putMVar dummy ()
                 result ← try (requestJobResult  "job2")
                 liftIO $ case result of
                     Right () → assertFailure "Failed to detect cyclic dependency."
                     Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
                 assertJobCacheEmpty
-            -- @nonl
             -- @-node:gcross.20100607083309.1490:cyclic request
             -- @+node:gcross.20100607083309.1448:exception
             ,testCase "exception" . withJobServer 1 Map.empty $  do
-                submitJob . job ["job1"] $ do
+                submitJob . job "job1" $ do
                     throw TestException
                     returnValue ()
-                submitJob . job ["job2"] $
-                    request ["job1"] >>= returnValue . head
+                submitJob . job "job2" $
+                    requestOne "job1" >>= returnValue
                 assertThrows
                     (CombinedException [(["job1"],toException TestException)])
-                    (requestJobResult  "job2")
-                assertJobCacheEmpty 
-            -- @nonl
+                    (requestJobResult "job2")
+                assertJobCacheEmpty
             -- @-node:gcross.20100607083309.1448:exception
             -- @+node:gcross.20100607205618.1422:IO tasks run in parallel
             ,testCase "IO tasks run in parallel" . withJobServer 2 Map.empty $  do
                 chan1 ← liftIO newChan
                 chan2 ← liftIO newChan
-                submitJob . job ["job1"] $
+                submitJob . job "job1" $
                     liftIO $ (writeChan chan2 2 >> readChan chan1)
                     >>=
                     returnValue
-                submitJob . job ["job2"] $ 
+                submitJob . job "job2" $ 
                     liftIO $ (writeChan chan1 1 >> readChan chan2)
                     >>=
                     returnValue
-                submitJob . job ["job3"] $ 
-                    request ["job1","job2"]
+                submitJob . job "job3" $ 
+                    request ("job1" :. "job2" :. E)
                     >>=
-                    returnValue . sum
-                requestJobResult  "job3"
+                    returnValue . Fold.sum
+                requestJobResult "job3"
                     >>=
                     liftIO
                     .
                     assertEqual
                         "Is job 1's result correct?"
                         (3 :: Int)
-                requestJobResult  "job2"
+                requestJobResult "job2"
                     >>=
                     liftIO
                     .
                     assertEqual
                         "Is job 1's result correct?"
                         (2 :: Int)
-                requestJobResult  "job1"
+                requestJobResult "job1"
                     >>=
                     liftIO
                     .
                     assertEqual
                         "Is job 2's result correct?"
                         (1 :: Int)
-                assertJobCacheEmpty 
-            -- @nonl
+                assertJobCacheEmpty
             -- @-node:gcross.20100607205618.1422:IO tasks run in parallel
             -- @+node:gcross.20100607205618.1424:IO tasks limited to slaves
             ,testCase "IO tasks limited to slaves" . withJobServer 1 Map.empty $  do
                 chan1 ← liftIO newChan
                 chan2 ← liftIO newChan
-                submitJob . job ["job1"] $
+                submitJob . job "job1" $
                     liftIO $ (writeChan chan2 (2 :: Int) >> readChan chan1)
                     >>=
                     returnValue
-                submitJob . job ["job2"] $ 
+                submitJob . job "job2" $ 
                     liftIO $ (writeChan chan1 1 >> readChan chan2)
                     >>=
                     returnValue
-                submitJob . job ["job3"] $ 
-                    request ["job1","job2"]
+                submitJob . job "job3" $ 
+                    request ("job1" :. "job2" :. E)
                     >>=
-                    returnValue . sum
+                    returnValue . Fold.sum
                 liftIO $ hPutStrLn stderr "(Note that if this test succeeds, then you *should* see a JOB SERVER KILLED message soon.)"
                 assertThrows
                     BlockedIndefinitelyOnMVar
-                    (requestJobResult  "job3")
+                    (requestJobResult "job3")
                 assertThrows
                     BlockedIndefinitelyOnMVar
-                    (requestJobResult  "job2")
+                    (requestJobResult "job2")
                 assertThrows
                     BlockedIndefinitelyOnMVar
-                    (requestJobResult  "job1")
-            -- @nonl
+                    (requestJobResult "job1")
             -- @-node:gcross.20100607205618.1424:IO tasks limited to slaves
             -- @-others
             ]
@@ -895,14 +869,14 @@ main = defaultMain
             -- @    @+others
             -- @+node:gcross.20100607205618.1418:diamond dependency
             [testCase "diamond dependency" . withJobServer 1 Map.empty $  do
-                submitJob . job ["job1"] $
+                submitJob . job "job1" $
                     returnValue 1
-                submitJob . job ["job2"] $
-                    request ["job1"] >>= returnValue . head
-                submitJob . job ["job3"] $
-                    request ["job1"] >>= returnValue . head
-                submitJob . job ["job4"] $
-                    request ["job2","job3"] >>= returnValue . sum
+                submitJob . job "job2" $
+                    requestOne "job1" >>= returnValue
+                submitJob . job "job3" $
+                    requestOne "job1" >>= returnValue
+                submitJob . job "job4" $
+                    request ("job2" :. "job3" :. E) >>= returnValue . Fold.sum
                 requestJobResult  "job4"
                     >>=
                     liftIO
@@ -910,29 +884,27 @@ main = defaultMain
                     assertEqual
                         "Is the job's result correct?"
                         (2 :: Int)
-                assertJobCacheEmpty 
-            -- @nonl
+                assertJobCacheEmpty
             -- @-node:gcross.20100607205618.1418:diamond dependency
             -- @+node:gcross.20100607205618.1420:cyclic diamond dependency
             ,testCase "cyclic diamond dependency" . withJobServer 1 Map.empty $  do
                 dummy ← liftIO newEmptyMVar
-                submitJob . job ["job1"] $ do
+                submitJob . job "job1" $ do
                     liftIO . takeMVar $ dummy
-                    request ["job4"]
+                    requestOne "job4"
                     returnValue (1 :: Int)
-                submitJob . job ["job2"] $
-                    request ["job1"] >>= returnValue . head
-                submitJob . job ["job3"] $
-                    request ["job1"] >>= returnValue . head
-                submitJob . job ["job4"] $
-                    request ["job2","job3"] >>= returnValue . sum
+                submitJob . job "job2" $
+                    requestOne "job1" >>= returnValue
+                submitJob . job "job3" $
+                    requestOne "job1" >>= returnValue
+                submitJob . job "job4" $
+                    request ("job2" :. "job3" :. E) >>= returnValue . Fold.sum
                 liftIO $ putMVar dummy ()
-                result ← try (requestJobResult  "job4")
+                result ← try (requestJobResult "job4")
                 liftIO $ case result of
                     Right _ → assertFailure "Failed to detect cyclic dependency."
                     Left e → assertBool "Was the correct exception thrown?" . (show CyclicDependencyException `isInfixOf`) . show $ (e :: SomeException)
                 assertJobCacheEmpty 
-            -- @nonl
             -- @-node:gcross.20100607205618.1420:cyclic diamond dependency
             -- @-others
             ]
@@ -946,10 +918,10 @@ main = defaultMain
                     [(["job"],encode (1 :: Int))
                     ]
                 )
-              $  do
-                submitJob . jobWithCache ["job"] $ \maybe_cached_value →
+              $ do
+                submitJob . jobWithCache "job" $ \maybe_cached_value →
                     returnValueAndCache maybe_cached_value 2
-                requestJobResult  "job"
+                requestJobResult "job"
                     >>=
                     liftIO
                     .
@@ -959,23 +931,21 @@ main = defaultMain
                 assertJobCacheEqualTo . Map.fromList $
                     [(["job"],encode $ (2 :: Int))
                     ]
-            -- @nonl
             -- @-node:gcross.20100607205618.1432:return cached value
             -- @+node:gcross.20100607205618.1440:add cached value
             ,testCase "add cached value" . withJobServer 1 Map.empty $  do
-                submitJob . jobWithCache ["job"] $ \maybe_cached_value →
+                submitJob . jobWithCache "job" $ \maybe_cached_value →
                     returnValueAndCache maybe_cached_value (2 :: Int)
-                requestJobResult  "job"
+                requestJobResult "job"
                     >>=
                     liftIO
                     .
                     assertEqual
                         "Is the job's result correct?"
                         Nothing
-                assertJobCacheEqualTo  . Map.fromList $
+                assertJobCacheEqualTo . Map.fromList $
                     [(["job"],encode $ (2 :: Int))
                     ]
-            -- @nonl
             -- @-node:gcross.20100607205618.1440:add cached value
             -- @+node:gcross.20100607205618.1436:destroy cached value
             ,testCase "destroy cached value" . withJobServer 1
@@ -984,14 +954,13 @@ main = defaultMain
                     ]
                 )
               $  do
-                submitJob . jobWithCache ["job"] $ \maybe_cached_value → do
+                submitJob . jobWithCache "job" $ \maybe_cached_value → do
                     throw TestException
                     returnValueAndCache () (2 :: Int)
                 assertThrows
                     (CombinedException [(["job"],toException TestException)])
-                    (requestJobResult  "job")
-                assertJobCacheEmpty 
-            -- @nonl
+                    (requestJobResult "job")
+                assertJobCacheEmpty
             -- @-node:gcross.20100607205618.1436:destroy cached value
             -- @-others
             ]
@@ -1094,9 +1063,9 @@ main = defaultMain
                 correct_cache :: SerializableRecord
                 correct_cache = withField _a 42
             in withJobServer 1 Map.empty $ do
-                submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                submitJob . jobWithCache job_id . runJobAnalyzer $ do
                     writeToCache _a 42
-                    return [undefined]
+                    return (emptyTable :. E)
                 _ ← requestJobResult job_id
                 new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                 assertEqual
@@ -1111,11 +1080,11 @@ main = defaultMain
                 cache :: SerializableRecord
                 cache = withField _a 42
             in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                submitJob . jobWithCache job_id . runJobAnalyzer $ do
                     maybe_a ← readAndCache _a
                     case maybe_a of
-                        Nothing → return [emptyTable]
-                        Just a → return [withField _a a]
+                        Nothing → return (emptyTable :. E)
+                        Just a → return (withField _a a :. E)
                 result ← requestJobResult job_id
                 new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                 assertEqual
@@ -1135,9 +1104,9 @@ main = defaultMain
                 cache :: SerializableRecord
                 cache = withField _a 42
             in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                submitJob . jobWithCache job_id . runJobAnalyzer $ do
                     a ← readRequiredAndCache _a
-                    return [withField _a a]
+                    return (withField _a a :. E)
                 result ← requestJobResult job_id
                 new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                 assertEqual
@@ -1160,9 +1129,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 Map.empty $ do
-                    submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                    submitJob . jobWithCache job_id . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
-                        return [withField _c c]
+                        return (withField _c c :. E)
                     result ← requestJobResult job_id
                     new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                     assertEqual
@@ -1184,9 +1153,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                    submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                    submitJob . jobWithCache job_id . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
-                        return [withField _c c]
+                        return (withField _c c :. E)
                     result ← requestJobResult job_id
                     new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                     assertEqual
@@ -1208,9 +1177,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                    submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                    submitJob . jobWithCache job_id . runJobAnalyzer $ do
                         c ← checkForChangesIn _a 42
-                        return [withField _c c]
+                        return (withField _c c :. E)
                     result ← requestJobResult job_id
                     new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                     assertEqual
@@ -1221,7 +1190,6 @@ main = defaultMain
                         "Is the cache correct?"
                         (encode correct_cache)
                         new_cache
-            -- @nonl
             -- @-node:gcross.20100706002630.1979:unchanged
             -- @-others
             ]
@@ -1233,9 +1201,9 @@ main = defaultMain
                 correct_cache :: SerializableRecord
                 correct_cache = withField _a 42
             in withJobServer 1 Map.empty $ do
-                submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                submitJob . jobWithCache job_id . runJobAnalyzer $ do
                     a ← runTaskAndCacheResult _a (return 42)
-                    return [withField _a a]
+                    return (withField _a a :. E)
                 result ← requestJobResult job_id
                 new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                 assertEqual
@@ -1260,9 +1228,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 42
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                    submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                    submitJob . jobWithCache job_id . runJobAnalyzer $ do
                         a ← rerunTaskAndCacheResultOnlyIf _a (return 42) True
-                        return [withField _a a]
+                        return (withField _a a :. E)
                     result ← requestJobResult job_id
                     new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                     assertEqual
@@ -1284,9 +1252,9 @@ main = defaultMain
                     correct_cache :: SerializableRecord
                     correct_cache = withField _a 24
                 in withJobServer 1 (Map.singleton job_ids (encode cache)) $ do
-                    submitJob . jobWithCache job_ids . runJobAnalyzer $ do
+                    submitJob . jobWithCache job_id . runJobAnalyzer $ do
                         a ← rerunTaskAndCacheResultOnlyIf _a (return 42) False
-                        return [withField _a a]
+                        return (withField _a a :. E)
                     result ← requestJobResult job_id
                     new_cache ← fmap (fromJust . Map.lookup job_ids) requestJobCache
                     assertEqual

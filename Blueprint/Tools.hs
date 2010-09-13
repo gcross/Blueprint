@@ -39,9 +39,11 @@ import Blueprint.Fields.DeferredDependencies
 import Blueprint.Fields.Digest
 import Blueprint.Identifier
 import Blueprint.Miscellaneous
+import Blueprint.NaturalNumber
 import Blueprint.Jobs
 import Blueprint.Jobs.Combinators
--- @nonl
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
 -- @-node:gcross.20100624100717.2134:<< Import needed modules >>
 -- @nl
 
@@ -110,7 +112,7 @@ type ToolJobRunner = JobRunner JobId Record
 -- @+node:gcross.20100624100717.2135:Functions
 -- @+node:gcross.20100705185804.1978:fetchDigestsFor
 fetchDigestsFor :: [JobId] → ToolJobTask [MD5Digest]
-fetchDigestsFor = fmap (map getDigest) . request
+fetchDigestsFor = fmap (map getDigest) . requestList
 -- @-node:gcross.20100705185804.1978:fetchDigestsFor
 -- @+node:gcross.20100705185804.1961:fetchAllDeferredDependencies
 fetchAllDeferredDependenciesAndTheirDigests ::
@@ -157,7 +159,7 @@ fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobId 
                 nub
                 $
                 additional_dependencies
-        results ← request job_ids
+        results ← requestList job_ids
         let new_seen_dependencies =
                 Map.unions
                     [seen_dependencies
@@ -182,19 +184,16 @@ fetchAllDeferredDependenciesAndTheirDigests distinguisher lookupDependencyJobId 
 -- @-node:gcross.20100705185804.1961:fetchAllDeferredDependencies
 -- @+node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
-    [FilePath] →
-    [FilePath] →
+    TaggedList n FilePath →
     String →
     [String] →
-    IO [MD5Digest]
+    IO (TaggedList n MD5Digest)
 runProductionCommandAndDigestOutputs
     mandatory_product_filepaths
-    optional_product_filepaths
     command
     arguments
   = do
-    mapM_ (createDirectoryIfMissing True . takeDirectory) $
-        mandatory_product_filepaths ++ optional_product_filepaths
+    T.mapM_ (createDirectoryIfMissing True . takeDirectory) $ mandatory_product_filepaths
     (exit_code,_,output) ←
         readProcessWithExitCode
             command
@@ -203,11 +202,10 @@ runProductionCommandAndDigestOutputs
     when (exit_code /= ExitSuccess) . throwIO $
         ProductionCommandFailed (unwords (command:arguments)) output
     mandatory_products_not_existing ←
-        filterM (fmap not . doesFileExist) mandatory_product_filepaths
+        filterM (fmap not . doesFileExist) (T.toList mandatory_product_filepaths)
     when (not . null $ mandatory_products_not_existing) . throwIO $
         FailedToProduceMandatoryOutputs mandatory_products_not_existing
-    existing_optional_products ← filterM doesFileExist optional_product_filepaths
-    digestFiles (mandatory_product_filepaths ++ optional_product_filepaths)
+    digestFiles mandatory_product_filepaths
 -- @-node:gcross.20100630111926.1893:runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100624100717.2135:Functions
 -- @-others

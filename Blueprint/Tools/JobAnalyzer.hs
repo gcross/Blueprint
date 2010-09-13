@@ -32,8 +32,10 @@ import Blueprint.Dependency
 import Blueprint.Fields.DeferredDependencies
 import Blueprint.Fields.Digest
 import Blueprint.Jobs
+import Blueprint.NaturalNumber
+import Blueprint.TaggedList (TaggedList(..),UntaggedList(..))
+import qualified Blueprint.TaggedList as T
 import Blueprint.Tools
--- @nonl
 -- @-node:gcross.20100705185804.2034:<< Import needed modules >>
 -- @nl
 
@@ -50,14 +52,14 @@ type JobAnalyzer = RWST SerializableRecord SerializableRecord () (JobTask JobId 
 -- @+node:gcross.20100705185804.2037:Functions
 -- @+node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
 analyzeImplicitDependenciesAndRebuildIfNecessary ::
-    (Typeable α, Binary α, Eq α, Typeable β, Binary β, Eq β) ⇒
+    (Typeable α, Binary α, Eq α, Typeable β, Binary β, Eq β, NaturalNumber n, Typeable n) ⇒
     JobTask JobId Record β →
     (β → JobTask JobId Record RequiredDependencies) →
-    ([Dependency] → JobTask JobId Record [MD5Digest]) →
-    ([MD5Digest] → JobTask JobId Record Bool) →
+    ([Dependency] → JobTask JobId Record (TaggedList n MD5Digest)) →
+    (TaggedList n MD5Digest → JobTask JobId Record Bool) →
     α →
     [JobId] →
-    JobAnalyzer [Record]
+    JobAnalyzer (TaggedList n Record)
 analyzeImplicitDependenciesAndRebuildIfNecessary
     scanner
     resolve
@@ -113,7 +115,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        reBuiltProductsIfNecessary
+        rebuildProductsIfNecessary
             (builder . map fst $ requiredImmediateDependencies)
             checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
@@ -121,7 +123,7 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
     -- Return the results
     return
         .
-        map (\digest →
+        T.map (\digest →
             withFields
                 [FV _digest digest
                 ,FV _deferred_dependencies requiredDeferredDependencies
@@ -137,12 +139,12 @@ analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @-node:gcross.20100705185804.2038:analyzeImplicitDependenciesAndRebuildIfNecessary
 -- @+node:gcross.20100901221002.2070:analyzeExplicitDependenciesAndRebuildIfNecessary
 analyzeExplicitDependenciesAndRebuildIfNecessary ::
-    (Typeable α, Binary α, Eq α) ⇒
-    JobTask JobId Record [MD5Digest] →
-    ([MD5Digest] → JobTask JobId Record Bool) →
+    (Typeable α, Binary α, Eq α, NaturalNumber n, Typeable n) ⇒
+    JobTask JobId Record (TaggedList n MD5Digest) →
+    (TaggedList n MD5Digest → JobTask JobId Record Bool) →
     α →
     [JobId] →
-    JobAnalyzer [Record]
+    JobAnalyzer (TaggedList n Record)
 analyzeExplicitDependenciesAndRebuildIfNecessary
     builder
     checkIfProductsMatch
@@ -161,7 +163,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        reBuiltProductsIfNecessary
+        rebuildProductsIfNecessary
             builder
             checkIfProductsMatch
             (dependencies_have_changed || miscellaneous_information_has_changed)
@@ -169,7 +171,7 @@ analyzeExplicitDependenciesAndRebuildIfNecessary
     -- Return the results
     return
         .
-        map (withField _digest)
+        T.map (withField _digest)
         $
         product_digests
  where
@@ -202,11 +204,11 @@ checkForChangesInMiscellaneousInformation =
 -- @-node:gcross.20100705185804.2041:checkForChangesInMiscellaneousInformation
 -- @+node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
 compareToCacheAndRebuildIfNecessary ::
-    (Typeable α, Binary α, Eq α) ⇒
-    JobTask JobId Record [MD5Digest] →
-    ([MD5Digest] → JobTask JobId Record Bool) →
+    (Typeable α, Binary α, Eq α, NaturalNumber n, Typeable n) ⇒
+    JobTask JobId Record (TaggedList n MD5Digest) →
+    (TaggedList n MD5Digest → JobTask JobId Record Bool) →
     α →
-    JobAnalyzer [Record]
+    JobAnalyzer (TaggedList n Record)
 compareToCacheAndRebuildIfNecessary
     builder
     checkIfProductsMatch
@@ -218,7 +220,7 @@ compareToCacheAndRebuildIfNecessary
 
     -- Rebuild the product if necessary
     product_digests ←
-        reBuiltProductsIfNecessary
+        rebuildProductsIfNecessary
             builder
             checkIfProductsMatch
             cached_information_has_changed
@@ -226,7 +228,7 @@ compareToCacheAndRebuildIfNecessary
     -- Return the results
     return
         .
-        map (withField _digest)
+        T.map (withField _digest)
         $
         product_digests
 -- @-node:gcross.20100902134026.2120:compareToCacheAndRebuildIfNecessary
@@ -268,13 +270,14 @@ readRequiredAndCache field = do
     writeToCache field value
     return value
 -- @-node:gcross.20100705185804.2050:readRequiredAndCache
--- @+node:gcross.20100705185804.2040:reBuiltProductsIfNecessary
-reBuiltProductsIfNecessary ::
-    ToolJobTask [MD5Digest] →
-    ([MD5Digest] → ToolJobTask Bool) →
+-- @+node:gcross.20100705185804.2040:rebuildProductsIfNecessary
+rebuildProductsIfNecessary ::
+    (NaturalNumber n, Typeable n) =>
+    ToolJobTask (TaggedList n MD5Digest) →
+    (TaggedList n MD5Digest → ToolJobTask Bool) →
     Bool →
-    JobAnalyzer [MD5Digest]
-reBuiltProductsIfNecessary
+    JobAnalyzer (TaggedList n MD5Digest)
+rebuildProductsIfNecessary
     builder
     checkIfProductsMatch
     always_rebuild
@@ -292,8 +295,7 @@ reBuiltProductsIfNecessary
         builder
   where
     product_digests_field = field "product digests" "101ba0a4-35a9-44f7-98c0-87d26027a375"
--- @nonl
--- @-node:gcross.20100705185804.2040:reBuiltProductsIfNecessary
+-- @-node:gcross.20100705185804.2040:rebuildProductsIfNecessary
 -- @+node:gcross.20100705185804.2047:rerunTaskAndCacheResultOnlyIf
 rerunTaskAndCacheResultOnlyIf ::
     (Typeable a, Binary a) ⇒

@@ -91,9 +91,11 @@ import Blueprint.Product.File.Object
 import Blueprint.Product.File.Program
 import Blueprint.Options
 import Blueprint.SourceFile
+import Blueprint.TaggedList (TaggedList(..))
+import qualified Blueprint.TaggedList as T
 import Blueprint.Tools
 import Blueprint.Tools.JobAnalyzer
--- @nonl
+import Blueprint.Wrapper
 -- @-node:gcross.20100611224425.1612:<< Import needed modules >>
 -- @nl
 
@@ -356,19 +358,19 @@ computeProgramComponents dependencies
 -- @-node:gcross.20100709210816.2223:computeProgramComponents
 -- @+node:gcross.20100831154015.2037:configureGHC
 configureGHC ::
+    Wrapper result GHC =>
     String →
     GHCOptions →
-    JobApplicative JobId Dynamic GHC
+    JobApplicative JobId result GHC
 configureGHC job_distinguisher search_options =
-    JobApplicative
-    {   jobApplicativeJobs = [job]
-    ,   jobApplicativeResultJobNames = job_names
-    ,   jobApplicativeResultExtractorJobName = identifierInNamespace ghc_configuration_namespace "configure GHC" "configure GHC"
-    ,   jobApplicativeResultExtractor = fromJust . fromDynamic . head
-    }
-  where
-    job@(Job job_names job_runner) = createGHCConfigurationJob job_distinguisher search_options
--- @nonl
+    case createGHCConfigurationJob job_distinguisher search_options of
+        job@(Job job_names job_runner) →
+            JobApplicative
+            {   jobApplicativeJobs = [job]
+            ,   jobApplicativeResultJobNames = job_names
+            ,   jobApplicativeResultExtractorJobName = identifierInNamespace ghc_configuration_namespace "configure GHC" "configure GHC"
+            ,   jobApplicativeResultExtractor = unwrap . T.head
+            }
 -- @-node:gcross.20100831154015.2037:configureGHC
 -- @+node:gcross.20100905161144.1956:configureGHCUsingOptions
 configureGHCUsingOptions :: OptionValues → JobApplicative JobId Dynamic GHC
@@ -376,9 +378,13 @@ configureGHCUsingOptions = configureGHC "" . extractGHCOptions
 -- @-node:gcross.20100905161144.1956:configureGHCUsingOptions
 -- @+node:gcross.20100831211145.2170:configureGHCEnvironment
 configureGHCEnvironment ::
+    (Wrapper result GHC
+    ,Wrapper result GHCEnvironment
+    ,Wrapper result PackageDatabase
+    ) =>
     String →
     GHCOptions →
-    JobApplicative JobId Dynamic GHCEnvironment
+    JobApplicative JobId result GHCEnvironment
 configureGHCEnvironment job_distinguisher search_options =
     configureGHC job_distinguisher search_options
     ➤
@@ -387,23 +393,30 @@ configureGHCEnvironment job_distinguisher search_options =
         returnA -< GHCEnvironment ghc package_database
 -- @-node:gcross.20100831211145.2170:configureGHCEnvironment
 -- @+node:gcross.20100905161144.1957:configureGHCEnvironmentUsingOptions
-configureGHCEnvironmentUsingOptions :: OptionValues → JobApplicative JobId Dynamic GHCEnvironment
+configureGHCEnvironmentUsingOptions ::
+    (Wrapper result GHC
+    ,Wrapper result GHCEnvironment
+    ,Wrapper result PackageDatabase
+    ) =>
+    OptionValues →
+    JobApplicative JobId result GHCEnvironment
 configureGHCEnvironmentUsingOptions = configureGHCEnvironment "". extractGHCOptions
 -- @-node:gcross.20100905161144.1957:configureGHCEnvironmentUsingOptions
 -- @+node:gcross.20100831211145.2153:configurePackageDatabase
 configurePackageDatabase ::
+    Wrapper result PackageDatabase =>
     String →
-    JobArrow JobId Dynamic GHC PackageDatabase
+    JobArrow JobId result GHC PackageDatabase
 configurePackageDatabase distinguisher =
-    JobArrow
-    {   jobArrowDependentJobs = [job]
-    ,   jobArrowIndependentJobs = []
-    ,   jobArrowResultJobNames = job_names
-    ,   jobArrowResultExtractorJobName = (`mappend` identifierInNamespace ghc_configuration_namespace "configure package database" "configure package database")
-    ,   jobArrowResultExtractor = const (fromJust . fromDynamic . head)
-    }
-  where
-    job@(IncompleteJob job_names _) = cofmap pathToGHCPkg (createLoadGHCPackageDatabaseIncompleteJob distinguisher)
+    case cofmap pathToGHCPkg (createLoadGHCPackageDatabaseIncompleteJob distinguisher) of
+        job@(IncompleteJob job_names _) →
+            JobArrow
+            {   jobArrowDependentJobs = [job]
+            ,   jobArrowIndependentJobs = []
+            ,   jobArrowResultJobNames = job_names
+            ,   jobArrowResultExtractorJobName = (`mappend` identifierInNamespace ghc_configuration_namespace "configure package database" "configure package database")
+            ,   jobArrowResultExtractor = const (unwrap . T.head)
+            }
 -- @-node:gcross.20100831211145.2153:configurePackageDatabase
 -- @+node:gcross.20100903104106.2084:constructPackageDatabaseFromInstalledPackages
 constructPackageDatabaseFromInstalledPackages :: [InstalledPackage] → PackageDatabase
@@ -431,15 +444,16 @@ constructPackageDatabaseFromInstalledPackages =
 -- @-node:gcross.20100903104106.2084:constructPackageDatabaseFromInstalledPackages
 -- @+node:gcross.20100830091258.2033:createGHCConfigurationJob
 createGHCConfigurationJob ::
+    Wrapper result GHC =>
     String →
     GHCOptions →
-    Job JobId Dynamic
+    Job JobId result
 createGHCConfigurationJob
     job_distinguisher
     search_options@GHCOptions{..}
     =
     jobWithCache
-        [identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration"]
+        (identifierInNamespace ghc_configuration_namespace job_distinguisher "GHC configuration")
         (liftIO . configureIt >=> \ghc → returnWrappedValueAndCache ghc (search_options,ghc))
  where
     configureIt :: Maybe (GHCOptions,GHC) → IO GHC
@@ -563,17 +577,17 @@ createGHCCompileToObjectJob
     options_arguments
     BuiltModule{..}
     =
-    jobWithCache [builtModuleObjectJobId,builtModuleInterfaceJobId]
+    jobsWithCache (builtModuleObjectJobId :. builtModuleInterfaceJobId :. E)
     .
     runJobAnalyzer
     .
-    fmap (zipWith ($) [postprocessInterface,postprocessObject])
+    fmap (T.zipf (postprocessInterface :. postprocessObject :. E))
     $
     analyzeImplicitDependenciesAndRebuildIfNecessary
         scanner
         resolve
         builder
-        (liftIO . checkDigestsOfFilesIfExisting [builtModuleObjectFilePath,builtModuleInterfaceFilePath])
+        (liftIO . checkDigestsOfFilesIfExisting (builtModuleObjectFilePath :. builtModuleInterfaceFilePath :. E))
         options_arguments
         [builtModuleSourceJobId]
   where
@@ -601,8 +615,7 @@ createGHCCompileToObjectJob
         infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
         runProductionCommandAndDigestOutputs
-            [builtModuleObjectFilePath,builtModuleInterfaceFilePath]
-            []
+            (builtModuleObjectFilePath :. builtModuleInterfaceFilePath :. E)
             path_to_ghc
             ghc_arguments
 
@@ -685,7 +698,7 @@ createGHCLinkProgramIncompleteJob
     options_arguments
     BuiltProduct{..}
     =
-    incompleteJobWithCache [builtProductJobId]
+    incompleteJobWithCache builtProductJobId
     $
     \program_components@ProgramComponents{..} →
         let ghc_arguments =
@@ -705,26 +718,26 @@ createGHCLinkProgramIncompleteJob
                 infoM "Blueprint.Tools.Compilers.GHC" $
                     "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
                 runProductionCommandAndDigestOutputs
-                    [builtProductName]
-                    []
+                    (builtProductName :. E)
                     path_to_ghc
                     ghc_arguments
         in  runJobAnalyzer
             .
-            fmap (zipWith ($) [setFilePath builtProductName])
+            fmap (T.zipf (setFilePath builtProductName :. E))
             $
             compareToCacheAndRebuildIfNecessary
                 builder
-                (liftIO . checkDigestsOfFilesIfExisting [builtProductName])
+                (liftIO . checkDigestsOfFilesIfExisting (builtProductName :. E))
                 program_components
 -- @nonl
 -- @-node:gcross.20100705132935.1938:createGHCLinkProgramIncompleteJob
 -- @+node:gcross.20100831211145.2141:createLoadGHCPackageDatabaseIncompleteJob
 createLoadGHCPackageDatabaseIncompleteJob ::
+    Wrapper result PackageDatabase =>
     String →
-    IncompleteJob JobId Dynamic FilePath
+    IncompleteJob JobId result FilePath
 createLoadGHCPackageDatabaseIncompleteJob job_distinguisher =
-    incompleteJobWithCache [identifierInNamespace ghc_package_database_namespace job_distinguisher "package database"]
+    incompleteJobWithCache (identifierInNamespace ghc_package_database_namespace job_distinguisher "package database")
     $
     \path_to_ghc_pkg maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
