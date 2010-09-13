@@ -13,6 +13,7 @@ Description:         Approximate equality testing
 Cabal-version:       >=1.2.3
 Build-type:          Simple
 Category:	     Type System,Data
+
 Library
     Build-depends:
         base >= 4 && <= 5,
@@ -52,5 +53,32 @@ Library
         ConfigFile == 1.0.*,
         split >= 0.1.2 && < 0.2,
         template-haskell == 2.4.*
+    Exposed-modules:
+        Blueprint.Configuration.Tools,
+        Blueprint.Dependency,
+        Blueprint.Dependency.Library,
+        Blueprint.Dependency.Runtime,
+        Blueprint.Dependency.File.Object,
+        Blueprint.Fields.DeferredDependencies,
+        Blueprint.Fields.Digest,
+        Blueprint.Fields.Dynamic,
+        Blueprint.Fields.FilePath,
+        Blueprint.IOTask,
+        Blueprint.Identifier,
+        Blueprint.Jobs,
+        Blueprint.Jobs.Combinators,
+        Blueprint.Programming.Haskell,
+        Blueprint.Miscellaneous,
+        Blueprint.Options,
+        Blueprint.Product,
+        Blueprint.Product.File.Object,
+        Blueprint.Product.File.Program,
+        Blueprint.Record,
+        Blueprint.SourceFile,
+        Blueprint.Tools,
+        Blueprint.Tools.Ar,
+        Blueprint.Tools.Compilers.GHC,
+        Blueprint.Tools.JobAnalyzer,
+        Blueprint.Wrapper
 -- @-node:gcross.20100901145855.2072:@thin Blueprint.cabal
 -- @-leo
