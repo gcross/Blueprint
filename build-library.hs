@@ -59,10 +59,12 @@ main = do
     (_,options) ← loadOptions "configuration.cfg" (ghcOptions `mappend` arOptions)
     (ghc_environment@GHCEnvironment{..},ar_configuration) ←
         runJobApplicativeUsingCacheFile 4 "configuration.cache"
+        .
+        (liftA2 . liftA2) (,)
+            configureGHCEnvironmentUsingOptions
+            configureProgramUsingOptions
         $
-        liftA2 (,)
-            (configureGHCEnvironmentUsingOptions options)
-            (configureProgramUsingOptions options)
+        options
     (package_description,_) ←
         readAndConfigurePackageDescription
             ghc_environment
