@@ -32,8 +32,8 @@ data Job α where
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Errors :: Map String SomeException → Job α
-    Cached :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
-    Saved :: Binary α ⇒ UUID → α → (α → Job α) → (α → Job β) → Job β
+    Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
+    Cache :: Binary α ⇒ UUID → α → (α → Job (α,β)) → (β → Job ɣ) → Job ɣ
 -- @-node:gcross.20100924160650.2048:Job
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20100924174906.1276:Instances
@@ -50,8 +50,8 @@ instance Functor Job where
     fmap f (Task io g) = Task io (fmap f . g)
     fmap f (Fork jf jx g) = Fork jf jx (fmap f . g)
     fmap f (Errors errors) = Errors errors
-    fmap f (Cached uuid jx g) = Cached uuid jx (fmap f . g)
-    fmap f (Saved uuid jx g h) = Saved uuid jx g (fmap f . h)
+    fmap f (Once uuid jx g) = Once uuid jx (fmap f . g)
+    fmap f (Cache uuid jx g h) = Cache uuid jx g (fmap f . h)
 -- @-node:gcross.20100924174906.1281:Functor Job
 -- @+node:gcross.20100924174906.1277:Monad Job
 instance Monad Job where
@@ -60,8 +60,8 @@ instance Monad Job where
     Task io f >>= g = Task io (f >=> g)
     Fork jf jx f >>= g = Fork jf jx (f >=> g)
     Errors errors >>= _ = Errors errors
-    Cached uuid x f >>= g = Cached uuid x (f >=> g)
-    Saved uuid x f g >>= h = Saved uuid x f (g >=> h)
+    Once uuid x f >>= g = Once uuid x (f >=> g)
+    Cache uuid x f g >>= h = Cache uuid x f (g >=> h)
 -- @-node:gcross.20100924174906.1277:Monad Job
 -- @-node:gcross.20100924174906.1276:Instances
 -- @-others
