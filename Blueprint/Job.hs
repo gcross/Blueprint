@@ -30,7 +30,7 @@ import Data.UUID
 data Job α where
     Result :: α → Job α
     Task :: IO α → (α → Job β) → Job β
-    Fork :: Job (α → β) → Job α → (β → Job c) → Job c
+    Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Errors :: Map String SomeException → Job α
     Cached :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
     Saved :: Binary α ⇒ UUID → α → (α → Job α) → (α → Job β) → Job β
