@@ -19,6 +19,7 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Exception
 import Control.Monad
+import Control.Monad.IO.Class
 
 import Data.Binary
 import qualified Data.ByteString.Lazy as L
@@ -43,14 +44,14 @@ data Job α where
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Errors :: Map String SomeException → Job α
     Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
-    Cache :: Binary α ⇒ UUID → α → (α → Job (α,β)) → (β → Job ɣ) → Job ɣ
+    Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
 -- @-node:gcross.20100924160650.2048:Job
 -- @+node:gcross.20100925004153.1301:JobEnvironment
 data JobEnvironment = JobEnvironment
     {   environmentCompletedJobs :: IORef (Map UUID Dynamic)
     ,   environmentTaskRunner :: (∀ α. IO α → IO α)
     ,   environmentInputCache :: Map UUID L.ByteString
-    ,   environmentOutputCache :: Chan (UUID,L.ByteString)
+    ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
 -- @-node:gcross.20100925004153.1301:JobEnvironment
 -- @+node:gcross.20100925004153.1302:TaskRunner
@@ -79,7 +80,7 @@ instance Functor Job where
     fmap f (Fork jf jx g) = Fork jf jx (fmap f . g)
     fmap f (Errors errors) = Errors errors
     fmap f (Once uuid jx g) = Once uuid jx (fmap f . g)
-    fmap f (Cache uuid jx g h) = Cache uuid jx g (fmap f . h)
+    fmap f (Cache uuid g h) = Cache uuid g (fmap f . h)
 -- @-node:gcross.20100924174906.1281:Functor Job
 -- @+node:gcross.20100924174906.1277:Monad Job
 instance Monad Job where
@@ -89,13 +90,17 @@ instance Monad Job where
     Fork jf jx f >>= g = Fork jf jx (f >=> g)
     Errors errors >>= _ = Errors errors
     Once uuid x f >>= g = Once uuid x (f >=> g)
-    Cache uuid x f g >>= h = Cache uuid x f (g >=> h)
+    Cache uuid f g >>= h = Cache uuid f (g >=> h)
 -- @-node:gcross.20100924174906.1277:Monad Job
+-- @+node:gcross.20100925004153.1329:MonadIO Job
+instance MonadIO Job where
+    liftIO io = Task io return
+-- @-node:gcross.20100925004153.1329:MonadIO Job
 -- @-node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100925004153.1297:Functions
 -- @+node:gcross.20100925004153.1299:cache
-cache :: Binary α ⇒ UUID → α → (α → Job (α,β)) → Job β
-cache uuid starting_value computeJob = Cache uuid starting_value computeJob return
+cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
+cache uuid computeJob = Cache uuid computeJob return
 -- @-node:gcross.20100925004153.1299:cache
 -- @+node:gcross.20100925004153.1298:once
 once :: Typeable α ⇒ UUID → Job α → Job α
@@ -152,20 +157,19 @@ runJob job_environment@JobEnvironment{..} job =
                     fromDynamic
                     $
                     previous_result
-        Cache uuid starting_value computeJob computeNextJob → do
-            let old_cached_value =
-                    fromMaybe starting_value
-                    .
+        Cache uuid
+         computeJob computeNextJob → do
+            let maybe_old_cached_value =
                     fmap decode
                     .
                     Map.lookup uuid
                     $
                     environmentInputCache
-            job_result ← nestedRunJob (computeJob old_cached_value)
+            job_result ← nestedRunJob (computeJob maybe_old_cached_value)
             case job_result of
                 Left errors → return (Left errors)
-                Right (new_cached_value,job_result) → do
-                    writeChan environmentOutputCache (uuid,encode new_cached_value)
+                Right (maybe_new_cached_value,job_result) → do
+                    writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
   where
     nestedRunJob = runJob job_environment
