@@ -22,6 +22,8 @@ import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Loops
+import Control.Monad.Trans.Reader
 
 import Data.Binary
 import qualified Data.ByteString.Lazy as L
@@ -29,6 +31,7 @@ import Data.Dynamic
 import Data.IVar.Simple (IVar)
 import qualified Data.IVar.Simple as IVar
 import Data.IORef
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
@@ -56,6 +59,9 @@ data JobEnvironment = JobEnvironment
     ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
 -- @-node:gcross.20100925004153.1301:JobEnvironment
+-- @+node:gcross.20100927123234.1301:JobMonad
+type JobMonad = ReaderT JobEnvironment IO
+-- @-node:gcross.20100927123234.1301:JobMonad
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100924174906.1278:Applicative Job
@@ -98,9 +104,15 @@ cache uuid computeJob = Cache uuid computeJob return
 once :: Typeable α ⇒ UUID → Job α → Job α
 once uuid job = Once uuid job return
 -- @-node:gcross.20100925004153.1298:once
--- @+node:gcross.20100925004153.1307:runJob
-runJob :: JobEnvironment → Job α → IO (Either [SomeException] α)
-runJob job_environment@JobEnvironment{..} job =
+-- @+node:gcross.20100927123234.1300:runJob
+runJob :: Job α → JobMonad (Either [SomeException] α)
+runJob job = do
+    job_environment ← ask
+    liftIO $ runJobInEnvironment job_environment job
+-- @-node:gcross.20100927123234.1300:runJob
+-- @+node:gcross.20100925004153.1307:runJobInEnvironment
+runJobInEnvironment :: JobEnvironment → Job α → IO (Either [SomeException] α)
+runJobInEnvironment job_environment@JobEnvironment{..} job =
     (case job of
         Result x → return (Right x)
         Task io computeNextJob →
@@ -170,8 +182,41 @@ runJob job_environment@JobEnvironment{..} job =
                     nestedRunJob (computeNextJob job_result)
     ) `catch` (return . Left . (:[]))
   where
-    nestedRunJob = runJob job_environment
--- @-node:gcross.20100925004153.1307:runJob
+    nestedRunJob = runJobInEnvironment job_environment
+-- @-node:gcross.20100925004153.1307:runJobInEnvironment
+-- @+node:gcross.20100927123234.1302:withJobEnvironment
+withJobEnvironment :: Int → Map UUID L.ByteString → JobMonad α → IO (α,Map UUID L.ByteString)
+withJobEnvironment maximum_number_of_simultaneous_IO_tasks input_cache job_monad = do
+    job_environment@JobEnvironment{..} ←
+        newJobEnvironment
+            maximum_number_of_simultaneous_IO_tasks
+            input_cache
+    result ← runReaderT job_monad job_environment
+    cache_updates ←
+        whileM
+            (fmap not (isEmptyChan environmentOutputCache))
+            (readChan environmentOutputCache)
+    return
+        (result
+        ,foldl' -- '
+            (\current_cache (key,maybe_value) →
+                case maybe_value of
+                    Nothing → Map.delete key current_cache
+                    Just value → Map.insert key value current_cache
+            )
+            environmentInputCache
+            cache_updates
+        )
+-- @-node:gcross.20100927123234.1302:withJobEnvironment
+-- @+node:gcross.20100927123234.1303:newJobEnvironment
+newJobEnvironment :: Int → Map UUID L.ByteString → IO JobEnvironment
+newJobEnvironment maximum_number_of_simultaneous_IO_tasks input_cache =
+    liftM4 JobEnvironment
+        (newIORef Map.empty)
+        (newQSem maximum_number_of_simultaneous_IO_tasks)
+        (return input_cache)
+        newChan
+-- @-node:gcross.20100927123234.1303:newJobEnvironment
 -- @-node:gcross.20100925004153.1297:Functions
 -- @-others
 -- @-node:gcross.20100924160650.2044:@thin Job.hs
