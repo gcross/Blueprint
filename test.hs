@@ -11,7 +11,9 @@
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100927123234.1304:<< Import needed modules >>
+import Control.Applicative
 import Control.Arrow
+import Control.Concurrent.MVar
 import Control.Monad.IO.Class
 
 import Data.Either.Unwrap
@@ -71,6 +73,18 @@ main = defaultMain
             assertBool "Was an exception thrown?" (isRight $ result)
             readIORef counter >>= assertEqual "Is the counter value correct?" 1
         -- @-node:gcross.20100927123234.1309:once
+        -- @+node:gcross.20100927123234.1311:fork
+        ,testCase "fork" $ do
+            var_1 ← newEmptyMVar
+            var_2 ← newEmptyMVar
+            (result,cache) ← withJobEnvironment 2 Map.empty . runJob $
+                (,) <$> (liftIO (putMVar var_1 42 >> takeMVar var_2))
+                    <*> (liftIO (putMVar var_2 24 >> takeMVar var_1))
+            assertBool "Is the cache empty?" (Map.null cache)
+            assertBool "Was an exception thrown?" (isRight $ result)
+            let Right r = result
+            assertEqual "Is the result correct?" (24,42) r
+        -- @-node:gcross.20100927123234.1311:fork
         -- @-others
         ]
     -- @-node:gcross.20100927123234.1307:runJob
