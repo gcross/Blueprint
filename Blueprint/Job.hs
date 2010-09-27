@@ -4,7 +4,6 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100924160650.2045:<< Language extensions >>
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100924160650.2045:<< Language extensions >>
@@ -17,6 +16,7 @@ module Blueprint.Job where
 import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.Chan
+import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
@@ -49,21 +49,11 @@ data Job α where
 -- @+node:gcross.20100925004153.1301:JobEnvironment
 data JobEnvironment = JobEnvironment
     {   environmentCompletedJobs :: IORef (Map UUID Dynamic)
-    ,   environmentTaskRunner :: (∀ α. IO α → IO α)
+    ,   environmentTaskSemaphore :: QSem
     ,   environmentInputCache :: Map UUID L.ByteString
     ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
 -- @-node:gcross.20100925004153.1301:JobEnvironment
--- @+node:gcross.20100925004153.1302:TaskRunner
-data TaskRunner = TaskRunner
-    {   taskRunnerThreads :: [ThreadId]
-    ,   taskRunnerQueue :: Chan TaskSubmission
-    }
--- @-node:gcross.20100925004153.1302:TaskRunner
--- @+node:gcross.20100925004153.1303:TaskSubmission
-data TaskSubmission where
-    TaskSubmission :: IO α → IVar α → TaskSubmission
--- @-node:gcross.20100925004153.1303:TaskSubmission
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100924174906.1278:Applicative Job
@@ -112,7 +102,10 @@ runJob job_environment@JobEnvironment{..} job =
     case job of
         Result x → return (Right x)
         Task io computeNextJob →
-            environmentTaskRunner io
+            bracket_
+                (waitQSem environmentTaskSemaphore)
+                (signalQSem environmentTaskSemaphore)
+                io
             >>=
             nestedRunJob . computeNextJob
         Fork jf jx computeNextJob → do
@@ -176,29 +169,6 @@ runJob job_environment@JobEnvironment{..} job =
   where
     nestedRunJob = runJob job_environment
 -- @-node:gcross.20100925004153.1307:runJob
--- @+node:gcross.20100925004153.1306:startTaskRunner
-startTaskRunner :: Int → IO TaskRunner
-startTaskRunner number_of_slaves = do
-    task_queue ← newChan
-    slave_thread_ids ←
-        replicateM number_of_slaves $
-            startTaskSlave task_queue
-    return $
-        TaskRunner
-            slave_thread_ids
-            task_queue
--- @-node:gcross.20100925004153.1306:startTaskRunner
--- @+node:gcross.20100925004153.1304:startTaskSlave
-startTaskSlave :: Chan TaskSubmission → IO ThreadId
-startTaskSlave task_queue =
-    forkIO . forever $
-        readChan task_queue
-        >>=
-        \(TaskSubmission task ivar) →
-            fmap (either (throw :: SomeException → α) id) (try task)
-            >>=
-            IVar.write ivar
--- @-node:gcross.20100925004153.1304:startTaskSlave
 -- @-node:gcross.20100925004153.1297:Functions
 -- @-others
 -- @-node:gcross.20100924160650.2044:@thin Job.hs
