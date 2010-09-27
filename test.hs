@@ -39,6 +39,7 @@ import Blueprint.Job
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Tools
+import Blueprint.Tools.GHC
 -- @-node:gcross.20100927123234.1304:<< Import needed modules >>
 -- @nl
 
