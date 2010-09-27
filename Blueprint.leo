@@ -9,11 +9,15 @@
 <v t="gcross.20100924160650.1259"><vh>@chapters</vh></v>
 <v t="gcross.20100924160650.1258"><vh>@path Blueprint</vh>
 <v t="gcross.20100925114718.1301"><vh>@thin Cache.hs</vh></v>
+<v t="gcross.20100927123234.1487"><vh>@thin Configuration.hs</vh></v>
 <v t="gcross.20100927123234.1382"><vh>@thin Identifier.hs</vh></v>
 <v t="gcross.20100924160650.2044"><vh>@thin Job.hs</vh></v>
 <v t="gcross.20100925004153.1323"><vh>@thin Miscellaneous.hs</vh></v>
 <v t="gcross.20100927123234.1338"><vh>@thin Options.hs</vh></v>
 <v t="gcross.20100925004153.1313"><vh>@thin Tools.hs</vh></v>
+<v t="gcross.20100927123234.1424"><vh>@path Tools</vh>
+<v t="gcross.20100927123234.1428"><vh>@thin GHC.hs</vh></v>
+</v>
 </v>
 <v t="gcross.20100924174906.1279"><vh>@thin test.hs</vh></v>
 <v t="gcross.20100924160650.2038"><vh>thin template.hs</vh>
@@ -36,5 +40,6 @@ module Blueprint.Module where
 <t tx="gcross.20100924160650.2039">{-# LANGUAGE UnicodeSyntax #-}
 </t>
 <t tx="gcross.20100924160650.2040"></t>
+<t tx="gcross.20100927123234.1424"></t>
 </tnodes>
 </leo_file>
