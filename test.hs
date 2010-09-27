@@ -12,10 +12,14 @@
 -- @<< Import needed modules >>
 -- @+node:gcross.20100927123234.1304:<< Import needed modules >>
 import Control.Arrow
+import Control.Monad.IO.Class
 
+import Data.Either.Unwrap
 import Data.Function
+import Data.IORef
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.UUID
 
 import System.IO.Unsafe
 
@@ -56,6 +60,17 @@ main = defaultMain
                 $
                 x
         -- @-node:gcross.20100927123234.1308:return
+        -- @+node:gcross.20100927123234.1309:once
+        ,testCase "once" $ do
+            counter ← newIORef 0
+            (result,cache) ← withJobEnvironment 2 Map.empty . runJob $ do
+                once nil . liftIO $ (modifyIORef counter (+1))
+                once nil . liftIO $ (modifyIORef counter (+1))
+                return ()
+            assertBool "Is the cache empty?" (Map.null cache)
+            assertBool "Was an exception thrown?" (isRight $ result)
+            readIORef counter >>= assertEqual "Is the counter value correct?" 1
+        -- @-node:gcross.20100927123234.1309:once
         -- @-others
         ]
     -- @-node:gcross.20100927123234.1307:runJob
