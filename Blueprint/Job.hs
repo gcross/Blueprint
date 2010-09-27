@@ -13,6 +13,8 @@ module Blueprint.Job where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100924160650.2046:<< Import needed modules >>
+import Prelude hiding (catch)
+
 import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.Chan
@@ -99,7 +101,7 @@ once uuid job = Once uuid job return
 -- @+node:gcross.20100925004153.1307:runJob
 runJob :: JobEnvironment → Job α → IO (Either [SomeException] α)
 runJob job_environment@JobEnvironment{..} job =
-    case job of
+    (case job of
         Result x → return (Right x)
         Task io computeNextJob →
             bracket_
@@ -166,6 +168,7 @@ runJob job_environment@JobEnvironment{..} job =
                 Right (maybe_new_cached_value,job_result) → do
                     writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
+    ) `catch` (return . Left . (:[]))
   where
     nestedRunJob = runJob job_environment
 -- @-node:gcross.20100925004153.1307:runJob
