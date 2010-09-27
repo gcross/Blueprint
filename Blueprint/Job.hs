@@ -42,7 +42,7 @@ data Job α where
     Result :: α → Job α
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
-    Errors :: Map String SomeException → Job α
+    Errors :: [SomeException] → Job α
     Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
 -- @-node:gcross.20100924160650.2048:Job
@@ -70,7 +70,7 @@ data TaskSubmission where
 instance Applicative Job where
     pure = Result
     Result f <*> x = fmap f x
-    Errors e1 <*> Errors e2 = Errors (Map.union e1 e2)
+    Errors e1 <*> Errors e2 = Errors (e1 ++ e2)
     f <*> x = Fork f x Result
 -- @-node:gcross.20100924174906.1278:Applicative Job
 -- @+node:gcross.20100924174906.1281:Functor Job
@@ -107,24 +107,27 @@ once :: Typeable α ⇒ UUID → Job α → Job α
 once uuid job = Once uuid job return
 -- @-node:gcross.20100925004153.1298:once
 -- @+node:gcross.20100925004153.1307:runJob
-runJob :: JobEnvironment → Job α → IO (Either (Map String SomeException) α)
+runJob :: JobEnvironment → Job α → IO (Either [SomeException] α)
 runJob job_environment@JobEnvironment{..} job =
     case job of
         Result x → return (Right x)
         Task io computeNextJob →
             environmentTaskRunner io
             >>=
-            runJob job_environment . computeNextJob
+            nestedRunJob . computeNextJob
         Fork jf jx computeNextJob → do
-            f_ivar ← IVar.new
-            forkIO $ nestedRunJob jf >>= IVar.write f_ivar
-            x_ivar ← IVar.new
-            forkIO $ nestedRunJob jx >>= IVar.write x_ivar
-            case (IVar.read f_ivar, IVar.read x_ivar) of
-                (Right f, Right x) → nestedRunJob (computeNextJob (f x))
-                (Left errors, Right _) → return (Left errors)
-                (Right _, Left errors) → return (Left errors)
-                (Left errors1, Left errors2) → return (Left (Map.union errors1 errors2))
+            x_or_error ← case jx of
+                    Result x → return (Right x)
+                    _ → do
+                        x_ivar ← IVar.new
+                        forkIO $ nestedRunJob jx >>= IVar.write x_ivar
+                        return (IVar.read x_ivar)
+            f_or_error ← nestedRunJob jf >>= evaluate
+            case (f_or_error, x_or_error) of
+                (Right f, Right x) → nestedRunJob . computeNextJob . f $ x
+                (Left errors, Right _) → return . Left $ errors
+                (Right _, Left errors) → return . Left $ errors
+                (Left errors1, Left errors2) → return . Left $ errors1 ++ errors2
         Errors errors → return (Left errors)
         Once uuid job computeNextJob → do
             result_ivar ← IVar.new
@@ -157,8 +160,7 @@ runJob job_environment@JobEnvironment{..} job =
                     fromDynamic
                     $
                     previous_result
-        Cache uuid
-         computeJob computeNextJob → do
+        Cache uuid computeJob computeNextJob → do
             let maybe_old_cached_value =
                     fmap decode
                     .
