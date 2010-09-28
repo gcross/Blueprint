@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100927123234.1429:<< Language extensions >>
 -- @nl
@@ -26,11 +27,13 @@ import Control.Monad.Trans.Goto
 
 import Data.Binary
 import Data.DeriveTH
+import Data.Digest.Pure.MD5
 import Data.Either
 import Data.List
 import Data.List.Split
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Traversable (traverse)
 import Data.Typeable
 
@@ -112,6 +115,41 @@ instance Exception GHCConfigurationException
 -- @-node:gcross.20100927123234.1454:GHCConfigurationException
 -- @-node:gcross.20100927123234.1453:Exceptions
 -- @+node:gcross.20100927123234.1433:Types
+-- @+node:gcross.20100927222551.1442:BuildTargetType
+data BuildTargetType = LibraryTarget | ExecutableTarget
+
+-- @-node:gcross.20100927222551.1442:BuildTargetType
+-- @+node:gcross.20100927123234.1441:GHC
+data GHC = GHC
+    {   ghcVersion :: Version
+    ,   pathToGHC :: FilePath
+    ,   pathToGHCPkg :: FilePath
+    } deriving Typeable; $( derive makeBinary ''GHC )
+-- @-node:gcross.20100927123234.1441:GHC
+-- @+node:gcross.20100927123234.1445:GHCOptions
+data GHCOptions = GHCOptions
+    {   ghcOptionPathToGHC :: Maybe FilePath
+    ,   ghcOptionPathToGHCPkg :: Maybe FilePath
+    ,   ghcOptionDesiredVersion :: Maybe Version
+    ,   ghcOptionSearchPaths :: [FilePath]
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''GHCOptions)
+-- @-node:gcross.20100927123234.1445:GHCOptions
+-- @+node:gcross.20100927222551.1428:HaskellInterface
+data HaskellInterface = HaskellInterface
+    {   haskellInterfaceFilePath :: FilePath
+    ,   haskellInterfaceDigest :: MD5Digest
+    }
+-- @-node:gcross.20100927222551.1428:HaskellInterface
+-- @+node:gcross.20100927222551.1430:HaskellObject
+data HaskellObject = HaskellObject
+    {   haskellObjectFilePath :: FilePath
+    ,   haskellObjectDigest :: MD5Digest
+    ,   haskellObjectLinkDependencyObjects :: [HaskellObject]
+    ,   haskellObjectLinkDependencyPackages :: [String]
+    }
+-- @-node:gcross.20100927222551.1430:HaskellObject
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
     {   installedPackageId :: InstalledPackageId
@@ -124,6 +162,14 @@ data InstalledPackage = InstalledPackage
 $( derive makeBinary ''InstalledPackageId )
 $( derive makeBinary ''InstalledPackage )
 -- @-node:gcross.20100927123234.1435:InstalledPackage
+-- @+node:gcross.20100927222551.1434:KnownModule
+data KnownModule =
+    KnownModuleInExternalPackage String
+ |  KnownModuleInProject (HaskellInterface,HaskellObject)
+-- @-node:gcross.20100927222551.1434:KnownModule
+-- @+node:gcross.20100927222551.1436:KnownModules
+type KnownModules = Map String KnownModule
+-- @-node:gcross.20100927222551.1436:KnownModules
 -- @+node:gcross.20100927123234.1437:PackageDatabase
 data PackageDatabase = PackageDatabase
     {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackage
@@ -140,13 +186,6 @@ instance Show PackageLocality where
     show User = "user"
     show Global = "global"
 -- @-node:gcross.20100927123234.1439:PackageLocality
--- @+node:gcross.20100927123234.1441:GHC
-data GHC = GHC
-    {   ghcVersion :: Version
-    ,   pathToGHC :: FilePath
-    ,   pathToGHCPkg :: FilePath
-    } deriving Typeable; $( derive makeBinary ''GHC )
--- @-node:gcross.20100927123234.1441:GHC
 -- @+node:gcross.20100927123234.1443:GHCEnvironment
 data GHCEnvironment = GHCEnvironment
     {   ghcEnvironmentGHC :: GHC
@@ -154,17 +193,15 @@ data GHCEnvironment = GHCEnvironment
     } deriving Typeable
 
 -- @-node:gcross.20100927123234.1443:GHCEnvironment
--- @+node:gcross.20100927123234.1445:GHCOptions
-data GHCOptions = GHCOptions
-    {   ghcOptionPathToGHC :: Maybe FilePath
-    ,   ghcOptionPathToGHCPkg :: Maybe FilePath
-    ,   ghcOptionDesiredVersion :: Maybe Version
-    ,   ghcOptionSearchPaths :: [FilePath]
-    } deriving (Eq,Show,Typeable)
-
-$(derive makeBinary ''GHCOptions)
--- @nonl
--- @-node:gcross.20100927123234.1445:GHCOptions
+-- @+node:gcross.20100927222551.1446:BuildEnvironment
+data BuildEnvironment = BuildEnvironment
+    {   buildEnvironmentGHC :: GHC
+    ,   buildEnvironmentPackageDatabase :: PackageDatabase
+    ,   buildEnvironmentKnownModules :: KnownModules
+    ,   buildEnvironmentCompileOptions :: [String]
+    ,   buildEnvironmentLinkOptions :: [String]
+    }
+-- @-node:gcross.20100927222551.1446:BuildEnvironment
 -- @-node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1461:ghc_version_regex
@@ -172,6 +209,48 @@ ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
 -- @-node:gcross.20100927123234.1461:ghc_version_regex
 -- @-node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1448:Functions
+-- @+node:gcross.20100927222551.1438:computeBuildEnvironment
+computeBuildEnvironment ::
+    GHCEnvironment →
+    PackageDescription →
+    BuildTargetType →
+    Map String (HaskellInterface,HaskellObject) →
+    [String] →
+    [String] →
+    FilePath →
+    BuildEnvironment
+computeBuildEnvironment
+    GHCEnvironment{..}
+    package_description@PackageDescription{..}
+    build_target_type
+    built_modules
+    additional_compile_options
+    additional_link_options
+    interface_directory
+    =
+    BuildEnvironment
+    {   buildEnvironmentGHC = ghcEnvironmentGHC
+    ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
+    ,   buildEnvironmentKnownModules =
+            Map.unions
+                (Map.map KnownModuleInProject built_modules
+                :map extractKnownModulesFromInstalledPackage installed_package_dependencies
+                )
+    ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
+    ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
+    }
+  where
+    build_for_package_options = 
+        case build_target_type of
+            LibraryTarget → ["-package-name",display package]
+            _ → []
+    installed_package_dependencies =
+        map (fromJust . findSatisfyingPackage ghcEnvironmentPackageDatabase) buildDepends
+    shared_options =
+        ("-i" ++ interface_directory)
+        :
+        build_for_package_options
+-- @-node:gcross.20100927222551.1438:computeBuildEnvironment
 -- @+node:gcross.20100927123234.1450:configureGHC
 configureGHC :: GHCOptions → Job GHC
 configureGHC search_options@GHCOptions{..} =
@@ -365,6 +444,24 @@ extractGHCOptions =
         <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
 -- @-node:gcross.20100927161850.1442:extractGHCOptions
+-- @+node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
+extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
+extractKnownModulesFromInstalledPackage InstalledPackage{..} =
+    Map.fromList
+    .
+    map (,KnownModuleInExternalPackage installedPackageQualifiedName)
+    $
+    installedPackageModules
+-- @-node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
+-- @+node:gcross.20100927222551.1449:findSatisfyingPackage
+findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackage
+findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range) =
+    Map.lookup (display name) packageDatabaseIndexedByPackageNameAndVersion
+    >>=
+    find (flip withinRange version_range . fst)
+    >>=
+    return . head . snd
+-- @-node:gcross.20100927222551.1449:findSatisfyingPackage
 -- @+node:gcross.20100927161850.1436:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
 loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
