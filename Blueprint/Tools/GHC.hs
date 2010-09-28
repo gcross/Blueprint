@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100927123234.1429:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -25,16 +26,21 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Abort
 import Control.Monad.Trans.Goto
 
+import Data.Array
 import Data.Binary
+import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.UTF8 as LU
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Either
 import Data.List
 import Data.List.Split
+import Data.List.Tagged (TaggedList(..))
+import qualified Data.List.Tagged as T
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Traversable (traverse)
+import Data.Traversable (traverse,sequenceA)
 import Data.Typeable
 
 import qualified Distribution.Compiler as Compiler
@@ -58,12 +64,16 @@ import System.Process
 import Text.Printf
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
+import TypeLevel.NaturalNumber (Two)
 
+import Blueprint.Cache
 import Blueprint.Configuration
 import Blueprint.Identifier
 import Blueprint.Job
 import Blueprint.Miscellaneous
 import Blueprint.Options
+import Blueprint.Tools
+-- @nonl
 -- @-node:gcross.20100927123234.1430:<< Import needed modules >>
 -- @nl
 
@@ -113,6 +123,27 @@ instance Show GHCConfigurationException where
 
 instance Exception GHCConfigurationException
 -- @-node:gcross.20100927123234.1454:GHCConfigurationException
+-- @+node:gcross.20100928173417.1461:UnknownModulesException
+data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
+
+instance Show UnknownModulesException where
+    show (UnknownModulesException unknown_modules_with_exporters) =
+        intercalate "\n"
+        .
+        nub
+        .
+        map (\(module_name,exporters) →
+            "Unable to find module '" ++ module_name ++ "'" ++
+            case exporters of
+                [] → ""
+                exporters → " (but it is exported by the " ++ show exporters ++ ")"
+        )
+        $
+        unknown_modules_with_exporters
+
+instance Exception UnknownModulesException
+-- @nonl
+-- @-node:gcross.20100928173417.1461:UnknownModulesException
 -- @-node:gcross.20100927123234.1453:Exceptions
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20100927222551.1442:BuildTargetType
@@ -140,7 +171,7 @@ $(derive makeBinary ''GHCOptions)
 data HaskellInterface = HaskellInterface
     {   haskellInterfaceFilePath :: FilePath
     ,   haskellInterfaceDigest :: MD5Digest
-    }
+    } deriving Typeable
 -- @-node:gcross.20100927222551.1428:HaskellInterface
 -- @+node:gcross.20100927222551.1430:HaskellObject
 data HaskellObject = HaskellObject
@@ -148,8 +179,14 @@ data HaskellObject = HaskellObject
     ,   haskellObjectDigest :: MD5Digest
     ,   haskellObjectLinkDependencyObjects :: [HaskellObject]
     ,   haskellObjectLinkDependencyPackages :: [String]
-    }
+    } deriving Typeable
 -- @-node:gcross.20100927222551.1430:HaskellObject
+-- @+node:gcross.20100927222551.1452:HaskellSource
+data HaskellSource = HaskellSource
+    {   haskellSourceFilePath :: FilePath
+    ,   haskellSourceDigest :: MD5Digest
+    }
+-- @-node:gcross.20100927222551.1452:HaskellSource
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
     {   installedPackageId :: InstalledPackageId
@@ -165,7 +202,7 @@ $( derive makeBinary ''InstalledPackage )
 -- @+node:gcross.20100927222551.1434:KnownModule
 data KnownModule =
     KnownModuleInExternalPackage String
- |  KnownModuleInProject (HaskellInterface,HaskellObject)
+  | KnownModuleInProject (Job (HaskellInterface,HaskellObject))
 -- @-node:gcross.20100927222551.1434:KnownModule
 -- @+node:gcross.20100927222551.1436:KnownModules
 type KnownModules = Map String KnownModule
@@ -207,14 +244,102 @@ data BuildEnvironment = BuildEnvironment
 -- @+node:gcross.20100927123234.1461:ghc_version_regex
 ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
 -- @-node:gcross.20100927123234.1461:ghc_version_regex
+-- @+node:gcross.20100927222551.1456:import_regex
+import_regex :: Regex
+import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)"
+-- @-node:gcross.20100927222551.1456:import_regex
 -- @-node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1448:Functions
+-- @+node:gcross.20100927222551.1451:compile
+compile ::
+    FilePath →
+    PackageDatabase →
+    KnownModules →
+    [String] →
+    FilePath →
+    FilePath →
+    HaskellSource →
+    Job (HaskellInterface,HaskellObject)
+compile
+    path_to_ghc
+    package_database
+    known_modules
+    options_arguments
+    interface_filepath
+    object_filepath
+    HaskellSource{..}
+  = once my_uuid $ do
+        (imported_modules,source_has_changed) ← runAndFlagUnlessUnchanged (inNamespace my_uuid "scanner") haskellSourceDigest scan
+        (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
+            resolveModuleDependencies
+                package_database
+                known_modules
+                imported_modules
+        let runBuild = build package_dependencies
+            runBuildAndStoreDigests = buildAndStoreDigests package_dependencies
+        (interface_digest,object_digest) ←
+            if source_has_changed
+                then runBuildAndStoreDigests
+                else do
+                    maybe_digests ←
+                        (liftA2 . liftA2) (,)
+                            (digestFileIfExists interface_filepath)
+                            (digestFileIfExists object_filepath)
+                    case maybe_digests of
+                        Nothing → runBuildAndStoreDigests
+                        Just digests → updateUnlessUnchanged builder_uuid digests runBuild
+        return
+            (HaskellInterface interface_filepath interface_digest
+            ,HaskellObject object_filepath object_digest haskell_object_dependencies package_dependencies)
+  where
+    my_uuid =
+        inNamespace
+            (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
+            (haskellSourceFilePath ++ interface_filepath ++ object_filepath)
+
+    scan =
+        fmap extractImportedModulesFromHaskellSource
+        .
+        liftIO
+        .
+        L.readFile
+        $
+        haskellSourceFilePath
+
+    builder_uuid = inNamespace my_uuid "builder"
+
+    build :: [String] → Job (MD5Digest,MD5Digest)
+    build package_dependency_names = do
+        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
+        let ghc_arguments =
+                 "-c":haskellSourceFilePath
+                :"-o":object_filepath
+                :"-ohi":interface_filepath
+                :
+                concatMap (("-package":) . (:[])) package_dependency_names
+                ++
+                options_arguments
+        liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
+        (object_digest :. interface_digest :. E) ←
+            runProductionCommandAndDigestOutputs
+                (object_filepath :. interface_filepath :. E)
+                path_to_ghc
+                ghc_arguments
+        return (object_digest,interface_digest)
+
+    buildAndStoreDigests package_dependency_names = do
+        digests ← build package_dependency_names
+        storeInCache
+            builder_uuid
+            digests
+        return digests
+-- @-node:gcross.20100927222551.1451:compile
 -- @+node:gcross.20100927222551.1438:computeBuildEnvironment
 computeBuildEnvironment ::
     GHCEnvironment →
     PackageDescription →
     BuildTargetType →
-    Map String (HaskellInterface,HaskellObject) →
+    Map String (Job (HaskellInterface,HaskellObject)) →
     [String] →
     [String] →
     FilePath →
@@ -444,6 +569,19 @@ extractGHCOptions =
         <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
 -- @-node:gcross.20100927161850.1442:extractGHCOptions
+-- @+node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
+extractImportedModulesFromHaskellSource :: L.ByteString → [String]
+extractImportedModulesFromHaskellSource =
+    map (
+        LU.toString
+        .
+        fst
+        .
+        (! 1)
+    )
+    .
+    matchAllText import_regex
+-- @-node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
 -- @+node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
 extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
 extractKnownModulesFromInstalledPackage InstalledPackage{..} =
@@ -482,6 +620,35 @@ loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
 -- @+node:gcross.20100927123234.1458:parseGHCVersion
 parseGHCVersion = extractVersion ghc_version_regex
 -- @-node:gcross.20100927123234.1458:parseGHCVersion
+-- @+node:gcross.20100928173417.1463:resolveModuleDependencies
+resolveModuleDependencies ::
+    PackageDatabase →
+    KnownModules →
+    [String] →
+    Job ([String],[HaskellInterface],[HaskellObject])
+resolveModuleDependencies PackageDatabase{..} known_modules module_names =
+    case partitionEithers resolved_modules of
+        ([],resolutions) → do
+            let (package_names,jobs) = partitionEithers resolutions
+            (haskell_interfaces,haskell_objctes) ← fmap unzip (sequenceA jobs)
+            return (package_names,haskell_interfaces,haskell_objctes)
+        (unknown_modules,_) → liftIO . throwIO . UnknownModulesException $ unknown_modules
+  where
+    resolved_modules =
+        map (\module_name →
+            case Map.lookup module_name known_modules of
+                Just (KnownModuleInExternalPackage package_name) → Right . Left $ package_name
+                Just (KnownModuleInProject job) → Right . Right $ job
+                Nothing →
+                    Left
+                    .
+                    (module_name,)
+                    .
+                    maybe [] (map installedPackageQualifiedName)
+                    $
+                    Map.lookup module_name packageDatabaseIndexedByModuleName
+        ) module_names
+-- @-node:gcross.20100928173417.1463:resolveModuleDependencies
 -- @-node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20100927123234.1432:Options
 ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"
