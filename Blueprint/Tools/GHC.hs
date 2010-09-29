@@ -291,18 +291,15 @@ compile
                     case maybe_digests of
                         Nothing → runBuildAndStoreDigests
                         Just digests → updateUnlessUnchanged builder_uuid digests runBuild
+        let (collected_object_dependencies,collected_package_dependencies) =
+                second (Set.union . Set.fromList $ package_dependencies)
+                .
+                collectAllLinkDependencies
+                $
+                haskell_object_dependencies
         return
             (HaskellInterface interface_filepath interface_digest
-            ,HaskellObject
-                object_filepath object_digest
-                (Map.union
-                    (Map.fromList . map (haskellObjectFilePath &&& id) $ haskell_object_dependencies)
-                    (Map.unions . map haskellObjectLinkDependencyObjects $ haskell_object_dependencies)
-                )
-                (Set.union
-                    (Set.fromList package_dependencies)
-                    (Set.unions . map haskellObjectLinkDependencyPackages $ haskell_object_dependencies)
-                )
+            ,HaskellObject object_filepath object_digest collected_object_dependencies collected_package_dependencies
             )
   where
     my_uuid =
@@ -389,6 +386,15 @@ computeBuildEnvironment
         :
         build_for_package_options
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironment
+-- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
+collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Set String)
+collectAllLinkDependencies haskell_objects =
+    (Map.union
+        (Map.fromList . map (haskellObjectFilePath &&& id) $ haskell_objects)
+        (Map.unions . map haskellObjectLinkDependencyObjects $ haskell_objects)
+    ,Set.unions . map haskellObjectLinkDependencyPackages $ haskell_objects
+    )
+-- @-node:gcross.20100929125042.1466:collectAllLinkDependencies
 -- @+node:gcross.20100927123234.1450:configureGHC
 configureGHC :: GHCOptions → Job GHC
 configureGHC search_options@GHCOptions{..} =
