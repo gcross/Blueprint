@@ -33,6 +33,7 @@ import qualified Data.ByteString.Lazy.UTF8 as LU
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Either
+import Data.Function
 import Data.List
 import Data.List.Split
 import Data.List.Tagged (TaggedList(..))
@@ -40,6 +41,8 @@ import qualified Data.List.Tagged as T
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Traversable (traverse,sequenceA)
 import Data.Typeable
 
@@ -177,8 +180,8 @@ data HaskellInterface = HaskellInterface
 data HaskellObject = HaskellObject
     {   haskellObjectFilePath :: FilePath
     ,   haskellObjectDigest :: MD5Digest
-    ,   haskellObjectLinkDependencyObjects :: [HaskellObject]
-    ,   haskellObjectLinkDependencyPackages :: [String]
+    ,   haskellObjectLinkDependencyObjects :: Map FilePath HaskellObject
+    ,   haskellObjectLinkDependencyPackages :: Set String
     } deriving Typeable
 -- @-node:gcross.20100927222551.1430:HaskellObject
 -- @+node:gcross.20100927222551.1452:HaskellSource
@@ -290,7 +293,17 @@ compile
                         Just digests → updateUnlessUnchanged builder_uuid digests runBuild
         return
             (HaskellInterface interface_filepath interface_digest
-            ,HaskellObject object_filepath object_digest haskell_object_dependencies package_dependencies)
+            ,HaskellObject
+                object_filepath object_digest
+                (Map.union
+                    (Map.fromList . map (haskellObjectFilePath &&& id) $ haskell_object_dependencies)
+                    (Map.unions . map haskellObjectLinkDependencyObjects $ haskell_object_dependencies)
+                )
+                (Set.union
+                    (Set.fromList package_dependencies)
+                    (Set.unions . map haskellObjectLinkDependencyPackages $ haskell_object_dependencies)
+                )
+            )
   where
     my_uuid =
         inNamespace
