@@ -154,6 +154,16 @@ instance Exception UnknownModulesException
 data BuildTargetType = LibraryTarget | ExecutableTarget
 
 -- @-node:gcross.20100927222551.1442:BuildTargetType
+-- @+node:gcross.20100929213846.1453:CompileCache
+data CompileCache = CompileCache
+    {   compileCacheSourceDigest :: MD5Digest
+    ,   compileCacheImportedModules :: [String]
+    ,   compileCacheDependencyDigests :: Map FilePath MD5Digest
+    ,   compileCacheInterfaceDigest :: MD5Digest
+    ,   compileCacheObjectDigest :: MD5Digest
+    } deriving Typeable; $( derive makeBinary ''CompileCache )
+-- @nonl
+-- @-node:gcross.20100929213846.1453:CompileCache
 -- @+node:gcross.20100927123234.1441:GHC
 data GHC = GHC
     {   ghcVersion :: Version
@@ -272,20 +282,59 @@ compile
     interface_filepath
     object_filepath
     HaskellSource{..}
-  = once my_uuid $ do
-        (imported_modules,source_has_changed) ← runAndFlagUnlessUnchanged (inNamespace my_uuid "scanner") haskellSourceDigest scan
-        (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
-            resolveModuleDependencies
-                package_database
-                known_modules
-                imported_modules
-        (interface_digest,object_digest) ←
-            fmap toT $
-            refreashIfChangedOrAbsentOrForced
-                (inNamespace my_uuid "builder")
-                (build package_dependencies)
-                (fmap sequence . traverse digestFileIfExists . fromT $ (interface_filepath,object_filepath))
-                source_has_changed
+  = once my_uuid
+    .
+    cache my_uuid
+    $
+    \cache → do
+        ( imported_modules
+         ,package_dependencies
+         ,haskell_object_dependencies
+         ,dependency_digests
+         ,interface_digest
+         ,object_digest
+         ) ← case cache of
+            Just CompileCache{..} | haskellSourceDigest == compileCacheSourceDigest → do
+                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve compileCacheImportedModules
+                let buildIt = build package_dependencies
+                (interface_digest,object_digest) ←
+                    fmap toT $
+                    if compileCacheDependencyDigests /= dependency_digests
+                        then buildIt
+                        else do
+                            maybe_digests ←
+                                fmap sequence
+                                .
+                                traverse digestFileIfExists
+                                .
+                                fromT
+                                $
+                                (interface_filepath,object_filepath)
+                            case maybe_digests of
+                                Just digests
+                                  | digests == compileCacheInterfaceDigest :. compileCacheObjectDigest :. E
+                                    → return digests
+                                _ → buildIt
+                return
+                    (compileCacheImportedModules
+                    ,package_dependencies
+                    ,haskell_object_dependencies
+                    ,dependency_digests
+                    ,interface_digest
+                    ,object_digest
+                    )
+            Nothing → do
+                imported_modules ← scan
+                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve imported_modules
+                (interface_digest,object_digest) ← fmap toT (build package_dependencies)
+                return
+                    (imported_modules
+                    ,package_dependencies
+                    ,haskell_object_dependencies
+                    ,dependency_digests
+                    ,interface_digest
+                    ,object_digest
+                    )
         let (collected_object_dependencies,collected_package_dependencies) =
                 second (Set.union . Set.fromList $ package_dependencies)
                 .
@@ -293,8 +342,15 @@ compile
                 $
                 haskell_object_dependencies
         return
-            (HaskellInterface interface_filepath interface_digest
-            ,HaskellObject object_filepath object_digest collected_object_dependencies collected_package_dependencies
+            (Just $ CompileCache
+                haskellSourceDigest
+                imported_modules
+                dependency_digests
+                interface_digest
+                object_digest
+            ,(HaskellInterface interface_filepath interface_digest
+             ,HaskellObject object_filepath object_digest collected_object_dependencies collected_package_dependencies
+             )
             )
   where
     my_uuid =
@@ -310,6 +366,21 @@ compile
         L.readFile
         $
         haskellSourceFilePath
+
+
+    resolve imported_modules = do
+        (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
+            resolveModuleDependencies
+                package_database
+                known_modules
+                imported_modules
+        let dependency_digests =
+                Map.fromList
+                .
+                map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
+                $
+                haskell_interface_dependencies
+        return (package_dependencies,dependency_digests,haskell_object_dependencies)
 
     build package_dependency_names = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
