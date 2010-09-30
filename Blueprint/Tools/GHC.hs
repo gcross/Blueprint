@@ -159,6 +159,7 @@ data CompileCache = CompileCache
     {   compileCacheSourceDigest :: MD5Digest
     ,   compileCacheImportedModules :: [String]
     ,   compileCacheDependencyDigests :: Map FilePath MD5Digest
+    ,   compileCacheAdditionalOptions :: [String]
     ,   compileCacheInterfaceDigest :: MD5Digest
     ,   compileCacheObjectDigest :: MD5Digest
     } deriving Typeable; $( derive makeBinary ''CompileCache )
@@ -278,7 +279,7 @@ compile
     path_to_ghc
     package_database
     known_modules
-    options_arguments
+    additional_options
     interface_filepath
     object_filepath
     HaskellSource{..}
@@ -299,7 +300,8 @@ compile
                 let buildIt = build package_dependencies
                 (interface_digest,object_digest) ←
                     fmap toT $
-                    if compileCacheDependencyDigests /= dependency_digests
+                    if (compileCacheDependencyDigests /= dependency_digests) ||
+                       (compileCacheAdditionalOptions /= additional_options)
                         then buildIt
                         else do
                             maybe_digests ←
@@ -346,6 +348,7 @@ compile
                 haskellSourceDigest
                 imported_modules
                 dependency_digests
+                additional_options
                 interface_digest
                 object_digest
             ,(HaskellInterface interface_filepath interface_digest
@@ -391,7 +394,7 @@ compile
                 :
                 concatMap (("-package":) . (:[])) package_dependency_names
                 ++
-                options_arguments
+                additional_options
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
         runProductionCommandAndDigestOutputs
             (object_filepath :. interface_filepath :. E)
