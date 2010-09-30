@@ -18,10 +18,12 @@ module Blueprint.Tools.GHC where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20100927123234.1430:<< Import needed modules >>
+import Prelude hiding (sequence)
+
 import Control.Applicative
 import Control.Arrow
 import Control.Exception
-import Control.Monad
+import Control.Monad hiding (sequence,mapM)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Abort
 import Control.Monad.Trans.Goto
@@ -36,14 +38,14 @@ import Data.Either
 import Data.Function
 import Data.List
 import Data.List.Split
-import Data.List.Tagged (TaggedList(..))
+import Data.List.Tagged (TaggedList(..),fromT,toT)
 import qualified Data.List.Tagged as T
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Traversable (traverse,sequenceA)
+import Data.Traversable (traverse,sequenceA,sequence,mapM)
 import Data.Typeable
 
 import qualified Distribution.Compiler as Compiler
@@ -67,7 +69,6 @@ import System.Process
 import Text.Printf
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
-import TypeLevel.NaturalNumber (Two)
 
 import Blueprint.Cache
 import Blueprint.Configuration
@@ -278,19 +279,13 @@ compile
                 package_database
                 known_modules
                 imported_modules
-        let runBuild = build package_dependencies
-            runBuildAndStoreDigests = buildAndStoreDigests package_dependencies
         (interface_digest,object_digest) ←
-            if source_has_changed
-                then runBuildAndStoreDigests
-                else do
-                    maybe_digests ←
-                        (liftA2 . liftA2) (,)
-                            (digestFileIfExists interface_filepath)
-                            (digestFileIfExists object_filepath)
-                    case maybe_digests of
-                        Nothing → runBuildAndStoreDigests
-                        Just digests → updateUnlessUnchanged builder_uuid digests runBuild
+            fmap toT $
+            refreashIfChangedOrAbsentOrForced
+                (inNamespace my_uuid "builder")
+                (build package_dependencies)
+                (fmap sequence . traverse digestFileIfExists . fromT $ (interface_filepath,object_filepath))
+                source_has_changed
         let (collected_object_dependencies,collected_package_dependencies) =
                 second (Set.union . Set.fromList $ package_dependencies)
                 .
@@ -316,9 +311,6 @@ compile
         $
         haskellSourceFilePath
 
-    builder_uuid = inNamespace my_uuid "builder"
-
-    build :: [String] → Job (MD5Digest,MD5Digest)
     build package_dependency_names = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
         let ghc_arguments =
@@ -330,19 +322,10 @@ compile
                 ++
                 options_arguments
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
-        (object_digest :. interface_digest :. E) ←
-            runProductionCommandAndDigestOutputs
-                (object_filepath :. interface_filepath :. E)
-                path_to_ghc
-                ghc_arguments
-        return (object_digest,interface_digest)
-
-    buildAndStoreDigests package_dependency_names = do
-        digests ← build package_dependency_names
-        storeInCache
-            builder_uuid
-            digests
-        return digests
+        runProductionCommandAndDigestOutputs
+            (object_filepath :. interface_filepath :. E)
+            path_to_ghc
+            ghc_arguments
 -- @-node:gcross.20100927222551.1451:compile
 -- @+node:gcross.20100927222551.1438:computeBuildEnvironment
 computeBuildEnvironment ::

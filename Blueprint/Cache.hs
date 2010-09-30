@@ -54,6 +54,22 @@ updateAndFlagUnlessUnchanged uuid current_value job =
 updateUnlessUnchanged :: (Binary α, Eq α) ⇒ UUID → α → Job α → Job α
 updateUnlessUnchanged uuid current_value job = fmap fst (updateAndFlagUnlessUnchanged uuid current_value job)
 -- @-node:gcross.20100927222551.1469:updateUnlessUnchanged
+-- @+node:gcross.20100929125042.1467:refreashIfChangedOrAbsentOrForced
+refreashIfChangedOrAbsentOrForced :: (Binary α, Eq α) ⇒ UUID → Job α → Job (Maybe α) → Bool → Job α
+refreashIfChangedOrAbsentOrForced uuid job check forced =
+    if forced
+        then runJobAndStore
+        else do
+            maybe_result ← check
+            case maybe_result of
+                Nothing → runJobAndStore
+                Just result → updateUnlessUnchanged uuid result job
+  where
+    runJobAndStore = do
+        result ← job
+        storeInCache uuid result
+        return result
+-- @-node:gcross.20100929125042.1467:refreashIfChangedOrAbsentOrForced
 -- @-node:gcross.20100925114718.1304:Functions
 -- @-others
 -- @-node:gcross.20100925114718.1301:@thin Cache.hs
