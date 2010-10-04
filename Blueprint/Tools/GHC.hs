@@ -292,9 +292,7 @@ compile
     interface_filepath
     object_filepath
     HaskellSource{..}
-  = once my_uuid
-    .
-    cache my_uuid
+  = onceAndCached my_uuid
     $
     \cache → do
         ( imported_modules
@@ -464,9 +462,7 @@ collectAllLinkDependencies haskell_objects =
 -- @+node:gcross.20100927123234.1450:configureGHC
 configureGHC :: GHCOptions → Job GHC
 configureGHC search_options@GHCOptions{..} =
-    once my_uuid
-    .
-    cache my_uuid
+    onceAndCached my_uuid
     $
     (liftIO . configureIt >=> \ghc → return (Just (search_options,ghc),ghc))
  where
@@ -593,9 +589,7 @@ configureGHCUsingOptions = configureGHC . extractGHCOptions
 -- @+node:gcross.20100927161850.1432:configurePackageDatabase
 configurePackageDatabase :: FilePath → Job PackageDatabase
 configurePackageDatabase path_to_ghc_pkg =
-    once my_uuid
-    .
-    cache my_uuid
+    onceAndCached my_uuid
     $
     \maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
@@ -697,9 +691,7 @@ linkProgram
     additional_options
     haskell_objects
     program_filepath
-  = once my_uuid
-    .
-    cache my_uuid
+  = onceAndCached my_uuid
     $
     \maybe_cache →
         case maybe_cache of

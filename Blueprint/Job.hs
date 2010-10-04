@@ -104,6 +104,10 @@ cache uuid computeJob = Cache uuid computeJob return
 once :: Typeable α ⇒ UUID → Job α → Job α
 once uuid job = Once uuid job return
 -- @-node:gcross.20100925004153.1298:once
+-- @+node:gcross.20101004145951.1473:onceAndCached
+onceAndCached :: (Binary α, Typeable β) ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
+onceAndCached uuid = once uuid . cache uuid
+-- @-node:gcross.20101004145951.1473:onceAndCached
 -- @+node:gcross.20100927123234.1300:runJob
 runJob :: Job α → JobMonad (Either [SomeException] α)
 runJob job = do
