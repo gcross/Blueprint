@@ -37,6 +37,14 @@ import Blueprint.Miscellaneous
 -- @nl
 
 -- @+others
+-- @+node:gcross.20100929125042.1464:Types
+-- @+node:gcross.20100929125042.1465:Program
+data Program = Program
+    {   programFilePath :: FilePath
+    ,   programDigest :: MD5Digest
+    } deriving Typeable
+-- @-node:gcross.20100929125042.1465:Program
+-- @-node:gcross.20100929125042.1464:Types
 -- @+node:gcross.20100927222551.1483:Exceptions
 -- @+node:gcross.20100927222551.1484:ProductionError
 data ProductionError =

@@ -222,6 +222,15 @@ data KnownModule =
 -- @+node:gcross.20100927222551.1436:KnownModules
 type KnownModules = Map String KnownModule
 -- @-node:gcross.20100927222551.1436:KnownModules
+-- @+node:gcross.20101004145951.1471:LinkCache
+data LinkCache = LinkCache
+    {   linkCacheDependencyDigests :: Map FilePath MD5Digest
+    ,   linkCachePackageDependencies :: Set String
+    ,   linkCacheAdditionalOptions :: [String]
+    ,   linkCacheProgramDigest :: MD5Digest
+    } deriving Typeable; $( derive makeBinary ''LinkCache )
+-- @nonl
+-- @-node:gcross.20101004145951.1471:LinkCache
 -- @+node:gcross.20100927123234.1437:PackageDatabase
 data PackageDatabase = PackageDatabase
     {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackage
@@ -676,6 +685,67 @@ findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range
     >>=
     return . head . snd
 -- @-node:gcross.20100927222551.1449:findSatisfyingPackage
+-- @+node:gcross.20101004145951.1467:linkProgram
+linkProgram ::
+    FilePath →
+    [String] →
+    [HaskellObject] →
+    FilePath →
+    Job Program
+linkProgram
+    path_to_ghc
+    additional_options
+    haskell_objects
+    program_filepath
+  = once my_uuid
+    .
+    cache my_uuid
+    $
+    \maybe_cache →
+        case maybe_cache of
+            Just cache@LinkCache{..}
+              | linkCacheAdditionalOptions == additional_options
+              , linkCacheDependencyDigests == dependency_digests
+              , linkCachePackageDependencies == package_dependencies
+              → do  maybe_digest ← digestFileIfExists program_filepath
+                    case maybe_digest of
+                        Just digest | digest == linkCacheProgramDigest →
+                            return
+                                (Just cache
+                                ,Program program_filepath digest
+                                )
+                        _ → build
+            _ → build
+  where
+    my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
+    (haskell_object_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
+    dependency_digests = Map.map haskellObjectDigest haskell_object_dependencies
+    ghc_arguments =
+        Map.keys haskell_object_dependencies
+        ++
+        concat [["-package",package_name] | package_name ← Set.elems package_dependencies]
+        ++
+        ["-o",program_filepath]
+        ++
+        additional_options
+    build = do
+        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Linking program " ++ program_filepath
+        liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
+        program_digest ←
+            fmap toT $
+            runProductionCommandAndDigestOutputs
+                (program_filepath :. E)
+                path_to_ghc
+                ghc_arguments
+        return $
+            (Just $ LinkCache
+                        dependency_digests
+                        package_dependencies
+                        additional_options
+                        program_digest
+            ,Program program_filepath program_digest
+            )
+-- @-node:gcross.20101004145951.1467:linkProgram
 -- @+node:gcross.20100927161850.1436:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
 loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
