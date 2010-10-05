@@ -70,6 +70,8 @@ import Text.Printf
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
+import TypeLevel.NaturalNumber (Two)
+
 import Blueprint.Cache
 import Blueprint.Configuration
 import Blueprint.Identifier
@@ -315,82 +317,24 @@ compileToObject
     interface_filepath
     object_filepath
     HaskellSource{..}
-  = onceAndCached my_uuid
+  = once my_uuid
+    .
+    fmap postProcess
     $
-    \cache → do
-        ( imported_modules
-         ,package_dependencies
-         ,haskell_object_dependencies
-         ,dependency_digests
-         ,interface_digest
-         ,object_digest
-         ) ← case cache of
-            Just CompileCache{..} | haskellSourceDigest == compileCacheSourceDigest → do
-                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve compileCacheImportedModules
-                let buildIt = build package_dependencies
-                (interface_digest,object_digest) ←
-                    fmap toT $
-                    if (compileCacheDependencyDigests /= dependency_digests) ||
-                       (compileCacheAdditionalOptions /= additional_options)
-                        then buildIt
-                        else do
-                            maybe_digests ←
-                                fmap sequence
-                                .
-                                traverse digestFileIfExists
-                                .
-                                fromT
-                                $
-                                (interface_filepath,object_filepath)
-                            case maybe_digests of
-                                Just digests
-                                  | digests == compileCacheInterfaceDigest :. compileCacheObjectDigest :. E
-                                    → return digests
-                                _ → buildIt
-                return
-                    (compileCacheImportedModules
-                    ,package_dependencies
-                    ,haskell_object_dependencies
-                    ,dependency_digests
-                    ,interface_digest
-                    ,object_digest
-                    )
-            Nothing → do
-                imported_modules ← scan
-                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve imported_modules
-                (interface_digest,object_digest) ← fmap toT (build package_dependencies)
-                return
-                    (imported_modules
-                    ,package_dependencies
-                    ,haskell_object_dependencies
-                    ,dependency_digests
-                    ,interface_digest
-                    ,object_digest
-                    )
-        let (collected_object_dependencies,collected_package_dependencies) =
-                second (Set.union . Set.fromList $ package_dependencies)
-                .
-                collectAllLinkDependencies
-                $
-                haskell_object_dependencies
-        return
-            (Just $ CompileCache
-                haskellSourceDigest
-                imported_modules
-                dependency_digests
-                additional_options
-                interface_digest
-                object_digest
-            ,(HaskellInterface interface_filepath interface_digest
-             ,HaskellObject object_filepath object_digest collected_object_dependencies collected_package_dependencies
-             )
-            )
+    runIfImplicitDependencyOrProductHasChanged
+        my_uuid
+        haskellSourceDigest
+        scan
+        computeDependency
+        productHasChangedFrom
+        build
   where
     my_uuid =
         inNamespace
             (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
             (haskellSourceFilePath ++ interface_filepath ++ object_filepath)
 
+    scan :: Job [String]
     scan =
         fmap extractImportedModulesFromHaskellSource
         .
@@ -400,8 +344,17 @@ compileToObject
         $
         haskellSourceFilePath
 
+    productHasChangedFrom :: TaggedList Two MD5Digest → Job Bool
+    productHasChangedFrom old_digests =
+        fmap ((== Just old_digests) . sequence)
+        .
+        traverse digestFileIfExists
+        .
+        fromT
+        $
+        (interface_filepath,object_filepath)
 
-    resolve imported_modules = do
+    computeDependency imported_modules = do
         (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
             resolveModuleDependencies
                 package_database
@@ -413,16 +366,25 @@ compileToObject
                 map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
                 $
                 haskell_interface_dependencies
-        return (package_dependencies,dependency_digests,haskell_object_dependencies)
+            (collected_object_dependencies,collected_package_dependencies) =
+                second (Set.union . Set.fromList $ package_dependencies)
+                .
+                collectAllLinkDependencies
+                $
+                haskell_object_dependencies
+        return
+            ((package_dependencies,dependency_digests,additional_options)
+            ,(collected_object_dependencies,collected_package_dependencies)
+            )
 
-    build package_dependency_names = do
+    build (package_dependencies,_,_) = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
         let ghc_arguments =
                  "-c":haskellSourceFilePath
                 :"-o":object_filepath
                 :"-ohi":interface_filepath
                 :
-                concatMap (("-package":) . (:[])) package_dependency_names
+                concatMap (("-package":) . (:[])) package_dependencies
                 ++
                 additional_options
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
@@ -430,6 +392,17 @@ compileToObject
             (object_filepath :. interface_filepath :. E)
             path_to_ghc
             ghc_arguments
+
+    postProcess ::
+        (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Set String)) →
+        (HaskellInterface,HaskellObject)
+    postProcess
+        ((interface_digest :. object_digest :. E)
+        ,(object_dependencies,package_dependencies)
+        )
+      = (HaskellInterface interface_filepath interface_digest
+        ,HaskellObject object_filepath object_digest object_dependencies package_dependencies
+        )
 -- @-node:gcross.20100927222551.1451:compileToObject
 -- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 compileToObjectUsingBuildEnvironment ::
