@@ -82,73 +82,6 @@ import Blueprint.Tools
 -- @nl
 
 -- @+others
--- @+node:gcross.20100927123234.1453:Exceptions
--- @+node:gcross.20100927123234.1454:GHCConfigurationException
-data GHCConfigurationException =
-    GHCVersionParseException FilePath String
-  | GHCNotFoundAt FilePath
-  | GHCPkgNotFoundAt FilePath
-  | GHCUnableToLocateGHC [FilePath]
-  | GHCUnableToLocateGHCPkg [FilePath]
-  | GHCVersionsDontMatch FilePath Version FilePath Version
-  | GHCVersionIsNotDesiredVersion FilePath Version Version
-  | GHCUnknownException SomeException
-  | GHCMultipleExceptions [GHCConfigurationException]
-  deriving (Typeable)
-
-instance Show GHCConfigurationException where
-    show (GHCVersionParseException program output) =
-        printf "Version string output by %s was \"%s\", which does not parse."
-            program
-            output
-    show (GHCNotFoundAt filepath) =
-         "No file for ghc was found at " ++ filepath
-    show (GHCPkgNotFoundAt filepath) =
-         "No file for ghc-pkg was found at " ++ filepath
-    show (GHCUnableToLocateGHC search_paths) =
-        "Unable to find ghc in " ++ show search_paths
-    show (GHCUnableToLocateGHCPkg search_paths) =
-        "Unable to find ghc-pkg in " ++ show search_paths
-    show (GHCVersionsDontMatch path_to_ghc ghc_version path_to_ghc_pkg ghc_pkg_version) =
-        printf "ghc (at %s) reported version %s, but ghc-pkg (at %s) reported version %s"
-            path_to_ghc
-            (display ghc_version)
-            path_to_ghc_pkg
-            (display ghc_pkg_version)
-    show (GHCVersionIsNotDesiredVersion path_to_ghc desired_version found_version) =
-        printf "GHC (at %s) reported version %s, which is not the required version (%s)"
-            path_to_ghc
-            (display desired_version)
-            (display found_version)
-    show (GHCUnknownException e) =
-        "Unknown exception: " ++ show e
-    show (GHCMultipleExceptions exceptions) =
-        "Unable to configure GHC:\n" ++ concat ["* " ++ show e ++ "\n" | e ← exceptions]
-
-instance Exception GHCConfigurationException
--- @-node:gcross.20100927123234.1454:GHCConfigurationException
--- @+node:gcross.20100928173417.1461:UnknownModulesException
-data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
-
-instance Show UnknownModulesException where
-    show (UnknownModulesException unknown_modules_with_exporters) =
-        intercalate "\n"
-        .
-        nub
-        .
-        map (\(module_name,exporters) →
-            "Unable to find module '" ++ module_name ++ "'" ++
-            case exporters of
-                [] → ""
-                exporters → " (but it is exported by the " ++ show exporters ++ ")"
-        )
-        $
-        unknown_modules_with_exporters
-
-instance Exception UnknownModulesException
--- @nonl
--- @-node:gcross.20100928173417.1461:UnknownModulesException
--- @-node:gcross.20100927123234.1453:Exceptions
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20100927222551.1442:BuildTargetType
 data BuildTargetType = LibraryTarget | ExecutableTarget
@@ -264,6 +197,101 @@ data BuildEnvironment = BuildEnvironment
     }
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
 -- @-node:gcross.20100927123234.1433:Types
+-- @+node:gcross.20101005111309.1477:Exceptions
+-- @+node:gcross.20101005111309.1478:GHCConfigurationException
+data GHCConfigurationException =
+    GHCVersionParseException FilePath String
+  | GHCNotFoundAt FilePath
+  | GHCPkgNotFoundAt FilePath
+  | GHCUnableToLocateGHC [FilePath]
+  | GHCUnableToLocateGHCPkg [FilePath]
+  | GHCVersionsDontMatch FilePath Version FilePath Version
+  | GHCVersionIsNotDesiredVersion FilePath Version Version
+  | GHCUnknownException SomeException
+  | GHCMultipleExceptions [GHCConfigurationException]
+  deriving (Typeable)
+
+instance Show GHCConfigurationException where
+    show (GHCVersionParseException program output) =
+        printf "Version string output by %s was \"%s\", which does not parse."
+            program
+            output
+    show (GHCNotFoundAt filepath) =
+         "No file for ghc was found at " ++ filepath
+    show (GHCPkgNotFoundAt filepath) =
+         "No file for ghc-pkg was found at " ++ filepath
+    show (GHCUnableToLocateGHC search_paths) =
+        "Unable to find ghc in " ++ show search_paths
+    show (GHCUnableToLocateGHCPkg search_paths) =
+        "Unable to find ghc-pkg in " ++ show search_paths
+    show (GHCVersionsDontMatch path_to_ghc ghc_version path_to_ghc_pkg ghc_pkg_version) =
+        printf "ghc (at %s) reported version %s, but ghc-pkg (at %s) reported version %s"
+            path_to_ghc
+            (display ghc_version)
+            path_to_ghc_pkg
+            (display ghc_pkg_version)
+    show (GHCVersionIsNotDesiredVersion path_to_ghc desired_version found_version) =
+        printf "GHC (at %s) reported version %s, which is not the required version (%s)"
+            path_to_ghc
+            (display desired_version)
+            (display found_version)
+    show (GHCUnknownException e) =
+        "Unknown exception: " ++ show e
+    show (GHCMultipleExceptions exceptions) =
+        "Unable to configure GHC:\n" ++ concat ["* " ++ show e ++ "\n" | e ← exceptions]
+
+instance Exception GHCConfigurationException
+-- @-node:gcross.20101005111309.1478:GHCConfigurationException
+-- @+node:gcross.20101005111309.1479:UnknownModulesException
+data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
+
+instance Show UnknownModulesException where
+    show (UnknownModulesException unknown_modules_with_exporters) =
+        intercalate "\n"
+        .
+        nub
+        .
+        map (\(module_name,exporters) →
+            "Unable to find module '" ++ module_name ++ "'" ++
+            case exporters of
+                [] → ""
+                exporters → " (but it is exported by the " ++ show exporters ++ ")"
+        )
+        $
+        unknown_modules_with_exporters
+
+instance Exception UnknownModulesException
+-- @nonl
+-- @-node:gcross.20101005111309.1479:UnknownModulesException
+-- @+node:gcross.20101005111309.1480:UnresolvedPackageDependenciesError
+data UnresolvedPackageDependenciesError =
+    UnresolvedPackageDependenciesError PackageDatabase [Package.Dependency]
+  deriving Typeable
+
+instance Show UnresolvedPackageDependenciesError where
+    show (UnresolvedPackageDependenciesError package_database unresolved_dependencies) =
+        intercalate "\n"
+        .
+        ("Unable to resolve the following package dependencies:":)
+        .
+        map (\dependency@(Package.Dependency package_name _) →
+            '\t' -- '
+            :
+            display dependency
+            ++
+            case fmap (map fst) (lookupPackageNamed package_database package_name) of
+                Nothing → ""
+                Just [] → ""
+                Just [version] → " (version " ++ display version ++ " is installed)"
+                Just [version1,version2] → " (versions " ++ display version1 ++ " and " ++ display version2 ++ " are installed)"
+                Just versions → " (versions " ++ intercalate ", " (map display versions) ++ " are installed)"
+        )
+        $
+        unresolved_dependencies
+
+instance Exception UnresolvedPackageDependenciesError
+-- @-node:gcross.20101005111309.1480:UnresolvedPackageDependenciesError
+-- @-node:gcross.20101005111309.1477:Exceptions
 -- @+node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1461:ghc_version_regex
 ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
@@ -274,6 +302,10 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @-node:gcross.20100927222551.1456:import_regex
 -- @-node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1448:Functions
+-- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
+checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
+checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
+-- @-node:gcross.20101005111309.1482:checkForSatisfyingPackage
 -- @+node:gcross.20100927222551.1451:compileToObject
 compileToObject ::
     FilePath →
@@ -780,9 +812,37 @@ loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
         ,   installedPackageModules = map display exposedModules
         }
 -- @-node:gcross.20100927161850.1436:loadInstalledPackageInformation
+-- @+node:gcross.20101005111309.1484:lookupPackageNamed
+lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])]
+lookupPackageNamed PackageDatabase{..} =
+    flip Map.lookup packageDatabaseIndexedByPackageNameAndVersion
+    .
+    display
+-- @-node:gcross.20101005111309.1484:lookupPackageNamed
 -- @+node:gcross.20100927123234.1458:parseGHCVersion
 parseGHCVersion = extractVersion ghc_version_regex
 -- @-node:gcross.20100927123234.1458:parseGHCVersion
+-- @+node:gcross.20101005111309.1462:readAndConfigurePackageDescription
+readAndConfigurePackageDescription ::
+    GHCEnvironment →
+    FlagAssignment →
+    FilePath →
+    Job (PackageDescription, FlagAssignment)
+readAndConfigurePackageDescription GHCEnvironment{..} flags =
+    liftIO . readPackageDescription silent
+    >=>
+    either
+        (liftIO . throwIO . UnresolvedPackageDependenciesError ghcEnvironmentPackageDatabase)
+        return
+    .
+    finalizePackageDescription
+        flags
+        (checkForSatisfyingPackage ghcEnvironmentPackageDatabase)
+        buildPlatform
+        (Compiler.CompilerId Compiler.GHC (ghcVersion ghcEnvironmentGHC))
+        []
+-- @nonl
+-- @-node:gcross.20101005111309.1462:readAndConfigurePackageDescription
 -- @+node:gcross.20100928173417.1463:resolveModuleDependencies
 resolveModuleDependencies ::
     PackageDatabase →
