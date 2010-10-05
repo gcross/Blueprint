@@ -274,8 +274,8 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @-node:gcross.20100927222551.1456:import_regex
 -- @-node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1448:Functions
--- @+node:gcross.20100927222551.1451:compile
-compile ::
+-- @+node:gcross.20100927222551.1451:compileToObject
+compileToObject ::
     FilePath →
     PackageDatabase →
     KnownModules →
@@ -284,7 +284,7 @@ compile ::
     FilePath →
     HaskellSource →
     Job (HaskellInterface,HaskellObject)
-compile
+compileToObject
     path_to_ghc
     package_database
     known_modules
