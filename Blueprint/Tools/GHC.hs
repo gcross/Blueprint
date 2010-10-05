@@ -407,7 +407,21 @@ compileToObject
             (object_filepath :. interface_filepath :. E)
             path_to_ghc
             ghc_arguments
--- @-node:gcross.20100927222551.1451:compile
+-- @-node:gcross.20100927222551.1451:compileToObject
+-- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
+compileToObjectUsingBuildEnvironment ::
+    BuildEnvironment →
+    FilePath →
+    FilePath →
+    HaskellSource →
+    Job (HaskellInterface,HaskellObject)
+compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
+    compileToObject
+        (pathToGHC buildEnvironmentGHC)
+        buildEnvironmentPackageDatabase
+        buildEnvironmentKnownModules
+        buildEnvironmentCompileOptions
+-- @-node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 -- @+node:gcross.20100927222551.1438:computeBuildEnvironment
 computeBuildEnvironment ::
     GHCEnvironment →
@@ -738,6 +752,17 @@ linkProgram
             ,Program program_filepath program_digest
             )
 -- @-node:gcross.20101004145951.1467:linkProgram
+-- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
+linkProgramUsingBuildEnvironment ::
+    BuildEnvironment →
+    [HaskellObject] →
+    FilePath →
+    Job Program
+linkProgramUsingBuildEnvironment BuildEnvironment{..} =
+    linkProgram
+        (pathToGHC buildEnvironmentGHC)
+        buildEnvironmentLinkOptions
+-- @-node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 -- @+node:gcross.20100927161850.1436:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
 loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
