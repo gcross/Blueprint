@@ -3,8 +3,11 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20101005114926.1469:<< Language extensions >>
-{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20101005114926.1469:<< Language extensions >>
 -- @nl
@@ -13,9 +16,23 @@ module Blueprint.Tools.Ar where
 
 -- @<< Import needed modules >>
 -- @+node:gcross.20101005114926.1470:<< Import needed modules >>
+import Control.Monad.IO.Class
+
+import Data.Binary
+import Data.DeriveTH
+import Data.Digest.Pure.MD5
+import Data.List.Tagged (TaggedList(..),toT)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Typeable
 
+import System.Log.Logger
+
 import Blueprint.Configuration
+import Blueprint.Job
+import Blueprint.Miscellaneous
+import Blueprint.Tools
+-- @nonl
 -- @-node:gcross.20101005114926.1470:<< Import needed modules >>
 -- @nl
 
@@ -26,52 +43,72 @@ data Ar deriving Typeable; instance ProgramName Ar where { programNameFrom _ = "
 -- @+node:gcross.20101005114926.1474:Options
 arOptions = unwrapOptions (programOptions :: OptionsFor Ar)
 -- @-node:gcross.20101005114926.1474:Options
+-- @+node:gcross.20101005122519.1483:Types
+-- @+node:gcross.20101005122519.1484:Archive
+data Archive = Archive
+    {   archiveFilePath :: FilePath
+    ,   archiveDigest :: MD5Digest
+    } deriving Typeable
+-- @-node:gcross.20101005122519.1484:Archive
+-- @+node:gcross.20101005122519.1486:ArchiveCache
+data ArchiveCache = ArchiveCache
+    {   archiveCacheObjectDigests :: Map FilePath MD5Digest
+    ,   archiveCacheAdditionalOptions :: [String]
+    ,   archiveCacheArchiveDigest :: MD5Digest
+    } deriving Typeable; $( derive makeBinary ''ArchiveCache )
+-- @nonl
+-- @-node:gcross.20101005122519.1486:ArchiveCache
+-- @-node:gcross.20101005122519.1483:Types
 -- @+node:gcross.20101005114926.1475:Functions
--- @+node:gcross.20101005114926.1477:createArMakeArchiveIncompleteJob
-createArMakeArchiveIncompleteJob ::
+-- @+node:gcross.20101005114926.1477:makeArchive
+makeArchive ::
     ProgramConfiguration Ar →
     Map FilePath MD5Digest →
     FilePath →
-    IncompleteToolJob ArchiveComponents
-createArMakeArchiveIncompleteJob
+    Job Archive
+makeArchive
     ProgramConfiguration{..}
-    BuiltProduct{..}
-    =
-    incompleteJobWithCache [builtProductJobId]
+    object_digests
+    archive_filepath
+  = onceAndCached my_uuid
     $
-    \archive_components@ArchiveComponents{..} →
-        let ar_arguments = "cqs":builtProductName:(archiveComponentObjectFilePaths ++ programExtraArguments)
-            builder = liftIO $ do
-                noticeM "Blueprint.Tools.Ar" $
-                    "(GHC) Creating archive "
-                    ++ builtProductName
-                infoM "Blueprint.Tools.Ar" $
-                    "(GHC) Executing '" ++ (unwords (programFilePath:ar_arguments)) ++ "'"
-                runProductionCommandAndDigestOutputs
-                    [builtProductName]
-                    []
-                    programFilePath
-                    ar_arguments
-        in  runJobAnalyzer
-            .
-            fmap (
-                zipWith ($)
-                .
-                (:[])
-                $
-                (
-                    setDeferredDependencies archiveComponentDeferredDependencies
-                    .
-                    setFilePath builtProductName
-                )
+    \maybe_cache →
+        case maybe_cache of
+            Just cache@ArchiveCache{..}
+              | archiveCacheAdditionalOptions == programExtraArguments
+              , archiveCacheObjectDigests == object_digests
+              → do  maybe_digest ← digestFileIfExists archive_filepath
+                    case maybe_digest of
+                        Just digest | digest == archiveCacheArchiveDigest →
+                            return
+                                (Just cache
+                                ,Archive archive_filepath digest
+                                )
+                        _ → build
+            _ → build
+  where
+    my_uuid = inNamespace (uuid "5a0923aa-3580-4b71-8a73-c187eced95b3") archive_filepath
+
+    ar_arguments = "cqs":archive_filepath:(Map.keys object_digests ++ programExtraArguments)
+    build = do
+        liftIO . noticeM "Blueprint.Tools.Ar" $
+            "(Ar) Creating archive " ++ archive_filepath
+        liftIO . infoM "Blueprint.Tools.Ar" $
+            "(Ar) Executing '" ++ (unwords (programFilePath:ar_arguments)) ++ "'"
+        archive_digest ←
+            fmap toT $
+            runProductionCommandAndDigestOutputs
+                (archive_filepath :. E)
+                programFilePath
+                ar_arguments
+        return $
+            (Just $ ArchiveCache
+                        object_digests
+                        programExtraArguments
+                        archive_digest
+            ,Archive archive_filepath archive_digest
             )
-            $
-            compareToCacheAndRebuildIfNecessary
-                builder
-                (liftIO . checkDigestsOfFilesIfExisting [builtProductName])
-                (archiveComponentObjectFilePaths,archiveComponentObjectDigests)
--- @nonl
--- @-node:gcross.20101005114926.1477:createArMakeArchiveIncompleteJob
+-- @-node:gcross.20101005114926.1477:makeArchive
 -- @-node:gcross.20101005114926.1475:Functions
 -- @-others
 -- @-node:gcross.20101005114926.1468:@thin Ar.hs
