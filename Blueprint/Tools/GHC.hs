@@ -135,7 +135,7 @@ data HaskellObject = HaskellObject
 data HaskellSource = HaskellSource
     {   haskellSourceFilePath :: FilePath
     ,   haskellSourceDigest :: MD5Digest
-    }
+    } deriving Typeable
 -- @-node:gcross.20100927222551.1452:HaskellSource
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
@@ -187,6 +187,8 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentKnownModules :: KnownModules
     ,   buildEnvironmentCompileOptions :: [String]
     ,   buildEnvironmentLinkOptions :: [String]
+    ,   buildEnvironmentInterfaceDirectory :: FilePath
+    ,   buildEnvironmentObjectDirectory :: FilePath
     }
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
 -- @-node:gcross.20100927123234.1433:Types
@@ -427,6 +429,7 @@ computeBuildEnvironment ::
     [String] →
     [String] →
     FilePath →
+    FilePath →
     BuildEnvironment
 computeBuildEnvironment
     GHCEnvironment{..}
@@ -436,6 +439,7 @@ computeBuildEnvironment
     additional_compile_options
     additional_link_options
     interface_directory
+    object_directory
     =
     BuildEnvironment
     {   buildEnvironmentGHC = ghcEnvironmentGHC
@@ -447,9 +451,11 @@ computeBuildEnvironment
                 )
     ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
     ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
+    ,   buildEnvironmentInterfaceDirectory = interface_directory
+    ,   buildEnvironmentObjectDirectory = object_directory
     }
   where
-    build_for_package_options = 
+    build_for_package_options =
         case build_target_type of
             LibraryTarget → ["-package-name",display package]
             _ → []
@@ -645,6 +651,44 @@ constructPackageDatabaseFromInstalledPackages =
             ]
         )
 -- @-node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
+-- @+node:gcross.20101006110010.1483:createCompilationJobsForModules
+createCompilationJobsForModules ::
+    FilePath →
+    PackageDatabase →
+    KnownModules →
+    [String] →
+    FilePath →
+    FilePath →
+    Map String (Job HaskellSource) →
+    (Map String (Job (HaskellInterface,HaskellObject)),KnownModules)
+createCompilationJobsForModules
+    path_to_ghc
+    package_database
+    known_modules
+    additional_options
+    interface_directory
+    object_directory
+    module_sources
+  = (jobs,new_known_modules)
+  where
+    jobs = Map.mapWithKey
+        (\module_name module_source_job →
+            module_source_job
+            >>=
+            compileToObject 
+                path_to_ghc
+                package_database
+                new_known_modules
+                additional_options
+                (interface_directory </> module_name <.> "hi")
+                (object_directory </> module_name <.> "o")
+        ) module_sources
+
+    new_known_modules =
+        Map.union
+            (Map.map KnownModuleInProject jobs)
+            known_modules
+-- @-node:gcross.20101006110010.1483:createCompilationJobsForModules
 -- @+node:gcross.20100927123234.1456:determineGHCVersion
 determineGHCVersion :: FilePath → IO Version
 determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
@@ -819,6 +863,61 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
                     Map.lookup module_name packageDatabaseIndexedByModuleName
         ) module_names
 -- @-node:gcross.20100928173417.1463:resolveModuleDependencies
+-- @+node:gcross.20101006110010.1481:scanForModulesIn
+scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
+scanForModulesIn = scanForModulesWithParentIn Nothing
+-- @-node:gcross.20101006110010.1481:scanForModulesIn
+-- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
+scanForModulesWithParentIn ::
+    Maybe String →
+    FilePath →
+    Job (Map String (Job HaskellSource))
+scanForModulesWithParentIn maybe_parent root =
+    liftIO (getDirectoryContents root)
+    >>=
+    fmap Map.unions
+    .
+    sequenceA
+    .
+    map (\entry → do
+        let filepath = root </> entry
+        is_directory ← liftIO (doesDirectoryExist entry)
+        case is_directory of
+            True →
+                scanForModulesWithParentIn
+                    (Just . appendToParent $ entry)
+                    filepath
+            _ | takeExtension entry == ".hs" →
+                return
+                $
+                Map.singleton
+                    (appendToParent . dropExtension $ entry)
+                    (once (inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792") filepath) $
+                        fmap (HaskellSource filepath) (digestFile filepath)
+                    )
+            _ → return
+                $
+                Map.empty
+    )
+  where
+    appendToParent child = maybe child (<.> child) maybe_parent
+-- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
+-- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
+updateBuildEnvironmentToIncludeModules ::
+    BuildEnvironment →
+    Map String (Job HaskellSource) →
+    (Map String (Job (HaskellInterface,HaskellObject)),BuildEnvironment)
+updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
+  = second (\new_known_modules → build_environment { buildEnvironmentKnownModules = new_known_modules })
+    .
+    createCompilationJobsForModules
+        (pathToGHC buildEnvironmentGHC)
+        buildEnvironmentPackageDatabase
+        buildEnvironmentKnownModules
+        buildEnvironmentCompileOptions
+        buildEnvironmentInterfaceDirectory
+        buildEnvironmentObjectDirectory
+-- @-node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 -- @-node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20100927123234.1432:Options
 ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"
