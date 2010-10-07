@@ -221,6 +221,35 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
   where
     nestedRunJob = runJobInEnvironment job_environment
 -- @-node:gcross.20100925004153.1307:runJobInEnvironment
+-- @+node:gcross.20101007134409.1483:runJobUsingCacheFile
+runJobUsingCacheFile :: Int → FilePath → Job α → IO (Either JobError α)
+runJobUsingCacheFile maximum_number_of_simultaneous_IO_tasks cache_filepath job = do
+    cache ← do
+        cache_exists ← doesFileExist cache_filepath
+        if cache_exists
+            then (decodeFile cache_filepath)
+                 `catch`
+                 (\(ErrorCall msg) → do
+                    putStrLn $ "Encountered error " ++ msg ++ " while reading cache file " ++ cache_filepath
+                    putStrLn $ "Since this is most likely due to a change in file format, I am going to delete this file."
+                    removeFile cache_filepath
+                    return Map.empty
+                 )
+            else return Map.empty
+    (result,new_cache) ← runJob maximum_number_of_simultaneous_IO_tasks cache job
+    encodeFile cache_filepath new_cache
+    return result
+-- @-node:gcross.20101007134409.1483:runJobUsingCacheFile
+-- @+node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
+runJobUsingCacheFileAndExtractResult :: Int → FilePath → Job α → IO α
+runJobUsingCacheFileAndExtractResult maximum_number_of_simultaneous_IO_tasks cache_filepath job =
+    fmap extractResultOrThrow
+    $
+    runJobUsingCacheFile
+        maximum_number_of_simultaneous_IO_tasks
+        cache_filepath
+        job
+-- @-node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
 -- @+node:gcross.20100927123234.1303:newJobEnvironment
 newJobEnvironment :: Int → Map UUID L.ByteString → IO JobEnvironment
 newJobEnvironment maximum_number_of_simultaneous_IO_tasks input_cache =
