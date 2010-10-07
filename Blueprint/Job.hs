@@ -3,6 +3,7 @@
 -- @@language Haskell
 -- @<< Language extensions >>
 -- @+node:gcross.20100924160650.2045:<< Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -28,6 +29,7 @@ import Control.Monad.Trans.Reader
 import Data.Binary
 import qualified Data.ByteString.Lazy as L
 import Data.Dynamic
+import Data.Either.Unwrap
 import Data.IVar.Simple (IVar)
 import qualified Data.IVar.Simple as IVar
 import Data.IORef
@@ -37,6 +39,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 import Data.UUID
+
+import System.Directory
 -- @-node:gcross.20100924160650.2046:<< Import needed modules >>
 -- @nl
 
@@ -60,6 +64,16 @@ data JobEnvironment = JobEnvironment
     }
 -- @-node:gcross.20100925004153.1301:JobEnvironment
 -- @-node:gcross.20100924160650.2047:Types
+-- @+node:gcross.20101007134409.1485:Exceptions
+-- @+node:gcross.20101007134409.1486:JobError
+data JobError = JobError (Map String SomeException) deriving Typeable
+
+instance Show JobError where
+    show (JobError exceptions) = intercalate "\n" (Map.keys exceptions)
+
+instance Exception JobError
+-- @-node:gcross.20101007134409.1486:JobError
+-- @-node:gcross.20101007134409.1485:Exceptions
 -- @+node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100924174906.1278:Applicative Job
 instance Applicative Job where
@@ -97,6 +111,10 @@ instance MonadIO Job where
 cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
 cache uuid computeJob = Cache uuid computeJob return
 -- @-node:gcross.20100925004153.1299:cache
+-- @+node:gcross.20101007134409.1484:extractResultOrThrow
+extractResultOrThrow :: Either JobError α → α
+extractResultOrThrow = either throw id
+-- @-node:gcross.20101007134409.1484:extractResultOrThrow
 -- @+node:gcross.20100925004153.1298:once
 once :: Typeable α ⇒ UUID → Job α → Job α
 once uuid job = Once uuid job return
@@ -106,7 +124,7 @@ onceAndCached :: (Binary α, Typeable β) ⇒ UUID → (Maybe α → Job (Maybe 
 onceAndCached uuid = once uuid . cache uuid
 -- @-node:gcross.20101004145951.1473:onceAndCached
 -- @+node:gcross.20100927123234.1302:runJob
-runJob :: Int → Map UUID L.ByteString → Job α → IO (Either (Map String SomeException) α,Map UUID L.ByteString)
+runJob :: Int → Map UUID L.ByteString → Job α → IO (Either JobError α,Map UUID L.ByteString)
 runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
     job_environment@JobEnvironment{..} ←
         newJobEnvironment
@@ -118,7 +136,7 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
             (fmap not (isEmptyChan environmentOutputCache))
             (readChan environmentOutputCache)
     return
-        (result
+        (mapLeft JobError result
         ,foldl' -- '
             (\current_cache (key,maybe_value) →
                 case maybe_value of
