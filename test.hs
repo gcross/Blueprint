@@ -139,9 +139,7 @@ main = defaultMain
                     .
                     unsafePerformIO
                     .
-                    withJobEnvironment 0 Map.empty
-                    .
-                    runJob
+                    runJob 0 Map.empty
                     .
                     return
                     $
@@ -150,7 +148,7 @@ main = defaultMain
             -- @+node:gcross.20100927123234.1309:once
             ,testCase "once" $ do
                 counter ← newIORef 0
-                (result,cache) ← withJobEnvironment 2 Map.empty . runJob $ do
+                (result,cache) ← runJob 2 Map.empty $ do
                     once nil . liftIO $ (modifyIORef counter (+1))
                     once nil . liftIO $ (modifyIORef counter (+1))
                     return ()
@@ -162,7 +160,7 @@ main = defaultMain
             ,testCase "fork" $ do
                 var_1 ← newEmptyMVar
                 var_2 ← newEmptyMVar
-                (result,cache) ← withJobEnvironment 2 Map.empty . runJob $
+                (result,cache) ← runJob 2 Map.empty $
                     (,) <$> (liftIO (putMVar var_1 42 >> takeMVar var_2))
                         <*> (liftIO (putMVar var_2 24 >> takeMVar var_1))
                 assertBool "Is the cache empty?" (Map.null cache)
