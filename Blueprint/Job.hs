@@ -47,7 +47,7 @@ data Job α where
     Result :: α → Job α
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
-    Errors :: [SomeException] → Job α
+    Errors :: Map String SomeException → Job α
     Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
 -- @-node:gcross.20100924160650.2048:Job
@@ -65,7 +65,7 @@ data JobEnvironment = JobEnvironment
 instance Applicative Job where
     pure = Result
     Result f <*> x = fmap f x
-    Errors e1 <*> Errors e2 = Errors (e1 ++ e2)
+    Errors e1 <*> Errors e2 = Errors (Map.union e1 e2)
     f <*> x = Fork f x Result
 -- @-node:gcross.20100924174906.1278:Applicative Job
 -- @+node:gcross.20100924174906.1281:Functor Job
@@ -106,7 +106,7 @@ onceAndCached :: (Binary α, Typeable β) ⇒ UUID → (Maybe α → Job (Maybe 
 onceAndCached uuid = once uuid . cache uuid
 -- @-node:gcross.20101004145951.1473:onceAndCached
 -- @+node:gcross.20100927123234.1302:runJob
-runJob :: Int → Map UUID L.ByteString → Job α → IO (Either [SomeException] α,Map UUID L.ByteString)
+runJob :: Int → Map UUID L.ByteString → Job α → IO (Either (Map String SomeException) α,Map UUID L.ByteString)
 runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
     job_environment@JobEnvironment{..} ←
         newJobEnvironment
@@ -130,7 +130,7 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
         )
 -- @-node:gcross.20100927123234.1302:runJob
 -- @+node:gcross.20100925004153.1307:runJobInEnvironment
-runJobInEnvironment :: JobEnvironment → Job α → IO (Either [SomeException] α)
+runJobInEnvironment :: JobEnvironment → Job α → IO (Either (Map String SomeException) α)
 runJobInEnvironment job_environment@JobEnvironment{..} job =
     (case job of
         Result x → return (Right x)
@@ -153,7 +153,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                 (Right f, Right x) → nestedRunJob . computeNextJob . f $ x
                 (Left errors, Right _) → return . Left $ errors
                 (Right _, Left errors) → return . Left $ errors
-                (Left errors1, Left errors2) → return . Left $ errors1 ++ errors2
+                (Left errors1, Left errors2) → return . Left $ Map.union errors1 errors2
         Errors errors → return (Left errors)
         Once uuid job computeNextJob → do
             result_ivar ← IVar.new
@@ -199,7 +199,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                 Right (maybe_new_cached_value,job_result) → do
                     writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
-    ) `catch` (return . Left . (:[]))
+    ) `catch` (return . Left . (\e → Map.singleton (show e) e))
   where
     nestedRunJob = runJobInEnvironment job_environment
 -- @-node:gcross.20100925004153.1307:runJobInEnvironment
