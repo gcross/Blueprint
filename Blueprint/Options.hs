@@ -276,7 +276,7 @@ updateConfigurationFile Options{optionConfigurationKeys} cp option_values
         $
         optionConfigurationKeys
 -- @-node:gcross.20100927123234.1358:updateConfigurationFile
--- @+node:gcross.20100927123234.1359:getAndParseCommandLine
+-- @+node:gcross.20100927123234.1359:getAndParseCommandLineOptions
 getAndParseCommandLineOptions :: Options → IO ([String],OptionValues)
 getAndParseCommandLineOptions =
     flip fmap getArgs . parseCommandLine
@@ -288,7 +288,7 @@ getAndParseCommandLineOptions =
             exitFailure
         )
         return
--- @-node:gcross.20100927123234.1359:getAndParseCommandLine
+-- @-node:gcross.20100927123234.1359:getAndParseCommandLineOptions
 -- @+node:gcross.20100927123234.1360:getParseAndUpdateConfigurationFile
 getParseAndUpdateConfigurationFile :: Options → FilePath → OptionValues → IO OptionValues
 getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
@@ -327,13 +327,6 @@ getConfigurationFile configuration_filepath = do
                 return
         else return emptyCP
 -- @-node:gcross.20100927123234.1362:getConfigurationFile
--- @+node:gcross.20100927123234.1363:loadOptions
-loadOptions :: FilePath → Options → IO ([String],OptionValues)
-loadOptions configuration_filepath options = do
-    (leftovers,command_line_option_values) ← getAndParseCommandLineOptions options
-    fmap (leftovers,) $
-        getParseAndUpdateConfigurationFile options configuration_filepath command_line_option_values
--- @-node:gcross.20100927123234.1363:loadOptions
 -- @-node:gcross.20100927123234.1354:Functions
 -- @-others
 -- @-node:gcross.20100927123234.1338:@thin Options.hs

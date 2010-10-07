@@ -12,6 +12,7 @@
 <v t="gcross.20100927123234.1487"><vh>@thin Configuration.hs</vh></v>
 <v t="gcross.20100927123234.1382"><vh>@thin Identifier.hs</vh></v>
 <v t="gcross.20100924160650.2044"><vh>@thin Job.hs</vh></v>
+<v t="gcross.20101007134409.1495"><vh>@thin Main.hs</vh></v>
 <v t="gcross.20100925004153.1323"><vh>@thin Miscellaneous.hs</vh></v>
 <v t="gcross.20100927123234.1338"><vh>@thin Options.hs</vh></v>
 <v t="gcross.20100925004153.1313"><vh>@thin Tools.hs</vh></v>

@@ -34,8 +34,10 @@ import Test.Framework.Providers.QuickCheck2
 import Test.QuickCheck
 
 import Blueprint.Cache
+import Blueprint.Configuration
 import Blueprint.Identifier
 import Blueprint.Job
+import Blueprint.Main ()
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Tools
