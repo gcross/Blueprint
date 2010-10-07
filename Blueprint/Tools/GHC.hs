@@ -70,6 +70,8 @@ import Text.Printf
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
+import TypeLevel.NaturalNumber (Two)
+
 import Blueprint.Cache
 import Blueprint.Configuration
 import Blueprint.Identifier
@@ -133,7 +135,7 @@ data HaskellObject = HaskellObject
 data HaskellSource = HaskellSource
     {   haskellSourceFilePath :: FilePath
     ,   haskellSourceDigest :: MD5Digest
-    }
+    } deriving Typeable
 -- @-node:gcross.20100927222551.1452:HaskellSource
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
@@ -155,15 +157,6 @@ data KnownModule =
 -- @+node:gcross.20100927222551.1436:KnownModules
 type KnownModules = Map String KnownModule
 -- @-node:gcross.20100927222551.1436:KnownModules
--- @+node:gcross.20101004145951.1471:LinkCache
-data LinkCache = LinkCache
-    {   linkCacheDependencyDigests :: Map FilePath MD5Digest
-    ,   linkCachePackageDependencies :: Set String
-    ,   linkCacheAdditionalOptions :: [String]
-    ,   linkCacheProgramDigest :: MD5Digest
-    } deriving Typeable; $( derive makeBinary ''LinkCache )
--- @nonl
--- @-node:gcross.20101004145951.1471:LinkCache
 -- @+node:gcross.20100927123234.1437:PackageDatabase
 data PackageDatabase = PackageDatabase
     {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackage
@@ -194,6 +187,8 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentKnownModules :: KnownModules
     ,   buildEnvironmentCompileOptions :: [String]
     ,   buildEnvironmentLinkOptions :: [String]
+    ,   buildEnvironmentInterfaceDirectory :: FilePath
+    ,   buildEnvironmentObjectDirectory :: FilePath
     }
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
 -- @-node:gcross.20100927123234.1433:Types
@@ -324,82 +319,24 @@ compileToObject
     interface_filepath
     object_filepath
     HaskellSource{..}
-  = onceAndCached my_uuid
+  = once my_uuid
+    .
+    fmap postProcess
     $
-    \cache → do
-        ( imported_modules
-         ,package_dependencies
-         ,haskell_object_dependencies
-         ,dependency_digests
-         ,interface_digest
-         ,object_digest
-         ) ← case cache of
-            Just CompileCache{..} | haskellSourceDigest == compileCacheSourceDigest → do
-                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve compileCacheImportedModules
-                let buildIt = build package_dependencies
-                (interface_digest,object_digest) ←
-                    fmap toT $
-                    if (compileCacheDependencyDigests /= dependency_digests) ||
-                       (compileCacheAdditionalOptions /= additional_options)
-                        then buildIt
-                        else do
-                            maybe_digests ←
-                                fmap sequence
-                                .
-                                traverse digestFileIfExists
-                                .
-                                fromT
-                                $
-                                (interface_filepath,object_filepath)
-                            case maybe_digests of
-                                Just digests
-                                  | digests == compileCacheInterfaceDigest :. compileCacheObjectDigest :. E
-                                    → return digests
-                                _ → buildIt
-                return
-                    (compileCacheImportedModules
-                    ,package_dependencies
-                    ,haskell_object_dependencies
-                    ,dependency_digests
-                    ,interface_digest
-                    ,object_digest
-                    )
-            Nothing → do
-                imported_modules ← scan
-                (package_dependencies,dependency_digests,haskell_object_dependencies) ← resolve imported_modules
-                (interface_digest,object_digest) ← fmap toT (build package_dependencies)
-                return
-                    (imported_modules
-                    ,package_dependencies
-                    ,haskell_object_dependencies
-                    ,dependency_digests
-                    ,interface_digest
-                    ,object_digest
-                    )
-        let (collected_object_dependencies,collected_package_dependencies) =
-                second (Set.union . Set.fromList $ package_dependencies)
-                .
-                collectAllLinkDependencies
-                $
-                haskell_object_dependencies
-        return
-            (Just $ CompileCache
-                haskellSourceDigest
-                imported_modules
-                dependency_digests
-                additional_options
-                interface_digest
-                object_digest
-            ,(HaskellInterface interface_filepath interface_digest
-             ,HaskellObject object_filepath object_digest collected_object_dependencies collected_package_dependencies
-             )
-            )
+    runIfImplicitDependencyOrProductHasChanged
+        my_uuid
+        haskellSourceDigest
+        scan
+        computeDependency
+        productHasChangedFrom
+        build
   where
     my_uuid =
         inNamespace
             (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
             (haskellSourceFilePath ++ interface_filepath ++ object_filepath)
 
+    scan :: Job [String]
     scan =
         fmap extractImportedModulesFromHaskellSource
         .
@@ -409,8 +346,17 @@ compileToObject
         $
         haskellSourceFilePath
 
+    productHasChangedFrom :: TaggedList Two MD5Digest → Job Bool
+    productHasChangedFrom old_digests =
+        fmap ((== Just old_digests) . sequence)
+        .
+        traverse digestFileIfExists
+        .
+        fromT
+        $
+        (interface_filepath,object_filepath)
 
-    resolve imported_modules = do
+    computeDependency imported_modules = do
         (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
             resolveModuleDependencies
                 package_database
@@ -422,16 +368,25 @@ compileToObject
                 map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
                 $
                 haskell_interface_dependencies
-        return (package_dependencies,dependency_digests,haskell_object_dependencies)
+            (collected_object_dependencies,collected_package_dependencies) =
+                second (Set.union . Set.fromList $ package_dependencies)
+                .
+                collectAllLinkDependencies
+                $
+                haskell_object_dependencies
+        return
+            ((package_dependencies,dependency_digests,additional_options)
+            ,(collected_object_dependencies,collected_package_dependencies)
+            )
 
-    build package_dependency_names = do
+    build (package_dependencies,_,_) = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
         let ghc_arguments =
                  "-c":haskellSourceFilePath
                 :"-o":object_filepath
                 :"-ohi":interface_filepath
                 :
-                concatMap (("-package":) . (:[])) package_dependency_names
+                concatMap (("-package":) . (:[])) package_dependencies
                 ++
                 additional_options
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
@@ -439,6 +394,17 @@ compileToObject
             (object_filepath :. interface_filepath :. E)
             path_to_ghc
             ghc_arguments
+
+    postProcess ::
+        (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Set String)) →
+        (HaskellInterface,HaskellObject)
+    postProcess
+        ((interface_digest :. object_digest :. E)
+        ,(object_dependencies,package_dependencies)
+        )
+      = (HaskellInterface interface_filepath interface_digest
+        ,HaskellObject object_filepath object_digest object_dependencies package_dependencies
+        )
 -- @-node:gcross.20100927222551.1451:compileToObject
 -- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 compileToObjectUsingBuildEnvironment ::
@@ -463,6 +429,7 @@ computeBuildEnvironment ::
     [String] →
     [String] →
     FilePath →
+    FilePath →
     BuildEnvironment
 computeBuildEnvironment
     GHCEnvironment{..}
@@ -472,6 +439,7 @@ computeBuildEnvironment
     additional_compile_options
     additional_link_options
     interface_directory
+    object_directory
     =
     BuildEnvironment
     {   buildEnvironmentGHC = ghcEnvironmentGHC
@@ -483,9 +451,11 @@ computeBuildEnvironment
                 )
     ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
     ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
+    ,   buildEnvironmentInterfaceDirectory = interface_directory
+    ,   buildEnvironmentObjectDirectory = object_directory
     }
   where
-    build_for_package_options = 
+    build_for_package_options =
         case build_target_type of
             LibraryTarget → ["-package-name",display package]
             _ → []
@@ -681,6 +651,44 @@ constructPackageDatabaseFromInstalledPackages =
             ]
         )
 -- @-node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
+-- @+node:gcross.20101006110010.1483:createCompilationJobsForModules
+createCompilationJobsForModules ::
+    FilePath →
+    PackageDatabase →
+    KnownModules →
+    [String] →
+    FilePath →
+    FilePath →
+    Map String (Job HaskellSource) →
+    (Map String (Job (HaskellInterface,HaskellObject)),KnownModules)
+createCompilationJobsForModules
+    path_to_ghc
+    package_database
+    known_modules
+    additional_options
+    interface_directory
+    object_directory
+    module_sources
+  = (jobs,new_known_modules)
+  where
+    jobs = Map.mapWithKey
+        (\module_name module_source_job →
+            module_source_job
+            >>=
+            compileToObject 
+                path_to_ghc
+                package_database
+                new_known_modules
+                additional_options
+                (interface_directory </> module_name <.> "hi")
+                (object_directory </> module_name <.> "o")
+        ) module_sources
+
+    new_known_modules =
+        Map.union
+            (Map.map KnownModuleInProject jobs)
+            known_modules
+-- @-node:gcross.20101006110010.1483:createCompilationJobsForModules
 -- @+node:gcross.20100927123234.1456:determineGHCVersion
 determineGHCVersion :: FilePath → IO Version
 determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
@@ -737,23 +745,15 @@ linkProgram
     additional_options
     haskell_objects
     program_filepath
-  = onceAndCached my_uuid
+  = once my_uuid
+    .
+    fmap (Program program_filepath)
     $
-    \maybe_cache →
-        case maybe_cache of
-            Just cache@LinkCache{..}
-              | linkCacheAdditionalOptions == additional_options
-              , linkCacheDependencyDigests == dependency_digests
-              , linkCachePackageDependencies == package_dependencies
-              → do  maybe_digest ← digestFileIfExists program_filepath
-                    case maybe_digest of
-                        Just digest | digest == linkCacheProgramDigest →
-                            return
-                                (Just cache
-                                ,Program program_filepath digest
-                                )
-                        _ → build
-            _ → build
+    runIfDependencyOrProductHasChanged
+        my_uuid
+        (additional_options,dependency_digests,package_dependencies)
+        (\old_digest → fmap (/= Just old_digest) (digestFileIfExists program_filepath))
+        build
   where
     my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
     (haskell_object_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
@@ -769,20 +769,11 @@ linkProgram
     build = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Linking program " ++ program_filepath
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
-        program_digest ←
-            fmap toT $
+        fmap toT $
             runProductionCommandAndDigestOutputs
                 (program_filepath :. E)
                 path_to_ghc
                 ghc_arguments
-        return $
-            (Just $ LinkCache
-                        dependency_digests
-                        package_dependencies
-                        additional_options
-                        program_digest
-            ,Program program_filepath program_digest
-            )
 -- @-node:gcross.20101004145951.1467:linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
@@ -872,6 +863,61 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
                     Map.lookup module_name packageDatabaseIndexedByModuleName
         ) module_names
 -- @-node:gcross.20100928173417.1463:resolveModuleDependencies
+-- @+node:gcross.20101006110010.1481:scanForModulesIn
+scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
+scanForModulesIn = scanForModulesWithParentIn Nothing
+-- @-node:gcross.20101006110010.1481:scanForModulesIn
+-- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
+scanForModulesWithParentIn ::
+    Maybe String →
+    FilePath →
+    Job (Map String (Job HaskellSource))
+scanForModulesWithParentIn maybe_parent root =
+    liftIO (getDirectoryContents root)
+    >>=
+    fmap Map.unions
+    .
+    sequenceA
+    .
+    map (\entry → do
+        let filepath = root </> entry
+        is_directory ← liftIO (doesDirectoryExist entry)
+        case is_directory of
+            True →
+                scanForModulesWithParentIn
+                    (Just . appendToParent $ entry)
+                    filepath
+            _ | takeExtension entry == ".hs" →
+                return
+                $
+                Map.singleton
+                    (appendToParent . dropExtension $ entry)
+                    (once (inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792") filepath) $
+                        fmap (HaskellSource filepath) (digestFile filepath)
+                    )
+            _ → return
+                $
+                Map.empty
+    )
+  where
+    appendToParent child = maybe child (<.> child) maybe_parent
+-- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
+-- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
+updateBuildEnvironmentToIncludeModules ::
+    BuildEnvironment →
+    Map String (Job HaskellSource) →
+    (Map String (Job (HaskellInterface,HaskellObject)),BuildEnvironment)
+updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
+  = second (\new_known_modules → build_environment { buildEnvironmentKnownModules = new_known_modules })
+    .
+    createCompilationJobsForModules
+        (pathToGHC buildEnvironmentGHC)
+        buildEnvironmentPackageDatabase
+        buildEnvironmentKnownModules
+        buildEnvironmentCompileOptions
+        buildEnvironmentInterfaceDirectory
+        buildEnvironmentObjectDirectory
+-- @-node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 -- @-node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20100927123234.1432:Options
 ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"

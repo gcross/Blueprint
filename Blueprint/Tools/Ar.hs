@@ -28,6 +28,7 @@ import Data.Typeable
 
 import System.Log.Logger
 
+import Blueprint.Cache
 import Blueprint.Configuration
 import Blueprint.Job
 import Blueprint.Miscellaneous
@@ -50,14 +51,6 @@ data Archive = Archive
     ,   archiveDigest :: MD5Digest
     } deriving Typeable
 -- @-node:gcross.20101005122519.1484:Archive
--- @+node:gcross.20101005122519.1486:ArchiveCache
-data ArchiveCache = ArchiveCache
-    {   archiveCacheObjectDigests :: Map FilePath MD5Digest
-    ,   archiveCacheAdditionalOptions :: [String]
-    ,   archiveCacheArchiveDigest :: MD5Digest
-    } deriving Typeable; $( derive makeBinary ''ArchiveCache )
--- @nonl
--- @-node:gcross.20101005122519.1486:ArchiveCache
 -- @-node:gcross.20101005122519.1483:Types
 -- @+node:gcross.20101005114926.1475:Functions
 -- @+node:gcross.20101005114926.1477:makeArchive
@@ -70,22 +63,15 @@ makeArchive
     ProgramConfiguration{..}
     object_digests
     archive_filepath
-  = onceAndCached my_uuid
+  = once my_uuid
+    .
+    fmap (Archive archive_filepath)
     $
-    \maybe_cache →
-        case maybe_cache of
-            Just cache@ArchiveCache{..}
-              | archiveCacheAdditionalOptions == programExtraArguments
-              , archiveCacheObjectDigests == object_digests
-              → do  maybe_digest ← digestFileIfExists archive_filepath
-                    case maybe_digest of
-                        Just digest | digest == archiveCacheArchiveDigest →
-                            return
-                                (Just cache
-                                ,Archive archive_filepath digest
-                                )
-                        _ → build
-            _ → build
+    runIfDependencyOrProductHasChanged
+        my_uuid
+        (programExtraArguments,object_digests)
+        (\old_digest → fmap (/= Just old_digest) (digestFileIfExists archive_filepath))
+        build
   where
     my_uuid = inNamespace (uuid "5a0923aa-3580-4b71-8a73-c187eced95b3") archive_filepath
 
@@ -95,19 +81,11 @@ makeArchive
             "(Ar) Creating archive " ++ archive_filepath
         liftIO . infoM "Blueprint.Tools.Ar" $
             "(Ar) Executing '" ++ (unwords (programFilePath:ar_arguments)) ++ "'"
-        archive_digest ←
-            fmap toT $
+        fmap toT $
             runProductionCommandAndDigestOutputs
                 (archive_filepath :. E)
                 programFilePath
                 ar_arguments
-        return $
-            (Just $ ArchiveCache
-                        object_digests
-                        programExtraArguments
-                        archive_digest
-            ,Archive archive_filepath archive_digest
-            )
 -- @-node:gcross.20101005114926.1477:makeArchive
 -- @-node:gcross.20101005114926.1475:Functions
 -- @-others

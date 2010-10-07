@@ -20,56 +20,77 @@ import Blueprint.Job
 
 -- @+others
 -- @+node:gcross.20100925114718.1304:Functions
--- @+node:gcross.20100925114718.1310:runAndFlagUnlessUnchanged
-runAndFlagUnlessUnchanged :: (Binary α, Eq α, Binary β) ⇒ UUID → α → Job β → Job (β,Bool)
-runAndFlagUnlessUnchanged uuid current_value job =
-    cache uuid $ \maybe_old_value →
-        case maybe_old_value of
-            Just (old_value,cached_job_result) | old_value == current_value →
-                return (Just (current_value,cached_job_result),(cached_job_result,False))
-            _ → do
-                job_result ← job
-                return (Just (current_value,job_result),(job_result,True))
--- @-node:gcross.20100925114718.1310:runAndFlagUnlessUnchanged
--- @+node:gcross.20100927222551.1457:runUnlessUnchanged
-runUnlessUnchanged :: (Binary α, Eq α, Binary β) ⇒ UUID → α → Job β → Job β
-runUnlessUnchanged uuid current_value job = fmap fst (runAndFlagUnlessUnchanged uuid current_value job)
--- @-node:gcross.20100927222551.1457:runUnlessUnchanged
--- @+node:gcross.20100927222551.1470:storeInCache
-storeInCache :: (Binary α, Eq α) ⇒ UUID → α → Job ()
-storeInCache uuid value = cache uuid . const . return $ (Just value,())
--- @-node:gcross.20100927222551.1470:storeInCache
--- @+node:gcross.20100927222551.1465:updateAndFlagUnlessUnchanged
-updateAndFlagUnlessUnchanged :: (Binary α, Eq α) ⇒ UUID → α → Job α → Job (α,Bool)
-updateAndFlagUnlessUnchanged uuid current_value job =
-    cache uuid $ \maybe_old_value →
-        case maybe_old_value of
-            Just old_value | old_value == current_value →
-                return (Just old_value,(old_value,False))
-            _ → do
-                new_value ← job
-                return (Just new_value,(new_value,True))
--- @-node:gcross.20100927222551.1465:updateAndFlagUnlessUnchanged
--- @+node:gcross.20100927222551.1469:updateUnlessUnchanged
-updateUnlessUnchanged :: (Binary α, Eq α) ⇒ UUID → α → Job α → Job α
-updateUnlessUnchanged uuid current_value job = fmap fst (updateAndFlagUnlessUnchanged uuid current_value job)
--- @-node:gcross.20100927222551.1469:updateUnlessUnchanged
--- @+node:gcross.20100929125042.1467:refreashIfChangedOrAbsentOrForced
-refreashIfChangedOrAbsentOrForced :: (Binary α, Eq α) ⇒ UUID → Job α → Job (Maybe α) → Bool → Job α
-refreashIfChangedOrAbsentOrForced uuid job check forced =
-    if forced
-        then runJobAndStore
-        else do
-            maybe_result ← check
-            case maybe_result of
-                Nothing → runJobAndStore
-                Just result → updateUnlessUnchanged uuid result job
+-- @+node:gcross.20100925114718.1310:runIfDependencyOrProductHasChanged
+runIfDependencyOrProductHasChanged ::
+    (Binary α, Eq α, Binary β) ⇒
+    UUID →
+    α →
+    (β → Job Bool) →
+    Job β →
+    Job β
+runIfDependencyOrProductHasChanged uuid dependency productHasChangedFrom run =
+    cache uuid $ \maybe_cache →
+        case maybe_cache of
+            Just (old_dependency,old_product) | old_dependency == dependency → do
+                product_has_changed ← productHasChangedFrom old_product
+                if product_has_changed
+                    then runIt
+                    else return (Just (dependency,old_product),old_product)
+            _ → runIt
   where
-    runJobAndStore = do
-        result ← job
-        storeInCache uuid result
-        return result
--- @-node:gcross.20100929125042.1467:refreashIfChangedOrAbsentOrForced
+    runIt = do
+        product ← run
+        return (Just (dependency,product),product)
+-- @-node:gcross.20100925114718.1310:runIfDependencyOrProductHasChanged
+-- @+node:gcross.20101005122519.1494:runIfImplicitDependenciesOrProductHasChanged
+runIfImplicitDependencyOrProductHasChanged ::
+    (Binary α, Eq α, Binary β, Eq β, Eq ɣ, Binary ɣ, Binary δ) ⇒
+    UUID →
+    α →
+    Job β →
+    (β → Job (ɣ,n)) →
+    (δ → Job Bool) →
+    (ɣ → Job δ) →
+    Job (δ,n)
+runIfImplicitDependencyOrProductHasChanged
+    uuid
+    scan_dependency
+    scan
+    computeDependency
+    productHasChangedFrom
+    run
+  = cache uuid $ \maybe_cache →
+        case maybe_cache of
+            Just (old_scan_dependency
+                 ,old_scan_result
+                 ,old_dependency
+                 ,old_product
+                 ) | old_scan_dependency == scan_dependency → do
+                (dependency,miscellaneous) ← computeDependency old_scan_result
+                if old_dependency == dependency
+                    then do
+                        product_has_changed ← productHasChangedFrom old_product
+                        if product_has_changed
+                            then runIt old_scan_result dependency miscellaneous
+                            else return (maybe_cache,(old_product,miscellaneous))
+                    else runIt old_scan_result dependency miscellaneous
+            _ → do
+                scan_result ← scan
+                (dependency,miscellaneous) ← computeDependency scan_result
+                runIt scan_result dependency miscellaneous
+  where
+    runIt scan_result dependency miscellaneous = do
+        product ← run dependency
+        return 
+            (Just
+                (scan_dependency
+                ,scan_result
+                ,dependency
+                ,product
+                )
+            ,(product,miscellaneous)
+            )
+-- @-node:gcross.20101005122519.1494:runIfImplicitDependenciesOrProductHasChanged
 -- @-node:gcross.20100925114718.1304:Functions
 -- @-others
 -- @-node:gcross.20100925114718.1301:@thin Cache.hs
