@@ -128,6 +128,16 @@ data HaskellInterface = HaskellInterface
     ,   haskellInterfaceDigest :: MD5Digest
     } deriving Typeable
 -- @-node:gcross.20100927222551.1428:HaskellInterface
+-- @+node:gcross.20101009103525.1724:HaskellModule
+data HaskellModule = HaskellModule
+    {   haskellModuleInterface :: HaskellInterface
+    ,   haskellModuleObject :: HaskellObject
+    } deriving Typeable
+-- @-node:gcross.20101009103525.1724:HaskellModule
+-- @+node:gcross.20101009103525.1725:HaskellModuleJobs
+type HaskellModuleJobs = Map String (Job HaskellModule)
+-- @nonl
+-- @-node:gcross.20101009103525.1725:HaskellModuleJobs
 -- @+node:gcross.20100927222551.1430:HaskellObject
 data HaskellObject = HaskellObject
     {   haskellObjectFilePath :: FilePath
@@ -157,7 +167,7 @@ $( derive makeBinary ''InstalledPackage )
 -- @+node:gcross.20100927222551.1434:KnownModule
 data KnownModule =
     KnownModuleInExternalPackage String
-  | KnownModuleInProject (Job (HaskellInterface,HaskellObject))
+  | KnownModuleInProject (Job HaskellModule)
 -- @-node:gcross.20100927222551.1434:KnownModule
 -- @+node:gcross.20100927222551.1436:KnownModules
 type KnownModules = Map String KnownModule
@@ -322,7 +332,7 @@ compileToObject ::
     FilePath →
     FilePath →
     HaskellSource →
-    Job (HaskellInterface,HaskellObject)
+    Job HaskellModule
 compileToObject
     path_to_ghc
     package_database
@@ -409,14 +419,14 @@ compileToObject
 
     postProcess ::
         (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Set String)) →
-        (HaskellInterface,HaskellObject)
+        HaskellModule
     postProcess
         ((interface_digest :. object_digest :. E)
         ,(object_dependencies,package_dependencies)
         )
-      = (HaskellInterface interface_filepath interface_digest
-        ,HaskellObject object_filepath object_digest object_dependencies package_dependencies
-        )
+      = HaskellModule
+            (HaskellInterface interface_filepath interface_digest)
+            (HaskellObject object_filepath object_digest object_dependencies package_dependencies)
 -- @-node:gcross.20100927222551.1451:compileToObject
 -- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 compileToObjectUsingBuildEnvironment ::
@@ -424,7 +434,7 @@ compileToObjectUsingBuildEnvironment ::
     FilePath →
     FilePath →
     HaskellSource →
-    Job (HaskellInterface,HaskellObject)
+    Job HaskellModule
 compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
     compileToObject
         (pathToGHC buildEnvironmentGHC)
@@ -437,7 +447,7 @@ compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
 computeBuildEnvironments ::
     GHCEnvironment →
     PackageDescription →
-    Map String (Job (HaskellInterface,HaskellObject)) →
+    HaskellModuleJobs →
     [String] →
     [String] →
     FilePath →
@@ -485,6 +495,7 @@ computeBuildEnvironments
     compile_options = interface_directory_option:additional_compile_options
     link_options = interface_directory_option:additional_link_options
     package_name = display package
+-- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironments
 -- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
 collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Set String)
@@ -680,7 +691,7 @@ createCompilationJobsForModules ::
     FilePath →
     FilePath →
     Map String (Job HaskellSource) →
-    (Map String (Job (HaskellInterface,HaskellObject)),KnownModules)
+    (HaskellModuleJobs,KnownModules)
 createCompilationJobsForModules
     path_to_ghc
     package_database
@@ -708,6 +719,7 @@ createCompilationJobsForModules
         Map.union
             (Map.map KnownModuleInProject jobs)
             known_modules
+-- @nonl
 -- @-node:gcross.20101006110010.1483:createCompilationJobsForModules
 -- @+node:gcross.20100927123234.1456:determineGHCVersion
 determineGHCVersion :: FilePath → IO Version
@@ -864,8 +876,13 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
     case partitionEithers resolved_modules of
         ([],resolutions) → do
             let (package_names,jobs) = partitionEithers resolutions
-            (haskell_interfaces,haskell_objctes) ← fmap unzip (sequenceA jobs)
-            return (package_names,haskell_interfaces,haskell_objctes)
+            (haskell_interfaces,haskell_objects) ←
+                fmap (
+                    unzip
+                    .
+                    map (haskellModuleInterface &&& haskellModuleObject)
+                ) (sequenceA jobs)
+            return (package_names,haskell_interfaces,haskell_objects)
         (unknown_modules,_) → liftIO . throwIO . UnknownModulesException $ unknown_modules
   where
     resolved_modules =
@@ -926,7 +943,7 @@ scanForModulesWithParentIn maybe_parent root =
 updateBuildEnvironmentToIncludeModules ::
     BuildEnvironment α →
     Map String (Job HaskellSource) →
-    (Map String (Job (HaskellInterface,HaskellObject)),BuildEnvironment α)
+    (HaskellModuleJobs,BuildEnvironment α)
 updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
   = second (\new_known_modules → build_environment { buildEnvironmentKnownModules = new_known_modules })
     .
@@ -937,6 +954,7 @@ updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
         buildEnvironmentCompileOptions
         buildEnvironmentInterfaceDirectory
         buildEnvironmentObjectDirectory
+-- @nonl
 -- @-node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 -- @-node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20100927123234.1432:Options
