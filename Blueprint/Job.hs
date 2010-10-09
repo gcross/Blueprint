@@ -159,19 +159,36 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                 io
             >>=
             nestedRunJob . computeNextJob
-        Fork jf jx computeNextJob → do
-            x_or_error ← case jx of
-                    Result x → return (Right x)
-                    _ → do
+        Fork unsimplified_jf unsimplified_jx computeNextJob → do
+            let computeAndRunNextJob = nestedRunJob . computeNextJob
+            jf ← simplify unsimplified_jf
+            jx ← simplify unsimplified_jx
+            case (jf,jx) of
+                (Result f,Result x) → computeAndRunNextJob (f x)
+                (Result f,_) → do
+                    x_or_error ← nestedRunJob jx
+                    case x_or_error of
+                        Left errors → return (Left errors)
+                        Right x → computeAndRunNextJob (f x)
+                (_,Result x) → do
+                    f_or_error ← nestedRunJob jf
+                    case f_or_error of
+                        Left errors → return (Left errors)
+                        Right f → computeAndRunNextJob (f x)
+                (Errors errors1, Errors errors2) → return . Left $ Map.union errors1 errors2
+                (Errors errors, _) → return . Left $ errors
+                (_, Errors errors) → return . Left $ errors
+                _ → do
+                    x_or_error ← do
                         x_ivar ← IVar.new
-                        forkIO $ nestedRunJob jx >>= IVar.write x_ivar
+                        forkIO $ nestedRunJob jx >>= evaluate >>= IVar.write x_ivar
                         return (IVar.read x_ivar)
-            f_or_error ← nestedRunJob jf >>= evaluate
-            case (f_or_error, x_or_error) of
-                (Right f, Right x) → nestedRunJob . computeNextJob . f $ x
-                (Left errors, Right _) → return . Left $ errors
-                (Right _, Left errors) → return . Left $ errors
-                (Left errors1, Left errors2) → return . Left $ Map.union errors1 errors2
+                    f_or_error ← nestedRunJob jf >>= evaluate
+                    case (f_or_error, x_or_error) of
+                        (Right f, Right x) → computeAndRunNextJob (f x)
+                        (Left errors1, Left errors2) → return . Left $ Map.union errors1 errors2
+                        (Left errors, _) → return . Left $ errors
+                        (_, Left errors) → return . Left $ errors
         Errors errors → return (Left errors)
         Once uuid job computeNextJob → do
             result_ivar ← IVar.new
@@ -220,6 +237,15 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
     ) `catch` (return . Left . (\e → Map.singleton (show e) e))
   where
     nestedRunJob = runJobInEnvironment job_environment
+
+    simplify :: Job α → IO (Job α)
+    simplify job@(Once uuid _ computeNextJob) = do
+        completed_jobs ← readIORef environmentCompletedJobs
+        case Map.lookup uuid completed_jobs of
+            Nothing → return job
+            Just result → simplify . computeNextJob . fromJust . fromDynamic $ result
+    simplify job = return job
+
 -- @-node:gcross.20100925004153.1307:runJobInEnvironment
 -- @+node:gcross.20101007134409.1483:runJobUsingCacheFile
 runJobUsingCacheFile :: Int → FilePath → Job α → IO (Either JobError α)
