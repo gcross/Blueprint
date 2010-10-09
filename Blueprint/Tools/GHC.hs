@@ -166,7 +166,7 @@ $( derive makeBinary ''InstalledPackage )
 -- @-node:gcross.20100927123234.1435:InstalledPackage
 -- @+node:gcross.20100927222551.1434:KnownModule
 data KnownModule =
-    KnownModuleInExternalPackage String
+    KnownModuleInExternalPackage InstalledPackage
   | KnownModuleInProject (Job HaskellModule)
 -- @-node:gcross.20100927222551.1434:KnownModule
 -- @+node:gcross.20100927222551.1436:KnownModules
@@ -384,31 +384,33 @@ compileToObject
                 package_database
                 known_modules
                 imported_modules
-        let dependency_digests =
+        let package_digests =
+                Map.fromList
+                .
+                map (installedPackageQualifiedName &&& installedPackageId)
+                $
+                package_dependencies
+            dependency_digests =
                 Map.fromList
                 .
                 map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
                 $
                 haskell_interface_dependencies
             (collected_object_dependencies,collected_package_dependencies) =
-                second (Set.union . Set.fromList $ package_dependencies)
-                .
-                collectAllLinkDependencies
-                $
-                haskell_object_dependencies
+                collectAllLinkDependencies haskell_object_dependencies
         return
-            ((package_dependencies,dependency_digests,additional_options)
+            ((package_digests,dependency_digests,additional_options)
             ,(collected_object_dependencies,collected_package_dependencies)
             )
 
-    build (package_dependencies,_,_) = do
+    build (package_digests,_,_) = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
         let ghc_arguments =
                  "-c":haskellSourceFilePath
                 :"-o":object_filepath
                 :"-ohi":interface_filepath
                 :
-                concatMap (("-package":) . (:[])) package_dependencies
+                (concatMap (("-package":) . (:[])) . Map.keys $ package_digests)
                 ++
                 additional_options
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
@@ -418,7 +420,7 @@ compileToObject
             ghc_arguments
 
     postProcess ::
-        (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Set String)) →
+        (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Map String InstalledPackage)) →
         HaskellModule
     postProcess
         ((interface_digest :. object_digest :. E)
@@ -498,12 +500,16 @@ computeBuildEnvironments
 -- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironments
 -- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
-collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Set String)
+collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Map String InstalledPackage)
 collectAllLinkDependencies haskell_objects =
     (Map.union
         (Map.fromList . map (haskellObjectFilePath &&& id) $ haskell_objects)
         (Map.unions . map haskellObjectLinkDependencyObjects $ haskell_objects)
-    ,Set.unions . map haskellObjectLinkDependencyPackages $ haskell_objects
+    ,Map.unions
+        .
+        map haskellObjectLinkDependencyPackages
+        $
+        haskell_objects
     )
 -- @-node:gcross.20100929125042.1466:collectAllLinkDependencies
 -- @+node:gcross.20100927123234.1450:configureGHC
@@ -749,10 +755,10 @@ extractImportedModulesFromHaskellSource =
 -- @-node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
 -- @+node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
 extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
-extractKnownModulesFromInstalledPackage InstalledPackage{..} =
+extractKnownModulesFromInstalledPackage installed_package@InstalledPackage{..} =
     Map.fromList
     .
-    map (,KnownModuleInExternalPackage installedPackageQualifiedName)
+    map (,KnownModuleInExternalPackage installed_package)
     $
     installedPackageModules
 -- @-node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
@@ -783,17 +789,18 @@ linkProgram
     $
     runIfDependencyOrProductHasChanged
         my_uuid
-        (additional_options,dependency_digests,package_dependencies)
+        (additional_options,dependency_digests,package_digests)
         (\old_digest → fmap (/= Just old_digest) (digestFileIfExists program_filepath))
         build
   where
     my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
     (haskell_object_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
     dependency_digests = Map.map haskellObjectDigest haskell_object_dependencies
+    package_digests = Map.map installedPackageId package_dependencies
     ghc_arguments =
         Map.keys haskell_object_dependencies
         ++
-        concat [["-package",package_name] | package_name ← Set.elems package_dependencies]
+        concat [["-package",package_name] | package_name ← Map.keys package_dependencies]
         ++
         ["-o",program_filepath]
         ++
@@ -871,7 +878,7 @@ resolveModuleDependencies ::
     PackageDatabase →
     KnownModules →
     [String] →
-    Job ([String],[HaskellInterface],[HaskellObject])
+    Job ([InstalledPackage],[HaskellInterface],[HaskellObject])
 resolveModuleDependencies PackageDatabase{..} known_modules module_names =
     case partitionEithers resolved_modules of
         ([],resolutions) → do
