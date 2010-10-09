@@ -85,10 +85,6 @@ import Blueprint.Tools
 
 -- @+others
 -- @+node:gcross.20100927123234.1433:Types
--- @+node:gcross.20100927222551.1442:BuildTargetType
-data BuildTargetType = LibraryTarget | ExecutableTarget
-
--- @-node:gcross.20100927222551.1442:BuildTargetType
 -- @+node:gcross.20100929213846.1453:CompileCache
 data CompileCache = CompileCache
     {   compileCacheSourceDigest :: MD5Digest
@@ -191,6 +187,12 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentObjectDirectory :: FilePath
     }
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
+-- @+node:gcross.20101009103525.1720:BuildEnvironments
+data BuildEnvironments = BuildEnvironments
+    {   buildEnvironmentForLibrary :: BuildEnvironment
+    ,   buildEnvironmentForPrograms :: BuildEnvironment
+    }
+-- @-node:gcross.20101009103525.1720:BuildEnvironments
 -- @-node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20101005111309.1477:Exceptions
 -- @+node:gcross.20101005111309.1478:GHCConfigurationException
@@ -420,52 +422,59 @@ compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
         buildEnvironmentKnownModules
         buildEnvironmentCompileOptions
 -- @-node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
--- @+node:gcross.20100927222551.1438:computeBuildEnvironment
-computeBuildEnvironment ::
+-- @+node:gcross.20100927222551.1438:computeBuildEnvironments
+computeBuildEnvironments ::
     GHCEnvironment →
     PackageDescription →
-    BuildTargetType →
     Map String (Job (HaskellInterface,HaskellObject)) →
     [String] →
     [String] →
     FilePath →
     FilePath →
-    BuildEnvironment
-computeBuildEnvironment
+    BuildEnvironments
+computeBuildEnvironments
     GHCEnvironment{..}
     package_description@PackageDescription{..}
-    build_target_type
     built_modules
     additional_compile_options
     additional_link_options
     interface_directory
     object_directory
     =
-    BuildEnvironment
-    {   buildEnvironmentGHC = ghcEnvironmentGHC
-    ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
-    ,   buildEnvironmentKnownModules =
-            Map.unions
-                (Map.map KnownModuleInProject built_modules
-                :map extractKnownModulesFromInstalledPackage installed_package_dependencies
-                )
-    ,   buildEnvironmentCompileOptions = shared_options ++ additional_compile_options
-    ,   buildEnvironmentLinkOptions = shared_options ++ additional_link_options
-    ,   buildEnvironmentInterfaceDirectory = interface_directory
-    ,   buildEnvironmentObjectDirectory = object_directory
-    }
+    BuildEnvironments
+      ( BuildEnvironment
+        {   buildEnvironmentGHC = ghcEnvironmentGHC
+        ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
+        ,   buildEnvironmentKnownModules = known_modules
+        ,   buildEnvironmentCompileOptions = "-package-name":package_name:compile_options
+        ,   buildEnvironmentLinkOptions = "-package-name":package_name:link_options
+        ,   buildEnvironmentInterfaceDirectory = interface_directory </> "library"
+        ,   buildEnvironmentObjectDirectory = object_directory </> "library"
+        }
+      )
+      ( BuildEnvironment
+        {   buildEnvironmentGHC = ghcEnvironmentGHC
+        ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
+        ,   buildEnvironmentKnownModules = known_modules
+        ,   buildEnvironmentCompileOptions = compile_options
+        ,   buildEnvironmentLinkOptions = link_options
+        ,   buildEnvironmentInterfaceDirectory = interface_directory </> "program"
+        ,   buildEnvironmentObjectDirectory = object_directory </> "progam"
+        }
+      )
   where
-    build_for_package_options =
-        case build_target_type of
-            LibraryTarget → ["-package-name",display package]
-            _ → []
     installed_package_dependencies =
         map (fromJust . findSatisfyingPackage ghcEnvironmentPackageDatabase) buildDepends
-    shared_options =
-        ("-i" ++ interface_directory)
-        :
-        build_for_package_options
--- @-node:gcross.20100927222551.1438:computeBuildEnvironment
+    known_modules =
+        Map.unions
+            (Map.map KnownModuleInProject built_modules
+            :map extractKnownModulesFromInstalledPackage installed_package_dependencies
+            )
+    interface_directory_option = "-i" ++ interface_directory
+    compile_options = interface_directory_option:additional_compile_options
+    link_options = interface_directory_option:additional_link_options
+    package_name = display package
+-- @-node:gcross.20100927222551.1438:computeBuildEnvironments
 -- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
 collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Set String)
 collectAllLinkDependencies haskell_objects =
