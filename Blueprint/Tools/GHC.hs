@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100927123234.1429:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -96,6 +97,14 @@ data CompileCache = CompileCache
     } deriving Typeable; $( derive makeBinary ''CompileCache )
 -- @nonl
 -- @-node:gcross.20100929213846.1453:CompileCache
+-- @+node:gcross.20101009103525.1721:ForLibrary
+data ForLibrary
+-- @nonl
+-- @-node:gcross.20101009103525.1721:ForLibrary
+-- @+node:gcross.20101009103525.1723:ForPrograms
+data ForPrograms
+-- @nonl
+-- @-node:gcross.20101009103525.1723:ForPrograms
 -- @+node:gcross.20100927123234.1441:GHC
 data GHC = GHC
     {   ghcVersion :: Version
@@ -177,7 +186,7 @@ data GHCEnvironment = GHCEnvironment
 
 -- @-node:gcross.20100927123234.1443:GHCEnvironment
 -- @+node:gcross.20100927222551.1446:BuildEnvironment
-data BuildEnvironment = BuildEnvironment
+data BuildEnvironment α = BuildEnvironment
     {   buildEnvironmentGHC :: GHC
     ,   buildEnvironmentPackageDatabase :: PackageDatabase
     ,   buildEnvironmentKnownModules :: KnownModules
@@ -186,11 +195,12 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentInterfaceDirectory :: FilePath
     ,   buildEnvironmentObjectDirectory :: FilePath
     }
+-- @nonl
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
 -- @+node:gcross.20101009103525.1720:BuildEnvironments
 data BuildEnvironments = BuildEnvironments
-    {   buildEnvironmentForLibrary :: BuildEnvironment
-    ,   buildEnvironmentForPrograms :: BuildEnvironment
+    {   buildEnvironmentForLibrary :: BuildEnvironment ForLibrary
+    ,   buildEnvironmentForPrograms :: BuildEnvironment ForPrograms
     }
 -- @-node:gcross.20101009103525.1720:BuildEnvironments
 -- @-node:gcross.20100927123234.1433:Types
@@ -410,7 +420,7 @@ compileToObject
 -- @-node:gcross.20100927222551.1451:compileToObject
 -- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 compileToObjectUsingBuildEnvironment ::
-    BuildEnvironment →
+    BuildEnvironment α →
     FilePath →
     FilePath →
     HaskellSource →
@@ -421,6 +431,7 @@ compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
         buildEnvironmentPackageDatabase
         buildEnvironmentKnownModules
         buildEnvironmentCompileOptions
+-- @nonl
 -- @-node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 -- @+node:gcross.20100927222551.1438:computeBuildEnvironments
 computeBuildEnvironments ::
@@ -786,7 +797,7 @@ linkProgram
 -- @-node:gcross.20101004145951.1467:linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
-    BuildEnvironment →
+    BuildEnvironment ForPrograms →
     [HaskellObject] →
     FilePath →
     Job Program
@@ -913,9 +924,9 @@ scanForModulesWithParentIn maybe_parent root =
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
 -- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 updateBuildEnvironmentToIncludeModules ::
-    BuildEnvironment →
+    BuildEnvironment α →
     Map String (Job HaskellSource) →
-    (Map String (Job (HaskellInterface,HaskellObject)),BuildEnvironment)
+    (Map String (Job (HaskellInterface,HaskellObject)),BuildEnvironment α)
 updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
   = second (\new_known_modules → build_environment { buildEnvironmentKnownModules = new_known_modules })
     .
