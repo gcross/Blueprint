@@ -53,6 +53,7 @@ import Data.Typeable
 import qualified Distribution.Compiler as Compiler
 import Distribution.InstalledPackageInfo (InstalledPackageInfo)
 import qualified Distribution.InstalledPackageInfo as InstalledPackageInfo
+import qualified Distribution.ModuleName as ModuleName
 import Distribution.Package (InstalledPackageId(..))
 import qualified Distribution.Package as Package
 import Distribution.PackageDescription
@@ -134,7 +135,7 @@ data HaskellInterface = HaskellInterface
 data HaskellLibrary = HaskellLibrary
     {   haskellLibraryExposedModules :: Set String
     ,   haskellLibraryHiddenModules :: Set String
-    ,   haskellLibraryInterfaces :: [HaskellInterface]
+    ,   haskellLibraryInterfaces :: Map String HaskellInterface
     ,   haskellLibraryArchive :: Archive
     ,   haskellLibraryDigest :: MD5Digest
     ,   haskellLibraryDependencyPackages :: [InstalledPackage]
@@ -389,23 +390,33 @@ buildLibrary
   | otherwise
       = once (inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224") archive_filepath) $ do
             modules ← sequenceA project_module_jobs
-            let (interfaces,objects) = splitModules . Map.elems $ modules
-                (collected_objects,collected_packages) = collectAllLinkDependencies objects
+            let (collected_objects,collected_packages) =
+                    collectAllLinkDependencies
+                    .
+                    map haskellModuleObject
+                    .
+                    Map.elems
+                    $
+                    modules
                 collected_object_digests = Map.map haskellObjectDigest collected_objects
                 digest =
                     md5
                     .
-                    runPut
+                    encode
                     .
-                    mapM_ (put . haskellInterfaceDigest)
+                    Map.map (
+                        haskellInterfaceDigest
+                        .
+                        haskellModuleInterface
+                    )
                     $
-                    interfaces
+                    modules
             archive ← makeArchive ar_configuration collected_object_digests archive_filepath
             return $
                 HaskellLibrary
                 {   haskellLibraryExposedModules = exposed_module_names
                 ,   haskellLibraryHiddenModules = hidden_module_names
-                ,   haskellLibraryInterfaces = interfaces
+                ,   haskellLibraryInterfaces = Map.map haskellModuleInterface modules
                 ,   haskellLibraryArchive = archive
                 ,   haskellLibraryDigest = digest
                 ,   haskellLibraryDependencyPackages = Map.elems collected_packages
@@ -836,6 +847,10 @@ createCompilationJobsForModules
 determineGHCVersion :: FilePath → IO Version
 determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
 -- @-node:gcross.20100927123234.1456:determineGHCVersion
+-- @+node:gcross.20101009103525.1736:dotsToPath
+dotsToPath = map (\c → if c == '.' then pathSeparator else c)
+-- @nonl
+-- @-node:gcross.20101009103525.1736:dotsToPath
 -- @+node:gcross.20100927161850.1442:extractGHCOptions
 extractGHCOptions :: OptionValues → GHCOptions
 extractGHCOptions =
@@ -876,6 +891,67 @@ findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range
     >>=
     return . head . snd
 -- @-node:gcross.20100927222551.1449:findSatisfyingPackage
+-- @+node:gcross.20101009103525.1735:installPackage
+installPackage ::
+    FilePath →
+    PackageDescription →
+    HaskellLibrary →
+    FilePath →
+    Job InstalledPackageInfo
+installPackage path_to_ghc_pkg PackageDescription{..} HaskellLibrary{..} destination_directory = liftIO $ do
+    createDirectoryIfMissing True destination_directory
+    noticeM "Blueprint.Tools.Compilers.GHC" "(GHC) Installing package..."
+    forM_ (Map.assocs haskellLibraryInterfaces) $ \(module_name,HaskellInterface{..}) → do
+        let interface_destination = destination_directory </> dotsToPath module_name <.> "hi"
+        createDirectoryIfMissing True (takeDirectory interface_destination)
+        infoM "Blueprint.Tools.Compilers.GHC" $
+            ("(GHC) Copying " ++ haskellInterfaceFilePath ++ " -> " ++ interface_destination)
+        copyFile haskellInterfaceFilePath interface_destination
+    let archive_source = archiveFilePath haskellLibraryArchive
+        archive_destination = destination_directory </> library_name <.> (takeExtension archive_source)
+    infoM "Blueprint.Tools.Compilers.GHC" $
+        ("(GHC) Copying " ++ archive_source ++ " -> " ++ archive_destination)
+    copyFile archive_source archive_destination
+    runProductionCommand
+        path_to_ghc_pkg
+        ["register","––auto-ghci-libs","-"]
+        (show installed_package_info)
+    return installed_package_info
+  where
+    library_name = "HS" ++ display package
+    installed_package_info =
+        InstalledPackageInfo.InstalledPackageInfo
+        {   installedPackageId = InstalledPackageId (display package ++ "-" ++ show haskellLibraryDigest)
+        ,   sourcePackageId = package
+        ,   license = license
+        ,   copyright = copyright
+        ,   maintainer = maintainer
+        ,   author = author
+        ,   stability = stability
+        ,   homepage = homepage
+        ,   pkgUrl = pkgUrl
+        ,   description = description
+        ,   category = category
+        ,   exposed = True
+        ,   exposedModules = map ModuleName.fromString . Set.elems $ haskellLibraryExposedModules
+        ,   hiddenModules = map ModuleName.fromString . Set.elems $ haskellLibraryHiddenModules
+        ,   importDirs = [destination_directory]
+        ,   libraryDirs = [destination_directory]
+        ,   hsLibraries = [library_name]
+        ,   extraLibraries = []
+        ,   extraGHCiLibraries = []
+        ,   includeDirs = []
+        ,   includes = []
+        ,   depends = map installedPackageId haskellLibraryDependencyPackages
+        ,   hugsOptions = []
+        ,   ccOptions = []
+        ,   ldOptions = []
+        ,   frameworkDirs = []
+        ,   frameworks = []
+        ,   haddockInterfaces = []
+        ,   haddockHTMLs = []
+    }
+-- @-node:gcross.20101009103525.1735:installPackage
 -- @+node:gcross.20101004145951.1467:linkProgram
 linkProgram ::
     FilePath →

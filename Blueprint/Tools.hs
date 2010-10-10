@@ -80,6 +80,23 @@ digestFileIfExists file_to_digest = do
 digestFiles :: NaturalNumber n ⇒ TaggedList n FilePath → Job (TaggedList n MD5Digest)
 digestFiles = traverse digestFile
 -- @-node:gcross.20100927222551.1486:digestFiles
+-- @+node:gcross.20101009103525.1737:runProductionCommand
+runProductionCommand ::
+    MonadIO m ⇒
+    String →
+    [String] →
+    String →
+    m ()
+runProductionCommand command arguments input = liftIO $ do
+    (exit_code,_,output) ←
+        readProcessWithExitCode
+            command
+            arguments
+            input
+    when (exit_code /= ExitSuccess) . throwIO $
+        ProductionCommandFailed (unwords (command:arguments)) output
+-- @nonl
+-- @-node:gcross.20101009103525.1737:runProductionCommand
 -- @+node:gcross.20100927222551.1472:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     NaturalNumber n ⇒
@@ -95,18 +112,13 @@ runProductionCommandAndDigestOutputs
   do
     liftIO $ do
         T.mapM_ (createDirectoryIfMissing True . takeDirectory) $ mandatory_product_filepaths
-        (exit_code,_,output) ←
-            readProcessWithExitCode
-                command
-                arguments
-                ""
-        when (exit_code /= ExitSuccess) . throwIO $
-            ProductionCommandFailed (unwords (command:arguments)) output
+        runProductionCommand command arguments ""
         mandatory_products_not_existing ←
             filterM (fmap not . doesFileExist) (T.toList mandatory_product_filepaths)
         when (not . null $ mandatory_products_not_existing) . throwIO $
             FailedToProduceMandatoryOutputs mandatory_products_not_existing
     digestFiles mandatory_product_filepaths
+-- @nonl
 -- @-node:gcross.20100927222551.1472:runProductionCommandAndDigestOutputs
 -- @-node:gcross.20100925004153.1317:Functions
 -- @-others
