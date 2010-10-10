@@ -31,6 +31,7 @@ import Control.Monad.Trans.Goto
 
 import Data.Array
 import Data.Binary
+import Data.Binary.Put
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.UTF8 as LU
 import Data.DeriveTH
@@ -80,6 +81,7 @@ import Blueprint.Job
 import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Tools
+import Blueprint.Tools.Ar
 -- @nonl
 -- @-node:gcross.20100927123234.1430:<< Import needed modules >>
 -- @nl
@@ -128,6 +130,16 @@ data HaskellInterface = HaskellInterface
     ,   haskellInterfaceDigest :: MD5Digest
     } deriving Typeable
 -- @-node:gcross.20100927222551.1428:HaskellInterface
+-- @+node:gcross.20101009103525.1726:HaskellLibrary
+data HaskellLibrary = HaskellLibrary
+    {   haskellLibraryExposedModules :: Set String
+    ,   haskellLibraryHiddenModules :: Set String
+    ,   haskellLibraryInterfaces :: [HaskellInterface]
+    ,   haskellLibraryArchive :: Archive
+    ,   haskellLibraryDigest :: MD5Digest
+    ,   haskellLibraryDependencyPackages :: [InstalledPackage]
+    } deriving Typeable
+-- @-node:gcross.20101009103525.1726:HaskellLibrary
 -- @+node:gcross.20101009103525.1724:HaskellModule
 data HaskellModule = HaskellModule
     {   haskellModuleInterface :: HaskellInterface
@@ -138,12 +150,17 @@ data HaskellModule = HaskellModule
 type HaskellModuleJobs = Map String (Job HaskellModule)
 -- @nonl
 -- @-node:gcross.20101009103525.1725:HaskellModuleJobs
+-- @+node:gcross.20101009103525.1727:HaskellModules
+-- @+at
+--  data HaskellModules = Map String HaskellModule
+-- @-at
+-- @-node:gcross.20101009103525.1727:HaskellModules
 -- @+node:gcross.20100927222551.1430:HaskellObject
 data HaskellObject = HaskellObject
     {   haskellObjectFilePath :: FilePath
     ,   haskellObjectDigest :: MD5Digest
     ,   haskellObjectLinkDependencyObjects :: Map FilePath HaskellObject
-    ,   haskellObjectLinkDependencyPackages :: Set String
+    ,   haskellObjectLinkDependencyPackages :: Map String InstalledPackage
     } deriving Typeable
 -- @-node:gcross.20100927222551.1430:HaskellObject
 -- @+node:gcross.20100927222551.1452:HaskellSource
@@ -259,6 +276,38 @@ instance Show GHCConfigurationException where
 
 instance Exception GHCConfigurationException
 -- @-node:gcross.20101005111309.1478:GHCConfigurationException
+-- @+node:gcross.20101009103525.1730:ExposedAndHiddenModuleNamesConflict
+data ExposedAndHiddenModuleNamesConflict = ExposedAndHiddenModuleNamesConflict [String] deriving Typeable
+
+instance Show ExposedAndHiddenModuleNamesConflict where
+    show (ExposedAndHiddenModuleNamesConflict conflicting_module_names) =
+        unlines
+        .
+        ("The following modules were listed as being both exposed and hidden:":)
+        .
+        map ('\t':) -- '
+        $
+        conflicting_module_names
+
+instance Exception ExposedAndHiddenModuleNamesConflict
+-- @nonl
+-- @-node:gcross.20101009103525.1730:ExposedAndHiddenModuleNamesConflict
+-- @+node:gcross.20101009103525.1733:MissingModuleNames
+data MissingModuleNames = MissingModuleNames [String] deriving Typeable
+
+instance Show MissingModuleNames where
+    show (MissingModuleNames missing_module_names) =
+        unlines
+        .
+        ("The following module names are missing:":)
+        .
+        map ('\t':) -- '
+        $
+        missing_module_names
+
+instance Exception MissingModuleNames
+-- @nonl
+-- @-node:gcross.20101009103525.1733:MissingModuleNames
 -- @+node:gcross.20101005111309.1479:UnknownModulesException
 data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
 
@@ -319,6 +368,62 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @-node:gcross.20100927222551.1456:import_regex
 -- @-node:gcross.20100927123234.1459:Values
 -- @+node:gcross.20100927123234.1448:Functions
+-- @+node:gcross.20101009103525.1729:buildLibrary
+buildLibrary ::
+    BuildEnvironment ForLibrary →
+    ProgramConfiguration Ar →
+    Set String →
+    Set String →
+    FilePath →
+    Job HaskellLibrary
+buildLibrary
+    BuildEnvironment{..}
+    ar_configuration
+    exposed_module_names
+    hidden_module_names
+    archive_filepath
+  | not (Set.null conflicting_module_names)
+      = throw (ExposedAndHiddenModuleNamesConflict (Set.toList conflicting_module_names))
+  | not (Set.null missing_module_names)
+      = throw (MissingModuleNames (Set.toList missing_module_names))
+  | otherwise
+      = once (inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224") archive_filepath) $ do
+            modules ← sequenceA project_module_jobs
+            let (interfaces,objects) = splitModules . Map.elems $ modules
+                (collected_objects,collected_packages) = collectAllLinkDependencies objects
+                collected_object_digests = Map.map haskellObjectDigest collected_objects
+                digest =
+                    md5
+                    .
+                    runPut
+                    .
+                    mapM_ (put . haskellInterfaceDigest)
+                    $
+                    interfaces
+            archive ← makeArchive ar_configuration collected_object_digests archive_filepath
+            return $
+                HaskellLibrary
+                {   haskellLibraryExposedModules = exposed_module_names
+                ,   haskellLibraryHiddenModules = hidden_module_names
+                ,   haskellLibraryInterfaces = interfaces
+                ,   haskellLibraryArchive = archive
+                ,   haskellLibraryDigest = digest
+                ,   haskellLibraryDependencyPackages = Map.elems collected_packages
+                }
+  where
+    conflicting_module_names = Set.intersection exposed_module_names hidden_module_names
+    all_module_names = Set.union exposed_module_names hidden_module_names
+    project_module_jobs =
+        Map.mapMaybe
+            (\known_module →
+                case known_module of
+                    KnownModuleInProject module_job → Just module_job
+                    _ → Nothing
+            ) buildEnvironmentKnownModules
+    project_module_names = Map.keysSet project_module_jobs
+    missing_module_names = Set.difference project_module_names all_module_names
+-- @nonl
+-- @-node:gcross.20101009103525.1729:buildLibrary
 -- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
 checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
@@ -883,12 +988,7 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
     case partitionEithers resolved_modules of
         ([],resolutions) → do
             let (package_names,jobs) = partitionEithers resolutions
-            (haskell_interfaces,haskell_objects) ←
-                fmap (
-                    unzip
-                    .
-                    map (haskellModuleInterface &&& haskellModuleObject)
-                ) (sequenceA jobs)
+            (haskell_interfaces,haskell_objects) ← fmap splitModules (sequenceA jobs)
             return (package_names,haskell_interfaces,haskell_objects)
         (unknown_modules,_) → liftIO . throwIO . UnknownModulesException $ unknown_modules
   where
@@ -946,6 +1046,14 @@ scanForModulesWithParentIn maybe_parent root =
   where
     appendToParent child = maybe child (<.> child) maybe_parent
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
+-- @+node:gcross.20101009103525.1731:splitModules
+splitModules :: [HaskellModule] → ([HaskellInterface],[HaskellObject])
+splitModules =
+    unzip
+    .
+    map (haskellModuleInterface &&& haskellModuleObject)
+-- @nonl
+-- @-node:gcross.20101009103525.1731:splitModules
 -- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 updateBuildEnvironmentToIncludeModules ::
     BuildEnvironment α →
