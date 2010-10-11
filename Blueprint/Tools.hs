@@ -66,7 +66,18 @@ instance Exception ProductionError
 -- @+node:gcross.20100925004153.1317:Functions
 -- @+node:gcross.20100925004153.1318:digestFile
 digestFile :: FilePath → Job MD5Digest
-digestFile = liftIO . fmap hash . L.readFile
+digestFile filepath =
+    once (inMyNamespace filepath)
+    .
+    liftIO
+    .
+    fmap hash
+    .
+    L.readFile
+    $
+    filepath
+  where
+    inMyNamespace = inNamespace (uuid "50bdbf93-8a69-497a-9493-2eb1e9f87ee0")
 -- @-node:gcross.20100925004153.1318:digestFile
 -- @+node:gcross.20100927222551.1459:digestFileIfExists
 digestFileIfExists :: FilePath → Job (Maybe MD5Digest)
