@@ -137,12 +137,17 @@ data HaskellLibrary = HaskellLibrary
     ,   haskellLibraryArchive :: Archive
     ,   haskellLibraryDigest :: MD5Digest
     ,   haskellLibraryDependencyPackages :: [InstalledPackage]
+    ,   haskellLibraryIsExposed :: Bool
+    ,   haskellLibraryExposedModules :: [String]
     } deriving Typeable
 -- @-node:gcross.20101009103525.1726:HaskellLibrary
 -- @+node:gcross.20101009103525.1724:HaskellModule
 data HaskellModule = HaskellModule
-    {   haskellModuleInterface :: HaskellInterface
+    {   haskellModuleName :: String
+    ,   haskellModuleInterface :: HaskellInterface
     ,   haskellModuleObject :: HaskellObject
+    ,   haskellModuleLinkDependencyModules :: Map String HaskellModule
+    ,   haskellModuleLinkDependencyPackages :: Map String InstalledPackage
     } deriving Typeable
 -- @-node:gcross.20101009103525.1724:HaskellModule
 -- @+node:gcross.20101009103525.1725:HaskellModuleJobs
@@ -158,13 +163,12 @@ type HaskellModuleJobs = Map String (Job HaskellModule)
 data HaskellObject = HaskellObject
     {   haskellObjectFilePath :: FilePath
     ,   haskellObjectDigest :: MD5Digest
-    ,   haskellObjectLinkDependencyObjects :: Map FilePath HaskellObject
-    ,   haskellObjectLinkDependencyPackages :: Map String InstalledPackage
     } deriving Typeable
 -- @-node:gcross.20100927222551.1430:HaskellObject
 -- @+node:gcross.20100927222551.1452:HaskellSource
 data HaskellSource = HaskellSource
-    {   haskellSourceFilePath :: FilePath
+    {   haskellSourceModuleName :: String
+    ,   haskellSourceFilePath :: FilePath
     ,   haskellSourceDigest :: MD5Digest
     } deriving Typeable
 -- @-node:gcross.20100927222551.1452:HaskellSource
@@ -231,6 +235,31 @@ data BuildEnvironments = BuildEnvironments
 -- @-node:gcross.20101009103525.1720:BuildEnvironments
 -- @-node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20101005111309.1477:Exceptions
+-- @+node:gcross.20101010201506.1499:BadLibraryExportList
+data BadLibraryExportList = BadLibraryExportList [Either String String] deriving Typeable
+
+instance Show BadLibraryExportList where
+    show (BadLibraryExportList bad_exports) =
+        case unknown_modules of
+            [] → ""
+            _ → unlines
+                    ("The following modules in the exposed list are unknown:"
+                    :map ('\t':) unknown_modules -- '
+                    )
+                ++ "\n"
+        ++
+        case external_modules of
+            [] → ""
+            _ → unlines
+                    ("The following modules in the exposed list are external to the project:"
+                    :map ('\t':) external_modules -- '
+                    )
+                ++ "\n"
+      where
+        (unknown_modules,external_modules) = partitionEithers bad_exports
+
+instance Exception BadLibraryExportList
+-- @-node:gcross.20101010201506.1499:BadLibraryExportList
 -- @+node:gcross.20101005111309.1478:GHCConfigurationException
 data GHCConfigurationException =
     GHCVersionParseException FilePath String
@@ -366,39 +395,40 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 buildLibrary ::
     BuildEnvironment ForLibrary →
     ProgramConfiguration Ar →
+    Library →
     FilePath →
     Job HaskellLibrary
 buildLibrary
     BuildEnvironment{..}
     ar_configuration
+    Library{..}
     archive_filepath
     =
-    once (inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224") archive_filepath) $ do
-        modules ←
-            sequenceA
-            .
-            Map.mapMaybe (\known_module →
-                case known_module of
-                    KnownModuleInProject module_job → Just module_job
-                    _ → Nothing
-            )
-            $
-            buildEnvironmentKnownModules
-        let (collected_objects,collected_packages) =
-                collectAllLinkDependencies
+    once (inMyNamespace archive_filepath) $ do
+        let exposed_modules = map display exposedModules
+            (bad_exports,good_exports) =
+                partitionEithers
                 .
-                map haskellModuleObject
-                .
-                Map.elems
+                map (\module_name →
+                    case Map.lookup module_name buildEnvironmentKnownModules of
+                        Nothing → Left (Left module_name)
+                        Just (KnownModuleInExternalPackage _) → Left (Right module_name)
+                        Just (KnownModuleInProject job) → Right job
+                )
                 $
-                modules
-            collected_object_digests = Map.map haskellObjectDigest collected_objects
+                exposed_modules
+        when (not . null $ bad_exports) $
+            liftIO . throwIO . BadLibraryExportList $ bad_exports                
+        modules ← sequenceA good_exports
+        let (collected_modules,collected_packages) = collectAllLinkDependencies modules
+            collected_object_digests =
+                Map.map (haskellObjectDigest . haskellModuleObject) collected_modules
             digest =
                 md5
                 .
                 encode
                 .
-                Map.map (
+                map (
                     haskellInterfaceDigest
                     .
                     haskellModuleInterface
@@ -408,11 +438,15 @@ buildLibrary
         archive ← makeArchive ar_configuration collected_object_digests archive_filepath
         return $
             HaskellLibrary
-            {   haskellLibraryModuleInterfaces = Map.map haskellModuleInterface modules
+            {   haskellLibraryModuleInterfaces = Map.map haskellModuleInterface collected_modules
             ,   haskellLibraryArchive = archive
             ,   haskellLibraryDigest = digest
             ,   haskellLibraryDependencyPackages = Map.elems collected_packages
+            ,   haskellLibraryIsExposed = libExposed
+            ,   haskellLibraryExposedModules = exposed_modules
             }
+  where
+    inMyNamespace = inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
 -- @-node:gcross.20101009103525.1729:buildLibrary
 -- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
@@ -474,7 +508,7 @@ compileToObject
         (interface_filepath,object_filepath)
 
     computeDependency imported_modules = do
-        (package_dependencies,haskell_interface_dependencies,haskell_object_dependencies) ←
+        (haskell_module_dependencies,package_dependencies) ←
             resolveModuleDependencies
                 package_database
                 known_modules
@@ -489,13 +523,15 @@ compileToObject
                 Map.fromList
                 .
                 map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
+                .
+                map haskellModuleInterface
                 $
-                haskell_interface_dependencies
-            (collected_object_dependencies,collected_package_dependencies) =
-                collectAllLinkDependencies haskell_object_dependencies
+                haskell_module_dependencies
+            (collected_module_dependencies,collected_package_dependencies) =
+                collectAllLinkDependencies haskell_module_dependencies
         return
             ((package_digests,dependency_digests,additional_options)
-            ,(collected_object_dependencies,collected_package_dependencies)
+            ,(collected_module_dependencies,collected_package_dependencies)
             )
 
     build (package_digests,_,_) = do
@@ -515,15 +551,19 @@ compileToObject
             ghc_arguments
 
     postProcess ::
-        (TaggedList Two MD5Digest,(Map FilePath HaskellObject,Map String InstalledPackage)) →
+        (TaggedList Two MD5Digest,(Map String HaskellModule,Map String InstalledPackage)) →
         HaskellModule
     postProcess
         ((interface_digest :. object_digest :. E)
-        ,(object_dependencies,package_dependencies)
+        ,(module_dependencies,package_dependencies)
         )
       = HaskellModule
+            haskellSourceModuleName
             (HaskellInterface interface_filepath interface_digest)
-            (HaskellObject object_filepath object_digest object_dependencies package_dependencies)
+            (HaskellObject object_filepath object_digest)
+            module_dependencies
+            package_dependencies
+-- @nonl
 -- @-node:gcross.20100927222551.1451:compileToObject
 -- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
 compileToObjectUsingBuildEnvironment ::
@@ -595,16 +635,16 @@ computeBuildEnvironments
 -- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironments
 -- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
-collectAllLinkDependencies :: [HaskellObject] → (Map FilePath HaskellObject,Map String InstalledPackage)
-collectAllLinkDependencies haskell_objects =
+collectAllLinkDependencies :: [HaskellModule] → (Map String HaskellModule,Map String InstalledPackage)
+collectAllLinkDependencies haskell_modules =
     (Map.union
-        (Map.fromList . map (haskellObjectFilePath &&& id) $ haskell_objects)
-        (Map.unions . map haskellObjectLinkDependencyObjects $ haskell_objects)
+        (Map.fromList . map (haskellModuleName &&& id) $ haskell_modules)
+        (Map.unions . map haskellModuleLinkDependencyModules $ haskell_modules)
     ,Map.unions
         .
-        map haskellObjectLinkDependencyPackages
+        map haskellModuleLinkDependencyPackages
         $
-        haskell_objects
+        haskell_modules
     )
 -- @-node:gcross.20100929125042.1466:collectAllLinkDependencies
 -- @+node:gcross.20100927123234.1450:configureGHC
@@ -956,7 +996,7 @@ installPackage
 linkProgram ::
     FilePath →
     [String] →
-    [HaskellObject] →
+    [HaskellModule] →
     FilePath →
     Job Program
 linkProgram
@@ -975,7 +1015,8 @@ linkProgram
         build
   where
     my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
-    (haskell_object_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
+    (haskell_module_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
+    haskell_object_dependencies = Map.map haskellModuleObject haskell_module_dependencies
     dependency_digests = Map.map haskellObjectDigest haskell_object_dependencies
     package_digests = Map.map installedPackageId package_dependencies
     ghc_arguments =
@@ -998,7 +1039,7 @@ linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
     BuildEnvironment ForPrograms →
-    [HaskellObject] →
+    [HaskellModule] →
     FilePath →
     Job Program
 linkProgramUsingBuildEnvironment BuildEnvironment{..} =
@@ -1059,13 +1100,13 @@ resolveModuleDependencies ::
     PackageDatabase →
     KnownModules →
     [String] →
-    Job ([InstalledPackage],[HaskellInterface],[HaskellObject])
+    Job ([HaskellModule],[InstalledPackage])
 resolveModuleDependencies PackageDatabase{..} known_modules module_names =
     case partitionEithers resolved_modules of
         ([],resolutions) → do
             let (package_names,jobs) = partitionEithers resolutions
-            (haskell_interfaces,haskell_objects) ← fmap splitModules (sequenceA jobs)
-            return (package_names,haskell_interfaces,haskell_objects)
+            haskell_modules ← sequenceA jobs
+            return (haskell_modules,package_names)
         (unknown_modules,_) → liftIO . throwIO . UnknownModulesException $ unknown_modules
   where
     resolved_modules =
@@ -1110,16 +1151,18 @@ scanForModulesWithParentIn maybe_parent root =
             _ | takeExtension entry == ".hs" →
                 return
                 $
-                Map.singleton
-                    (appendToParent . dropExtension $ entry)
-                    (once (inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792") filepath) $
-                        fmap (HaskellSource filepath) (digestFile filepath)
+                let module_name = appendToParent . dropExtension $ entry
+                in Map.singleton
+                    module_name
+                    (once (inMyNamespace filepath) $
+                        fmap (HaskellSource module_name filepath) (digestFile filepath)
                     )
             _ → return
                 $
                 Map.empty
     )
   where
+    inMyNamespace = inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792")
     appendToParent child = maybe child (<.> child) maybe_parent
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
 -- @+node:gcross.20101009103525.1731:splitModules
