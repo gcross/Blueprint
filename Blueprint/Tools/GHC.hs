@@ -133,9 +133,7 @@ data HaskellInterface = HaskellInterface
 -- @-node:gcross.20100927222551.1428:HaskellInterface
 -- @+node:gcross.20101009103525.1726:HaskellLibrary
 data HaskellLibrary = HaskellLibrary
-    {   haskellLibraryExposedModules :: Set String
-    ,   haskellLibraryHiddenModules :: Set String
-    ,   haskellLibraryInterfaces :: Map String HaskellInterface
+    {   haskellLibraryModuleInterfaces :: Map String HaskellInterface
     ,   haskellLibraryArchive :: Archive
     ,   haskellLibraryDigest :: MD5Digest
     ,   haskellLibraryDependencyPackages :: [InstalledPackage]
@@ -277,38 +275,33 @@ instance Show GHCConfigurationException where
 
 instance Exception GHCConfigurationException
 -- @-node:gcross.20101005111309.1478:GHCConfigurationException
--- @+node:gcross.20101009103525.1730:ExposedAndHiddenModuleNamesConflict
-data ExposedAndHiddenModuleNamesConflict = ExposedAndHiddenModuleNamesConflict [String] deriving Typeable
+-- @+node:gcross.20101010201506.1496:LibraryMissingFromPackageDescription
+data LibraryMissingFromPackageDescription = LibraryMissingFromPackageDescription PackageDescription deriving Typeable
 
-instance Show ExposedAndHiddenModuleNamesConflict where
-    show (ExposedAndHiddenModuleNamesConflict conflicting_module_names) =
+instance Show LibraryMissingFromPackageDescription where
+    show (LibraryMissingFromPackageDescription package_description) =
+        "A library section is missing from the package description:\n" ++ show package_description
+
+instance Exception LibraryMissingFromPackageDescription
+-- @-node:gcross.20101010201506.1496:LibraryMissingFromPackageDescription
+-- @+node:gcross.20101010201506.1498:MissingModuleNames
+data MissingExposedModules = MissingExposedModules (Set String) deriving Typeable
+
+instance Show MissingExposedModules where
+    show (MissingExposedModules missing_module_names) =
         unlines
         .
-        ("The following modules were listed as being both exposed and hidden:":)
+        ("The following exposed modules are missing:":)
         .
         map ('\t':) -- '
-        $
-        conflicting_module_names
-
-instance Exception ExposedAndHiddenModuleNamesConflict
--- @nonl
--- @-node:gcross.20101009103525.1730:ExposedAndHiddenModuleNamesConflict
--- @+node:gcross.20101009103525.1733:MissingModuleNames
-data MissingModuleNames = MissingModuleNames [String] deriving Typeable
-
-instance Show MissingModuleNames where
-    show (MissingModuleNames missing_module_names) =
-        unlines
         .
-        ("The following module names are missing:":)
-        .
-        map ('\t':) -- '
+        Set.elems
         $
         missing_module_names
 
-instance Exception MissingModuleNames
+instance Exception MissingExposedModules
 -- @nonl
--- @-node:gcross.20101009103525.1733:MissingModuleNames
+-- @-node:gcross.20101010201506.1498:MissingModuleNames
 -- @+node:gcross.20101005111309.1479:UnknownModulesException
 data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
 
@@ -373,67 +366,53 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 buildLibrary ::
     BuildEnvironment ForLibrary →
     ProgramConfiguration Ar →
-    Set String →
-    Set String →
     FilePath →
     Job HaskellLibrary
 buildLibrary
     BuildEnvironment{..}
     ar_configuration
-    exposed_module_names
-    hidden_module_names
     archive_filepath
-  | not (Set.null conflicting_module_names)
-      = throw (ExposedAndHiddenModuleNamesConflict (Set.toList conflicting_module_names))
-  | not (Set.null missing_module_names)
-      = throw (MissingModuleNames (Set.toList missing_module_names))
-  | otherwise
-      = once (inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224") archive_filepath) $ do
-            modules ← sequenceA project_module_jobs
-            let (collected_objects,collected_packages) =
-                    collectAllLinkDependencies
-                    .
-                    map haskellModuleObject
-                    .
-                    Map.elems
-                    $
-                    modules
-                collected_object_digests = Map.map haskellObjectDigest collected_objects
-                digest =
-                    md5
-                    .
-                    encode
-                    .
-                    Map.map (
-                        haskellInterfaceDigest
-                        .
-                        haskellModuleInterface
-                    )
-                    $
-                    modules
-            archive ← makeArchive ar_configuration collected_object_digests archive_filepath
-            return $
-                HaskellLibrary
-                {   haskellLibraryExposedModules = exposed_module_names
-                ,   haskellLibraryHiddenModules = hidden_module_names
-                ,   haskellLibraryInterfaces = Map.map haskellModuleInterface modules
-                ,   haskellLibraryArchive = archive
-                ,   haskellLibraryDigest = digest
-                ,   haskellLibraryDependencyPackages = Map.elems collected_packages
-                }
-  where
-    conflicting_module_names = Set.intersection exposed_module_names hidden_module_names
-    all_module_names = Set.union exposed_module_names hidden_module_names
-    project_module_jobs =
-        Map.mapMaybe
-            (\known_module →
+    =
+    once (inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224") archive_filepath) $ do
+        modules ←
+            sequenceA
+            .
+            Map.mapMaybe (\known_module →
                 case known_module of
                     KnownModuleInProject module_job → Just module_job
                     _ → Nothing
-            ) buildEnvironmentKnownModules
-    project_module_names = Map.keysSet project_module_jobs
-    missing_module_names = Set.difference project_module_names all_module_names
--- @nonl
+            )
+            $
+            buildEnvironmentKnownModules
+        let (collected_objects,collected_packages) =
+                collectAllLinkDependencies
+                .
+                map haskellModuleObject
+                .
+                Map.elems
+                $
+                modules
+            collected_object_digests = Map.map haskellObjectDigest collected_objects
+            digest =
+                md5
+                .
+                encode
+                .
+                Map.map (
+                    haskellInterfaceDigest
+                    .
+                    haskellModuleInterface
+                )
+                $
+                modules
+        archive ← makeArchive ar_configuration collected_object_digests archive_filepath
+        return $
+            HaskellLibrary
+            {   haskellLibraryModuleInterfaces = Map.map haskellModuleInterface modules
+            ,   haskellLibraryArchive = archive
+            ,   haskellLibraryDigest = digest
+            ,   haskellLibraryDependencyPackages = Map.elems collected_packages
+            }
 -- @-node:gcross.20101009103525.1729:buildLibrary
 -- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
@@ -898,10 +877,20 @@ installPackage ::
     HaskellLibrary →
     FilePath →
     Job InstalledPackageInfo
-installPackage path_to_ghc_pkg PackageDescription{..} HaskellLibrary{..} destination_directory = liftIO $ do
+installPackage
+    path_to_ghc_pkg
+    package_description@PackageDescription{..}
+    HaskellLibrary{..}
+    destination_directory
+  | isNothing library
+    = liftIO . throwIO . LibraryMissingFromPackageDescription $ package_description
+  | not (Set.null missing_modules)
+    = liftIO . throwIO . MissingExposedModules $ missing_modules
+  | otherwise
+    = liftIO $ do
     createDirectoryIfMissing True destination_directory
     noticeM "Blueprint.Tools.Compilers.GHC" "(GHC) Installing package..."
-    forM_ (Map.assocs haskellLibraryInterfaces) $ \(module_name,HaskellInterface{..}) → do
+    forM_ (Map.assocs haskellLibraryModuleInterfaces) $ \(module_name,HaskellInterface{..}) → do
         let interface_destination = destination_directory </> dotsToPath module_name <.> "hi"
         createDirectoryIfMissing True (takeDirectory interface_destination)
         infoM "Blueprint.Tools.Compilers.GHC" $
@@ -918,6 +907,10 @@ installPackage path_to_ghc_pkg PackageDescription{..} HaskellLibrary{..} destina
         (show installed_package_info)
     return installed_package_info
   where
+    Just Library{..} = library
+    all_modules = Map.keysSet haskellLibraryModuleInterfaces
+    exposed_modules = Set.fromList . map display $ exposedModules
+    missing_modules = Set.difference exposed_modules all_modules
     library_name = "HS" ++ display package
     installed_package_info =
         InstalledPackageInfo.InstalledPackageInfo
@@ -932,9 +925,16 @@ installPackage path_to_ghc_pkg PackageDescription{..} HaskellLibrary{..} destina
         ,   pkgUrl = pkgUrl
         ,   description = description
         ,   category = category
-        ,   exposed = True
-        ,   exposedModules = map ModuleName.fromString . Set.elems $ haskellLibraryExposedModules
-        ,   hiddenModules = map ModuleName.fromString . Set.elems $ haskellLibraryHiddenModules
+        ,   exposed = libExposed
+        ,   exposedModules = exposedModules
+        ,   hiddenModules =
+                map ModuleName.fromString
+                .
+                Set.elems
+                $
+                Set.difference
+                    all_modules
+                    exposed_modules
         ,   importDirs = [destination_directory]
         ,   libraryDirs = [destination_directory]
         ,   hsLibraries = [library_name]
