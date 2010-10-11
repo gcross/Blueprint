@@ -88,6 +88,18 @@ import Blueprint.Tools.Ar
 -- @nl
 
 -- @+others
+-- @+node:gcross.20101010201506.1505:File Types
+-- @+node:gcross.20101010201506.1506:HaskellInterface
+data HaskellInterface
+type HaskellInterfaceFile = FileOfType HaskellInterface
+-- @nonl
+-- @-node:gcross.20101010201506.1506:HaskellInterface
+-- @+node:gcross.20101010201506.1508:HaskellObject
+data HaskellObject
+type HaskellObjectFile = FileOfType HaskellObject
+-- @nonl
+-- @-node:gcross.20101010201506.1508:HaskellObject
+-- @-node:gcross.20101010201506.1505:File Types
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20100929213846.1453:CompileCache
 data CompileCache = CompileCache
@@ -125,16 +137,10 @@ data GHCOptions = GHCOptions
 
 $(derive makeBinary ''GHCOptions)
 -- @-node:gcross.20100927123234.1445:GHCOptions
--- @+node:gcross.20100927222551.1428:HaskellInterface
-data HaskellInterface = HaskellInterface
-    {   haskellInterfaceFilePath :: FilePath
-    ,   haskellInterfaceDigest :: MD5Digest
-    } deriving Typeable
--- @-node:gcross.20100927222551.1428:HaskellInterface
 -- @+node:gcross.20101009103525.1726:HaskellLibrary
 data HaskellLibrary = HaskellLibrary
-    {   haskellLibraryModuleInterfaces :: Map String HaskellInterface
-    ,   haskellLibraryArchive :: Archive
+    {   haskellLibraryModuleInterfaces :: Map String HaskellInterfaceFile
+    ,   haskellLibraryArchive :: ArchiveFile
     ,   haskellLibraryDigest :: MD5Digest
     ,   haskellLibraryDependencyPackages :: [InstalledPackage]
     ,   haskellLibraryIsExposed :: Bool
@@ -144,8 +150,8 @@ data HaskellLibrary = HaskellLibrary
 -- @+node:gcross.20101009103525.1724:HaskellModule
 data HaskellModule = HaskellModule
     {   haskellModuleName :: String
-    ,   haskellModuleInterface :: HaskellInterface
-    ,   haskellModuleObject :: HaskellObject
+    ,   haskellModuleInterface :: HaskellInterfaceFile
+    ,   haskellModuleObject :: HaskellObjectFile
     ,   haskellModuleLinkDependencyModules :: Map String HaskellModule
     ,   haskellModuleLinkDependencyPackages :: Map String InstalledPackage
     } deriving Typeable
@@ -154,23 +160,13 @@ data HaskellModule = HaskellModule
 type HaskellModuleJobs = Map String (Job HaskellModule)
 -- @nonl
 -- @-node:gcross.20101009103525.1725:HaskellModuleJobs
--- @+node:gcross.20101009103525.1727:HaskellModules
--- @+at
---  data HaskellModules = Map String HaskellModule
--- @-at
--- @-node:gcross.20101009103525.1727:HaskellModules
--- @+node:gcross.20100927222551.1430:HaskellObject
-data HaskellObject = HaskellObject
-    {   haskellObjectFilePath :: FilePath
-    ,   haskellObjectDigest :: MD5Digest
-    } deriving Typeable
--- @-node:gcross.20100927222551.1430:HaskellObject
 -- @+node:gcross.20100927222551.1452:HaskellSource
 data HaskellSource = HaskellSource
     {   haskellSourceModuleName :: String
-    ,   haskellSourceFilePath :: FilePath
-    ,   haskellSourceDigest :: MD5Digest
+    ,   haskellSourceFile :: HaskellSourceFile
     } deriving Typeable
+type HaskellSourceFile = FileOfType HaskellSource
+-- @nonl
 -- @-node:gcross.20100927222551.1452:HaskellSource
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
@@ -422,14 +418,14 @@ buildLibrary
         modules ← sequenceA good_exports
         let (collected_modules,collected_packages) = collectAllLinkDependencies modules
             collected_object_digests =
-                Map.map (haskellObjectDigest . haskellModuleObject) collected_modules
+                Map.map (fileDigest . haskellModuleObject) collected_modules
             digest =
                 md5
                 .
                 encode
                 .
                 map (
-                    haskellInterfaceDigest
+                    fileDigest
                     .
                     haskellModuleInterface
                 )
@@ -476,7 +472,7 @@ compileToObject
     $
     runIfImplicitDependencyOrProductHasChanged
         my_uuid
-        haskellSourceDigest
+        (fileDigest haskellSourceFile)
         scan
         computeDependency
         productHasChangedFrom
@@ -485,7 +481,7 @@ compileToObject
     my_uuid =
         inNamespace
             (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
-            (haskellSourceFilePath ++ interface_filepath ++ object_filepath)
+            (filePath haskellSourceFile ++ interface_filepath ++ object_filepath)
 
     scan :: Job [String]
     scan =
@@ -494,8 +490,10 @@ compileToObject
         liftIO
         .
         L.readFile
+        .
+        filePath
         $
-        haskellSourceFilePath
+        haskellSourceFile
 
     productHasChangedFrom :: TaggedList Two MD5Digest → Job Bool
     productHasChangedFrom old_digests =
@@ -522,7 +520,7 @@ compileToObject
             dependency_digests =
                 Map.fromList
                 .
-                map (haskellInterfaceFilePath &&& haskellInterfaceDigest)
+                map (filePath &&& fileDigest)
                 .
                 map haskellModuleInterface
                 $
@@ -535,9 +533,9 @@ compileToObject
             )
 
     build (package_digests,_,_) = do
-        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ haskellSourceFilePath
+        liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Compiling " ++ filePath haskellSourceFile
         let ghc_arguments =
-                 "-c":haskellSourceFilePath
+                 "-c":filePath haskellSourceFile
                 :"-o":object_filepath
                 :"-ohi":interface_filepath
                 :
@@ -559,8 +557,8 @@ compileToObject
         )
       = HaskellModule
             haskellSourceModuleName
-            (HaskellInterface interface_filepath interface_digest)
-            (HaskellObject object_filepath object_digest)
+            (File interface_filepath interface_digest)
+            (File object_filepath object_digest)
             module_dependencies
             package_dependencies
 -- @nonl
@@ -930,13 +928,13 @@ installPackage
     = liftIO $ do
     createDirectoryIfMissing True destination_directory
     noticeM "Blueprint.Tools.Compilers.GHC" "(GHC) Installing package..."
-    forM_ (Map.assocs haskellLibraryModuleInterfaces) $ \(module_name,HaskellInterface{..}) → do
+    forM_ (Map.assocs haskellLibraryModuleInterfaces) $ \(module_name,File{..}) → do
         let interface_destination = destination_directory </> dotsToPath module_name <.> "hi"
         createDirectoryIfMissing True (takeDirectory interface_destination)
         infoM "Blueprint.Tools.Compilers.GHC" $
-            ("(GHC) Copying " ++ haskellInterfaceFilePath ++ " -> " ++ interface_destination)
-        copyFile haskellInterfaceFilePath interface_destination
-    let archive_source = archiveFilePath haskellLibraryArchive
+            ("(GHC) Copying " ++ filePath ++ " -> " ++ interface_destination)
+        copyFile filePath interface_destination
+    let archive_source = filePath haskellLibraryArchive
         archive_destination = destination_directory </> library_name <.> (takeExtension archive_source)
     infoM "Blueprint.Tools.Compilers.GHC" $
         ("(GHC) Copying " ++ archive_source ++ " -> " ++ archive_destination)
@@ -998,7 +996,7 @@ linkProgram ::
     [String] →
     [HaskellModule] →
     FilePath →
-    Job Program
+    Job ProgramFile
 linkProgram
     path_to_ghc
     additional_options
@@ -1006,7 +1004,7 @@ linkProgram
     program_filepath
   = once my_uuid
     .
-    fmap (Program program_filepath)
+    fmap (File program_filepath)
     $
     runIfDependencyOrProductHasChanged
         my_uuid
@@ -1017,7 +1015,7 @@ linkProgram
     my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
     (haskell_module_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
     haskell_object_dependencies = Map.map haskellModuleObject haskell_module_dependencies
-    dependency_digests = Map.map haskellObjectDigest haskell_object_dependencies
+    dependency_digests = Map.map fileDigest haskell_object_dependencies
     package_digests = Map.map installedPackageId package_dependencies
     ghc_arguments =
         Map.keys haskell_object_dependencies
@@ -1041,7 +1039,7 @@ linkProgramUsingBuildEnvironment ::
     BuildEnvironment ForPrograms →
     [HaskellModule] →
     FilePath →
-    Job Program
+    Job ProgramFile
 linkProgramUsingBuildEnvironment BuildEnvironment{..} =
     linkProgram
         (pathToGHC buildEnvironmentGHC)
@@ -1155,7 +1153,7 @@ scanForModulesWithParentIn maybe_parent root =
                 in Map.singleton
                     module_name
                     (once (inMyNamespace filepath) $
-                        fmap (HaskellSource module_name filepath) (digestFile filepath)
+                        fmap (HaskellSource module_name . File filepath) (digestFile filepath)
                     )
             _ → return
                 $
@@ -1165,14 +1163,6 @@ scanForModulesWithParentIn maybe_parent root =
     inMyNamespace = inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792")
     appendToParent child = maybe child (<.> child) maybe_parent
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
--- @+node:gcross.20101009103525.1731:splitModules
-splitModules :: [HaskellModule] → ([HaskellInterface],[HaskellObject])
-splitModules =
-    unzip
-    .
-    map (haskellModuleInterface &&& haskellModuleObject)
--- @nonl
--- @-node:gcross.20101009103525.1731:splitModules
 -- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 updateBuildEnvironmentToIncludeModules ::
     BuildEnvironment α →

@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100925004153.1314:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-node:gcross.20100925004153.1314:<< Language extensions >>
 -- @nl
@@ -38,13 +39,21 @@ import Blueprint.Miscellaneous
 
 -- @+others
 -- @+node:gcross.20100929125042.1464:Types
--- @+node:gcross.20100929125042.1465:Program
-data Program = Program
-    {   programFilePath :: FilePath
-    ,   programDigest :: MD5Digest
+-- @+node:gcross.20101010201506.1500:FileOfType
+data FileOfType α = File
+    {   filePath :: FilePath
+    ,   fileDigest :: MD5Digest
     } deriving Typeable
--- @-node:gcross.20100929125042.1465:Program
+-- @nonl
+-- @-node:gcross.20101010201506.1500:FileOfType
 -- @-node:gcross.20100929125042.1464:Types
+-- @+node:gcross.20101010201506.1503:File Types
+-- @+node:gcross.20101010201506.1504:Program
+data Program deriving Typeable
+type ProgramFile = FileOfType Program
+-- @nonl
+-- @-node:gcross.20101010201506.1504:Program
+-- @-node:gcross.20101010201506.1503:File Types
 -- @+node:gcross.20100927222551.1483:Exceptions
 -- @+node:gcross.20100927222551.1484:ProductionError
 data ProductionError =
