@@ -34,6 +34,7 @@ import Data.Binary
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.UTF8 as LU
+import Data.Char
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
 import Data.Either
@@ -1153,25 +1154,26 @@ scanForModulesWithParentIn maybe_parent root =
     sequenceA
     .
     map (\entry → do
-        let filepath = root </> entry
-        is_directory ← liftIO (doesDirectoryExist entry)
-        case is_directory of
-            True →
-                scanForModulesWithParentIn
-                    (Just . appendToParent $ entry)
-                    filepath
-            _ | takeExtension entry == ".hs" →
-                return
-                $
-                let module_name = appendToParent . dropExtension $ entry
-                in Map.singleton
-                    module_name
-                    (once (inMyNamespace filepath) $
-                        fmap (HaskellSource module_name . File filepath) (digestFile filepath)
-                    )
-            _ → return
-                $
-                Map.empty
+        if isUpper (head entry)
+            then do
+                let filepath = root </> entry
+                is_directory ← liftIO (doesDirectoryExist entry)
+                case is_directory of
+                    True →
+                        scanForModulesWithParentIn
+                            (Just . appendToParent $ entry)
+                            filepath
+                    False | takeExtension entry == ".hs" →
+                        return
+                        $
+                        let module_name = appendToParent . dropExtension $ entry
+                        in Map.singleton
+                            module_name
+                            (once (inMyNamespace filepath) $
+                                fmap (HaskellSource module_name . File filepath) (digestFile filepath)
+                            )
+                    _ → return Map.empty
+            else return Map.empty
     )
   where
     inMyNamespace = inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792")
