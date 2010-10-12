@@ -72,6 +72,9 @@ import System.Log.Logger
 import System.Process
 
 import Text.Printf
+import qualified Text.Read as Read
+import qualified Text.ParserCombinators.ReadP as ReadP
+import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
@@ -122,16 +125,6 @@ data GHC = GHC
     ,   pathToGHCPkg :: FilePath
     } deriving Typeable; $( derive makeBinary ''GHC )
 -- @-node:gcross.20100927123234.1441:GHC
--- @+node:gcross.20100927123234.1445:GHCOptions
-data GHCOptions = GHCOptions
-    {   ghcOptionPathToGHC :: Maybe FilePath
-    ,   ghcOptionPathToGHCPkg :: Maybe FilePath
-    ,   ghcOptionDesiredVersion :: Maybe Version
-    ,   ghcOptionSearchPaths :: [FilePath]
-    } deriving (Eq,Show,Typeable)
-
-$(derive makeBinary ''GHCOptions)
--- @-node:gcross.20100927123234.1445:GHCOptions
 -- @+node:gcross.20101009103525.1726:HaskellLibrary
 data HaskellLibrary = HaskellLibrary
     {   haskellLibraryModuleInterfaces :: Map String HaskellInterfaceFile
@@ -163,6 +156,12 @@ data HaskellSource = HaskellSource
 type HaskellSourceFile = FileOfType HaskellSource
 -- @nonl
 -- @-node:gcross.20100927222551.1452:HaskellSource
+-- @+node:gcross.20101010201506.1521:Installation
+data InstallationEnvironment = InstallationEnvironment
+    {   installationLibraryDirectory :: FilePath
+    ,   installationExecutableDirectory :: FilePath
+    }
+-- @-node:gcross.20101010201506.1521:Installation
 -- @+node:gcross.20100927123234.1435:InstalledPackage
 data InstalledPackage = InstalledPackage
     {   installedPackageId :: InstalledPackageId
@@ -198,11 +197,29 @@ $(derive makeBinary ''PackageLocality)
 instance Show PackageLocality where
     show User = "user"
     show Global = "global"
+
+instance Read.Read PackageLocality where
+    readPrec = ReadPrec.lift . ReadP.choice $
+        [ReadP.string "user" >> return User
+        ,ReadP.string "global" >> return Global
+        ]
 -- @-node:gcross.20100927123234.1439:PackageLocality
+-- @+node:gcross.20101010201506.1528:GHCOptions
+data GHCOptions = GHCOptions
+    {   ghcOptionPathToGHC :: Maybe FilePath
+    ,   ghcOptionPathToGHCPkg :: Maybe FilePath
+    ,   ghcOptionDesiredVersion :: Maybe Version
+    ,   ghcOptionSearchPaths :: [FilePath]
+    ,   ghcOptionPackageLocality :: PackageLocality
+    } deriving (Eq,Show,Typeable)
+
+$(derive makeBinary ''GHCOptions)
+-- @-node:gcross.20101010201506.1528:GHCOptions
 -- @+node:gcross.20100927123234.1443:GHCEnvironment
 data GHCEnvironment = GHCEnvironment
     {   ghcEnvironmentGHC :: GHC
     ,   ghcEnvironmentPackageDatabase :: PackageDatabase
+    ,   ghcEnvironmentPackageLocality :: PackageLocality
     } deriving Typeable
 
 -- @-node:gcross.20100927123234.1443:GHCEnvironment
@@ -210,6 +227,7 @@ data GHCEnvironment = GHCEnvironment
 data BuildEnvironment α = BuildEnvironment
     {   buildEnvironmentGHC :: GHC
     ,   buildEnvironmentPackageDatabase :: PackageDatabase
+    ,   buildEnvironmentPackageLocality :: PackageLocality
     ,   buildEnvironmentKnownModules :: KnownModules
     ,   buildEnvironmentCompileOptions :: [String]
     ,   buildEnvironmentLinkOptions :: [String]
@@ -778,6 +796,22 @@ configureGHCEnvironmentUsingOptions = configureGHCEnvironment . extractGHCOption
 configureGHCUsingOptions :: OptionValues → Job GHC
 configureGHCUsingOptions = configureGHC . extractGHCOptions
 -- @-node:gcross.20100927161850.1440:configureGHCUsingOptions
+-- @+node:gcross.20101010201506.1526:configureInstallationEnvironmentUsingOptions
+configureInstallationEnvironmentUsingOptions :: OptionValues → Job InstallationEnvironment
+configureInstallationEnvironmentUsingOptions option_values = do
+    prefix ←
+        case (Map.lookup installation_option_prefix &&&
+              Map.lookup ghc_package_database_option_locality)
+        of  (Just prefix,_) → return prefix
+            (_,Just User) → fmap (</> ".cabal") getHomeDirectory
+            _ → return "/usr/local"
+    return $
+        liftA2 InstallationEnvironment
+            (fromMaybe (prefix </> "lib") . Map.lookup installation_option_libdir)
+            (fromMaybe (prefix </> "bin") . Map.lookup installation_option_bindir)
+        $
+        option_values
+-- @-node:gcross.20101010201506.1526:configureInstallationEnvironmentUsingOptions
 -- @+node:gcross.20100927161850.1432:configurePackageDatabase
 configurePackageDatabase :: FilePath → Job PackageDatabase
 configurePackageDatabase path_to_ghc_pkg =
@@ -924,6 +958,7 @@ extractGHCOptions =
         <*> Map.lookup ghc_search_option_path_to_ghc_pkg
         <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
+        <*> maybe User read
 -- @-node:gcross.20100927161850.1442:extractGHCOptions
 -- @+node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
 extractImportedModulesFromHaskellSource :: L.ByteString → [String]
@@ -1038,16 +1073,25 @@ installPackage
         ,   haddockHTMLs = []
     }
 -- @-node:gcross.20101009103525.1735:installPackage
--- @+node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
+-- @+node:gcross.20101010201506.1510:installPackageUsingEnvironment
 installPackageUsingBuildEnvironment ::
     BuildEnvironment ForLibrary →
+    InstallationEnvironment →
     PackageDescription →
     HaskellLibrary →
-    FilePath →
     Job InstalledPackageInfo
-installPackageUsingBuildEnvironment = installPackage . pathToGHCPkg . buildEnvironmentGHC
+installPackageUsingBuildEnvironment
+    BuildEnvironment{..}
+    InstallationEnvironment{..}
+    package_description
+    library
+  = installPackage
+        (pathToGHCPkg buildEnvironmentGHC)
+        package_description
+        library
+        installationLibraryDirectory
 -- @nonl
--- @-node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
+-- @-node:gcross.20101010201506.1510:installPackageUsingEnvironment
 -- @+node:gcross.20101004145951.1467:linkProgram
 linkProgram ::
     FilePath →
@@ -1264,7 +1308,8 @@ updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
 -- @nonl
 -- @-node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 -- @-node:gcross.20100927123234.1448:Functions
--- @+node:gcross.20100927123234.1432:Options
+-- @+node:gcross.20101010201506.1518:Options
+-- @+node:gcross.20100927123234.1432:GHC
 ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"
 ghc_search_option_path_to_ghc_pkg = identifier "b832666c-f42f-4dc0-8ef9-561987334c37" "path to ghc-pkg"
 ghc_search_option_desired_version = identifier "87cab19e-c87a-4480-8ed3-af04e4c4f6bc" "desired GHC version"
@@ -1279,8 +1324,8 @@ ghcOptions =
             ,("with-ghc-pkg",(ghc_search_option_path_to_ghc_pkg,RequiredArgument "PATH"))
             ,("with-ghc-version",(ghc_search_option_desired_version,RequiredArgument "VERSION"))
             ,("with-ghc-located-in",(ghc_search_option_search_paths,RequiredArgument "DIRECTORY"))
-            -- ,("user",(ghc_package_database_option_locality,NoArgument "user"))
-            -- ,("global",(ghc_package_database_option_locality,NoArgument "global"))
+            ,("user",(ghc_package_database_option_locality,NoArgument "user"))
+            ,("global",(ghc_package_database_option_locality,NoArgument "global"))
             ]
         )
         (Map.fromList
@@ -1288,7 +1333,7 @@ ghcOptions =
             ,("tools.ghc.paths.ghc-pkg",ghc_search_option_path_to_ghc_pkg)
             ,("tools.ghc.paths.search",ghc_search_option_search_paths)
             ,("tools.ghc.version",ghc_search_option_desired_version)
-            -- ,("tools.ghc.package-locality",ghc_package_database_option_locality)
+            ,("tools.ghc.package-locality",ghc_package_database_option_locality)
             ]
         )
         (Map.fromList
@@ -1300,10 +1345,40 @@ ghcOptions =
             ,(ghc_search_option_path_to_ghc_pkg,("GHC","Path to ghc-pkg"))
             ,(ghc_search_option_desired_version,("GHC","Required version of GHC"))
             ,(ghc_search_option_search_paths,("GHC","Directories to search for ghc (separated by " ++ [searchPathSeparator] ++ ")"))
-            -- ,(ghc_package_database_option_locality,("GHC","Use the (user|global) package database for both configuration and package installation;  defaults to global."))
+            ,(ghc_package_database_option_locality,("GHC","Use the (user|global) package database for both configuration and package installation;  defaults to global."))
             ]
         )
--- @-node:gcross.20100927123234.1432:Options
+-- @-node:gcross.20100927123234.1432:GHC
+-- @+node:gcross.20101010201506.1519:Installation
+installation_option_prefix = identifier "d85dcf36-aab1-4618-8b9a-b07caf347d41" "installation directory prefix"
+installation_option_bindir = identifier "90055f6f-9ba5-43d6-b59f-441f66ee0d1c" "installation directory for executables"
+installation_option_libdir = identifier "1963880f-3f8d-4142-9132-a5efdc1f7264" "installation directory for libraries"
+
+cabalOptions =
+    Options
+        Map.empty
+        (Map.fromList
+            [("prefix",(installation_option_prefix,RequiredArgument "PATH"))
+            ,("bindir",(installation_option_bindir,RequiredArgument "PATH"))
+            ,("libdir",(installation_option_libdir,RequiredArgument "PATH"))
+            ]
+        )
+        (Map.fromList
+            [("tools.ghc.installation.prefix",installation_option_prefix)
+            ,("tools.ghc.installation.bindir",installation_option_bindir)
+            ,("tools.ghc.installation.libdir",installation_option_libdir)
+            ]
+        )
+        Map.empty
+        (Map.fromList
+            [(installation_option_prefix,("Installation","Installation prefix directory"))
+            ,(installation_option_bindir,("Installation","Installation directory for executables"))
+            ,(installation_option_libdir,("Installation","Installation directory for libraries"))
+            ]
+        )
+-- @nonl
+-- @-node:gcross.20101010201506.1519:Installation
+-- @-node:gcross.20101010201506.1518:Options
 -- @-others
 -- @-node:gcross.20100927123234.1428:@thin GHC.hs
 -- @-leo
