@@ -27,6 +27,8 @@ import Data.NaturalNumber
 import Data.Traversable (traverse)
 import Data.Typeable
 
+import Language.Haskell.TH
+
 import System.Directory
 import System.Exit
 import System.FilePath
@@ -73,6 +75,14 @@ instance Exception ProductionError
 -- @-node:gcross.20100927222551.1484:ProductionError
 -- @-node:gcross.20100927222551.1483:Exceptions
 -- @+node:gcross.20100925004153.1317:Functions
+-- @+node:gcross.20101010201506.1509:declareFileType
+declareFileType :: String → Q [Dec]
+declareFileType name = do
+    return
+        [DataD [] (mkName name) [] [] [mkName "Typeable"]
+        ,TySynD (mkName $ name ++ "File") [] (AppT (ConT (mkName "FileOfType")) (ConT (mkName name)))
+        ]
+-- @-node:gcross.20101010201506.1509:declareFileType
 -- @+node:gcross.20100925004153.1318:digestFile
 digestFile :: FilePath → Job MD5Digest
 digestFile filepath =

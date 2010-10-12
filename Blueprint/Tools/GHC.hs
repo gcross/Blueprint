@@ -89,16 +89,9 @@ import Blueprint.Tools.Ar
 
 -- @+others
 -- @+node:gcross.20101010201506.1505:File Types
--- @+node:gcross.20101010201506.1506:HaskellInterface
-data HaskellInterface
-type HaskellInterfaceFile = FileOfType HaskellInterface
+declareFileType "HaskellInterface"
+declareFileType "HaskellObject"
 -- @nonl
--- @-node:gcross.20101010201506.1506:HaskellInterface
--- @+node:gcross.20101010201506.1508:HaskellObject
-data HaskellObject
-type HaskellObjectFile = FileOfType HaskellObject
--- @nonl
--- @-node:gcross.20101010201506.1508:HaskellObject
 -- @-node:gcross.20101010201506.1505:File Types
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20100929213846.1453:CompileCache

@@ -45,9 +45,7 @@ data Ar deriving Typeable; instance ProgramName Ar where { programNameFrom _ = "
 arOptions = unwrapOptions (programOptions :: OptionsFor Ar)
 -- @-node:gcross.20101005114926.1474:Options
 -- @+node:gcross.20101005122519.1483:File Type
-data Archive deriving Typeable
-type ArchiveFile = FileOfType Archive
--- @nonl
+declareFileType "Archive"
 -- @-node:gcross.20101005122519.1483:File Type
 -- @+node:gcross.20101005114926.1475:Functions
 -- @+node:gcross.20101005114926.1477:makeArchive
