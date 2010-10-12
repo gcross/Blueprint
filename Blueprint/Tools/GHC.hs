@@ -382,14 +382,14 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 -- @+node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20101009103525.1729:buildLibrary
 buildLibrary ::
-    BuildEnvironment ForLibrary →
     ProgramConfiguration Ar →
+    KnownModules →
     Library →
     FilePath →
     Job HaskellLibrary
 buildLibrary
-    BuildEnvironment{..}
     ar_configuration
+    known_modules
     Library{..}
     archive_filepath
     =
@@ -399,7 +399,7 @@ buildLibrary
                 partitionEithers
                 .
                 map (\module_name →
-                    case Map.lookup module_name buildEnvironmentKnownModules of
+                    case Map.lookup module_name known_modules of
                         Nothing → Left (Left module_name)
                         Just (KnownModuleInExternalPackage _) → Left (Right module_name)
                         Just (KnownModuleInProject job) → Right job
@@ -437,6 +437,17 @@ buildLibrary
   where
     inMyNamespace = inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
 -- @-node:gcross.20101009103525.1729:buildLibrary
+-- @+node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
+buildLibraryUsingBuildEnvironment ::
+    ProgramConfiguration Ar →
+    BuildEnvironment ForLibrary →
+    Library →
+    FilePath →
+    Job HaskellLibrary
+buildLibraryUsingBuildEnvironment ar_configuration BuildEnvironment{..} =
+    buildLibrary ar_configuration buildEnvironmentKnownModules
+-- @nonl
+-- @-node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
 -- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
 checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
 checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
@@ -983,6 +994,16 @@ installPackage
         ,   haddockHTMLs = []
     }
 -- @-node:gcross.20101009103525.1735:installPackage
+-- @+node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
+installPackageUsingBuildEnvironment ::
+    BuildEnvironment ForLibrary →
+    PackageDescription →
+    HaskellLibrary →
+    FilePath →
+    Job InstalledPackageInfo
+installPackageUsingBuildEnvironment = installPackage . pathToGHCPkg . buildEnvironmentGHC
+-- @nonl
+-- @-node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
 -- @+node:gcross.20101004145951.1467:linkProgram
 linkProgram ::
     FilePath →
