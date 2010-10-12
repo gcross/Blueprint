@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -836,17 +837,7 @@ createBuildLibraryTarget
     ar_configuration
     build_environment
     PackageDescription{..}
-  = traverse scanForModulesIn (if null hsSourceDirs then ["."] else hsSourceDirs)
-    >>=
-    return
-        .
-        snd
-        .
-        updateBuildEnvironmentToIncludeModules build_environment
-        .
-        Map.unions
-        .
-        reverse
+  = scanForModulesAndUpdateBuildEnvironment build_environment hsSourceDirs
     >>=
     \new_build_environment →
         buildLibraryUsingBuildEnvironment
@@ -858,6 +849,26 @@ createBuildLibraryTarget
 
     Just (Library{libBuildInfo=BuildInfo{..}}) = library
 -- @-node:gcross.20101010201506.1514:createBuildLibraryTarget
+-- @+node:gcross.20101010201506.1515:createBuildProgramTarget
+-- @+at
+--  createBuildProgramTarget ::
+--      BuildEnvironment ForProgram →
+--      PackageDescription →
+--      Job ProgramFile
+--  createBuildLibraryTarget
+--      build_environment
+--      PackageDescription{..}
+--    = scanForModulesAndUpdateBuildEnvironment build_environment hsSourceDirs
+--      >>=
+--      \new_build_environment →
+--          buildLibraryUsingBuildEnvironment
+--              ar_configuration
+--              new_build_environment
+--              (fromJust library)
+--              ("HS" ++ display package <.> "a")
+-- @-at
+-- @nonl
+-- @-node:gcross.20101010201506.1515:createBuildProgramTarget
 -- @+node:gcross.20101006110010.1483:createCompilationJobsForModules
 createCompilationJobsForModules ::
     FilePath →
@@ -1041,13 +1052,13 @@ installPackageUsingBuildEnvironment = installPackage . pathToGHCPkg . buildEnvir
 linkProgram ::
     FilePath →
     [String] →
-    [HaskellModule] →
+    HaskellModule →
     FilePath →
     Job ProgramFile
 linkProgram
     path_to_ghc
     additional_options
-    haskell_objects
+    HaskellModule{haskellModuleLinkDependencyModules,haskellModuleLinkDependencyPackages}
     program_filepath
   = once my_uuid
     .
@@ -1060,14 +1071,13 @@ linkProgram
         build
   where
     my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
-    (haskell_module_dependencies,package_dependencies) = collectAllLinkDependencies haskell_objects
-    haskell_object_dependencies = Map.map haskellModuleObject haskell_module_dependencies
+    haskell_object_dependencies = Map.map haskellModuleObject haskellModuleLinkDependencyModules
     dependency_digests = Map.map fileDigest haskell_object_dependencies
-    package_digests = Map.map installedPackageId package_dependencies
+    package_digests = Map.map installedPackageId haskellModuleLinkDependencyPackages
     ghc_arguments =
         Map.keys haskell_object_dependencies
         ++
-        concat [["-package",package_name] | package_name ← Map.keys package_dependencies]
+        concat [["-package",package_name] | package_name ← Map.keys haskellModuleLinkDependencyPackages]
         ++
         ["-o",program_filepath]
         ++
@@ -1084,7 +1094,7 @@ linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
     BuildEnvironment ForPrograms →
-    [HaskellModule] →
+    HaskellModule →
     FilePath →
     Job ProgramFile
 linkProgramUsingBuildEnvironment BuildEnvironment{..} =
@@ -1169,6 +1179,28 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
                     Map.lookup module_name packageDatabaseIndexedByModuleName
         ) module_names
 -- @-node:gcross.20100928173417.1463:resolveModuleDependencies
+-- @+node:gcross.20101010201506.1516:scanForModulesAndUpdateBuildEnvironment
+scanForModulesAndUpdateBuildEnvironment ::
+    BuildEnvironment α →
+    [FilePath] →
+    Job (BuildEnvironment α)
+scanForModulesAndUpdateBuildEnvironment build_environment [] =
+    scanForModulesAndUpdateBuildEnvironment build_environment ["."]
+scanForModulesAndUpdateBuildEnvironment build_environment source_directories =
+    fmap (
+        snd
+        .
+        updateBuildEnvironmentToIncludeModules build_environment
+    )
+    $
+    once (inMyNamespace (unwords source_directories)) (
+        fmap (Map.unions . reverse) $
+            traverse scanForModulesIn source_directories
+    )
+  where
+    inMyNamespace = inNamespace (uuid "2d0b03c0-7f06-4ad8-aa48-1628d8e213f1")
+-- @nonl
+-- @-node:gcross.20101010201506.1516:scanForModulesAndUpdateBuildEnvironment
 -- @+node:gcross.20101006110010.1481:scanForModulesIn
 scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
 scanForModulesIn root = once (inMyNamespace root) $ scanForModulesWithParentIn Nothing root
