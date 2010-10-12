@@ -1139,7 +1139,10 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
 -- @-node:gcross.20100928173417.1463:resolveModuleDependencies
 -- @+node:gcross.20101006110010.1481:scanForModulesIn
 scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
-scanForModulesIn = scanForModulesWithParentIn Nothing
+scanForModulesIn root = once (inMyNamespace root) $ scanForModulesWithParentIn Nothing root
+  where
+    inMyNamespace = inNamespace (uuid "cd195cae-ff8f-4d16-9884-9fb924af2a7f")
+-- @nonl
 -- @-node:gcross.20101006110010.1481:scanForModulesIn
 -- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
 scanForModulesWithParentIn ::

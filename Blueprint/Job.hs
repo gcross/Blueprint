@@ -54,6 +54,7 @@ data Job α where
     Errors :: Map String SomeException → Job α
     Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
+  deriving Typeable
 -- @-node:gcross.20100924160650.2048:Job
 -- @+node:gcross.20100925004153.1301:JobEnvironment
 data JobEnvironment = JobEnvironment
