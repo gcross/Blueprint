@@ -826,6 +826,38 @@ constructPackageDatabaseFromInstalledPackages =
             ]
         )
 -- @-node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
+-- @+node:gcross.20101010201506.1514:createBuildLibraryTarget
+createBuildLibraryTarget ::
+    ProgramConfiguration Ar →
+    BuildEnvironment ForLibrary →
+    PackageDescription →
+    Job HaskellLibrary
+createBuildLibraryTarget
+    ar_configuration
+    build_environment
+    PackageDescription{..}
+  = traverse scanForModulesIn (if null hsSourceDirs then ["."] else hsSourceDirs)
+    >>=
+    return
+        .
+        snd
+        .
+        updateBuildEnvironmentToIncludeModules build_environment
+        .
+        Map.unions
+        .
+        reverse
+    >>=
+    \new_build_environment →
+        buildLibraryUsingBuildEnvironment
+            ar_configuration
+            new_build_environment
+            (fromJust library)
+            ("HS" ++ display package <.> "a")
+  where
+
+    Just (Library{libBuildInfo=BuildInfo{..}}) = library
+-- @-node:gcross.20101010201506.1514:createBuildLibraryTarget
 -- @+node:gcross.20101006110010.1483:createCompilationJobsForModules
 createCompilationJobsForModules ::
     FilePath →
