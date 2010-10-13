@@ -873,7 +873,6 @@ configure options = do
                 "interfaces"
                 "objects"
     installation_environment ← configureInstallationEnvironmentUsingOptions options
-    liftIO . putStrLn $ "Exiting..."
     return $
         Configuration
             maybe_ar_configuration
