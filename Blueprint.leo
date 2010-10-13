@@ -7,6 +7,7 @@
 <find_panel_settings/>
 <vnodes>
 <v t="gcross.20100924160650.1259"><vh>@chapters</vh></v>
+<v t="gcross.20101012145613.1577"><vh>@thin Setup.hs</vh></v>
 <v t="gcross.20100924160650.1258"><vh>@path Blueprint</vh>
 <v t="gcross.20100925114718.1301"><vh>@thin Cache.hs</vh></v>
 <v t="gcross.20100927123234.1487"><vh>@thin Configuration.hs</vh></v>
