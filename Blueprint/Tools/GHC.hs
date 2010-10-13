@@ -1035,8 +1035,10 @@ configurePackageDatabase path_to_ghc_pkg locality =
     \maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Reading package atoms..."
-        -- let arguments = ["--simple-output",("--" ++ show locality),"list"]
-        let arguments = ["--simple-output","--"++show locality,"list"]
+        let arguments =
+                case locality of
+                    Global → ["--simple-output","--global","list"]
+                    User → ["--simple-output","list"]
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $
             unwords ("(GHC) Executing":path_to_ghc_pkg:arguments)
         list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg arguments "")
