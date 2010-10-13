@@ -28,14 +28,15 @@ import Blueprint.Options
 
 -- @+others
 -- @+node:gcross.20101007134409.1499:Functions
--- @+node:gcross.20101007134409.1500:defaultMain
+-- @+node:gcross.20101012145613.1536:defaultMain
 defaultMain ::
     Options →
     FilePath →
     FilePath →
     FilePath →
     (OptionValues → Job α) →
-    Map String (α → Job ()) →
+    ([String] → α → Job ()) →
+    IO () →
     IO ()
 defaultMain
     user_options
@@ -43,13 +44,14 @@ defaultMain
     configuration_cache_filepath
     cache_filepath
     configure
-    modes
+    runTarget
+    displayModesMessage
   = do
     updateGlobalLogger rootLoggerName (setLevel DEBUG)
     (arguments,command_line_option_values) ← getAndParseCommandLineOptions options
-    let mode = unwords arguments
-    if mode == "configure"
-        then do
+    case arguments of
+        [] → displayModesMessage
+        "configure":[] → do
             option_values ←
                 getParseAndUpdateConfigurationFile
                     options
@@ -60,14 +62,10 @@ defaultMain
                 configuration_cache_filepath
                 (configure option_values)
             return ()
-        else do
-            job ← case Map.lookup mode modes of
-                    Just job → return job
-                    Nothing → do
-                        putStrLn $ "Unknown mode of operator '" ++ mode ++ "'"
-                        putStrLn $ "Allowed modes are:"
-                        mapM_ (putStrLn . ('\t':)) . Map.keys $ modes -- '
-                        exitFailure
+        "configure":xs → do
+            putStrLn $ "Unknown arguments to configure: " ++ unwords xs
+            exitFailure
+        _ → do
             option_values ←
                 fmap (Map.union command_line_option_values)
                 $
@@ -84,7 +82,7 @@ defaultMain
                 number_of_simultaneous_tasks
                 cache_filepath
              .
-             job
+             runTarget arguments
              )
   where
     options = user_options `mappend` main_options
@@ -94,7 +92,7 @@ defaultMain
         maybe 1 read
         .
         Map.lookup main_option_number_of_simultaneous_tasks
--- @-node:gcross.20101007134409.1500:defaultMain
+-- @-node:gcross.20101012145613.1536:defaultMain
 -- @-node:gcross.20101007134409.1499:Functions
 -- @+node:gcross.20101007134409.1504:Options
 main_option_number_of_simultaneous_tasks = identifier "4b286db3-9976-472d-a865-2e2e7e5cb2aa" "number of simultaneous tasks"
