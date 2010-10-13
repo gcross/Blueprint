@@ -27,6 +27,7 @@ import Control.Monad.Loops
 import Control.Monad.Trans.Reader
 
 import Data.Binary
+import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Dynamic
 import Data.Either.Unwrap
@@ -54,6 +55,7 @@ data Job α where
     Errors :: Map String SomeException → Job α
     Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
+  deriving Typeable
 -- @-node:gcross.20100924160650.2048:Job
 -- @+node:gcross.20100925004153.1301:JobEnvironment
 data JobEnvironment = JobEnvironment
@@ -111,10 +113,10 @@ instance MonadIO Job where
 cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
 cache uuid computeJob = Cache uuid computeJob return
 -- @-node:gcross.20100925004153.1299:cache
--- @+node:gcross.20101007134409.1484:extractResultOrThrow
-extractResultOrThrow :: Either JobError α → α
-extractResultOrThrow = either throw id
--- @-node:gcross.20101007134409.1484:extractResultOrThrow
+-- @+node:gcross.20101007134409.1484:extractResultOrThrowIO
+extractResultOrThrowIO :: Either JobError α → IO α
+extractResultOrThrowIO = either throwIO evaluate
+-- @-node:gcross.20101007134409.1484:extractResultOrThrowIO
 -- @+node:gcross.20100925004153.1298:once
 once :: Typeable α ⇒ UUID → Job α → Job α
 once uuid job = Once uuid job return
@@ -253,7 +255,7 @@ runJobUsingCacheFile maximum_number_of_simultaneous_IO_tasks cache_filepath job 
     cache ← do
         cache_exists ← doesFileExist cache_filepath
         if cache_exists
-            then (decodeFile cache_filepath)
+            then fmap (decode . L.fromChunks . (:[])) (S.readFile cache_filepath)
                  `catch`
                  (\(ErrorCall msg) → do
                     putStrLn $ "Encountered error " ++ msg ++ " while reading cache file " ++ cache_filepath
@@ -269,12 +271,12 @@ runJobUsingCacheFile maximum_number_of_simultaneous_IO_tasks cache_filepath job 
 -- @+node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
 runJobUsingCacheFileAndExtractResult :: Int → FilePath → Job α → IO α
 runJobUsingCacheFileAndExtractResult maximum_number_of_simultaneous_IO_tasks cache_filepath job =
-    fmap extractResultOrThrow
-    $
     runJobUsingCacheFile
         maximum_number_of_simultaneous_IO_tasks
         cache_filepath
         job
+    >>=
+    extractResultOrThrowIO
 -- @-node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
 -- @+node:gcross.20100927123234.1303:newJobEnvironment
 newJobEnvironment :: Int → Map UUID L.ByteString → IO JobEnvironment
