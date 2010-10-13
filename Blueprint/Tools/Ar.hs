@@ -44,28 +44,23 @@ data Ar deriving Typeable; instance ProgramName Ar where { programNameFrom _ = "
 -- @+node:gcross.20101005114926.1474:Options
 arOptions = unwrapOptions (programOptions :: OptionsFor Ar)
 -- @-node:gcross.20101005114926.1474:Options
--- @+node:gcross.20101005122519.1483:Types
--- @+node:gcross.20101005122519.1484:Archive
-data Archive = Archive
-    {   archiveFilePath :: FilePath
-    ,   archiveDigest :: MD5Digest
-    } deriving Typeable
--- @-node:gcross.20101005122519.1484:Archive
--- @-node:gcross.20101005122519.1483:Types
+-- @+node:gcross.20101005122519.1483:File Type
+declareFileType "Archive"
+-- @-node:gcross.20101005122519.1483:File Type
 -- @+node:gcross.20101005114926.1475:Functions
 -- @+node:gcross.20101005114926.1477:makeArchive
 makeArchive ::
     ProgramConfiguration Ar →
     Map FilePath MD5Digest →
     FilePath →
-    Job Archive
+    Job ArchiveFile
 makeArchive
     ProgramConfiguration{..}
     object_digests
     archive_filepath
   = once my_uuid
     .
-    fmap (Archive archive_filepath)
+    fmap (File archive_filepath)
     $
     runIfDependencyOrProductHasChanged
         my_uuid
