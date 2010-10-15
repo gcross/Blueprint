@@ -238,28 +238,25 @@ data GHCEnvironment = GHCEnvironment
 
 -- @-node:gcross.20100927123234.1443:GHCEnvironment
 -- @+node:gcross.20100927222551.1446:BuildEnvironment
-data BuildEnvironment α = BuildEnvironment
+data BuildEnvironment = BuildEnvironment
     {   buildEnvironmentGHC :: GHC
     ,   buildEnvironmentPackageDatabase :: PackageDatabase
     ,   buildEnvironmentPackageLocality :: PackageLocality
     ,   buildEnvironmentKnownModules :: KnownModules
-    ,   buildEnvironmentCompileOptions :: [String]
-    ,   buildEnvironmentLinkOptions :: [String]
-    ,   buildEnvironmentInterfaceDirectory :: FilePath
-    ,   buildEnvironmentObjectDirectory :: FilePath
+    ,   buildEnvironmentLibraryCompileOptions :: [String]
+    ,   buildEnvironmentProgramCompileOptions :: [String]
+    ,   buildEnvironmentProgramLinkOptions :: [String]
+    ,   buildEnvironmentLibraryInterfaceDirectory :: FilePath
+    ,   buildEnvironmentLibraryObjectDirectory :: FilePath
+    ,   buildEnvironmentProgramInterfaceDirectory :: FilePath
+    ,   buildEnvironmentProgramObjectDirectory :: FilePath
     }
 -- @nonl
 -- @-node:gcross.20100927222551.1446:BuildEnvironment
--- @+node:gcross.20101009103525.1720:BuildEnvironments
-data BuildEnvironments = BuildEnvironments
-    {   buildEnvironmentForLibrary :: BuildEnvironment ForLibrary
-    ,   buildEnvironmentForPrograms :: BuildEnvironment ForPrograms
-    }
--- @-node:gcross.20101009103525.1720:BuildEnvironments
 -- @+node:gcross.20101012145613.1551:Configuration
 data Configuration = Configuration
     {   configurationAr :: Maybe (ProgramConfiguration Ar)
-    ,   configurationBuildEnvironments :: BuildEnvironments
+    ,   configurationBuildEnvironment :: BuildEnvironment
     ,   configurationPackageDescription :: PackageDescription
     ,   configurationInstallationEnvironment :: InstallationEnvironment
     }
@@ -478,72 +475,110 @@ import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)
 buildExecutable ::
     FilePath →
     [String] →
+    [String] →
+    PackageDatabase →
     KnownModules →
+    FilePath →
+    FilePath →
     FilePath →
     Executable →
     Job ProgramFile
 buildExecutable
     path_to_ghc
-    additional_options
+    additional_compiler_options
+    additional_linker_options
+    package_database
     known_modules
+    interface_directory
+    object_directory
     executable_directory
     Executable{..}
     =
     once (inMyNamespace program_filepath) $
-        case Map.lookup modulePath known_modules of
-            Nothing → liftIO . throwIO . MissingMainModule $ modulePath
-            Just (KnownModuleInExternalPackage package) → liftIO . throwIO $ ExternalMainModule modulePath package
-            Just (KnownModuleInProject main_module_job) → main_module_job
+        scanForAndCompileModulesInAllOf
+            path_to_ghc
+            additional_compiler_options
+            package_database
+            known_modules
+            interface_directory
+            object_directory
+            (extractHaskellSourceDirectoriesFrom buildInfo)
+        >>=
+        \(_,known_modules) →
+            case Map.lookup modulePath known_modules of
+                Nothing → liftIO . throwIO . MissingMainModule $ modulePath
+                Just (KnownModuleInExternalPackage package) → liftIO . throwIO $ ExternalMainModule modulePath package
+                Just (KnownModuleInProject main_module_job) → main_module_job
         >>=
         linkProgram
             path_to_ghc
-            additional_options
+            additional_linker_options
             program_filepath
   where
     inMyNamespace = inNamespace (uuid "0cbcbb1f-e695-4612-b2b9-d3a9a125e04f")
     program_filepath = executable_directory </> exeName
--- @nonl
 -- @-node:gcross.20101012145613.1516:buildExecutable
 -- @+node:gcross.20101012145613.1519:buildExecutableUsingBuildEnvironment
 buildExecutableUsingBuildEnvironment ::
-    BuildEnvironment ForPrograms →
+    BuildEnvironment →
     FilePath →
     Executable →
     Job ProgramFile
-buildExecutableUsingBuildEnvironment BuildEnvironment{..} =
+buildExecutableUsingBuildEnvironment =
     buildExecutable
-        (pathToGHC buildEnvironmentGHC)
-        buildEnvironmentLinkOptions
-        buildEnvironmentKnownModules
+        <$> (pathToGHC . buildEnvironmentGHC)
+        <*> buildEnvironmentProgramCompileOptions
+        <*> buildEnvironmentProgramLinkOptions
+        <*> buildEnvironmentPackageDatabase
+        <*> buildEnvironmentKnownModules
+        <*> buildEnvironmentProgramInterfaceDirectory
+        <*> buildEnvironmentProgramObjectDirectory
 -- @nonl
 -- @-node:gcross.20101012145613.1519:buildExecutableUsingBuildEnvironment
--- @+node:gcross.20101012145613.1547:buildExecutableUsingConfiguration
+-- @+node:gcross.20101015124156.1546:buildExecutableUsingConfiguration
 buildExecutableUsingConfiguration ::
     Configuration →
     FilePath →
     Executable →
     Job ProgramFile
-buildExecutableUsingConfiguration =
-    buildExecutableUsingBuildEnvironment
-    .
-    buildEnvironmentForPrograms
-    .
-    configurationBuildEnvironments
--- @-node:gcross.20101012145613.1547:buildExecutableUsingConfiguration
+buildExecutableUsingConfiguration = buildExecutableUsingBuildEnvironment . configurationBuildEnvironment
+-- @nonl
+-- @-node:gcross.20101015124156.1546:buildExecutableUsingConfiguration
 -- @+node:gcross.20101009103525.1729:buildLibrary
 buildLibrary ::
     ProgramConfiguration Ar →
-    KnownModules →
-    Library →
+    String →
     FilePath →
+    [String] →
+    PackageDatabase →
+    KnownModules →
+    FilePath →
+    FilePath →
+    FilePath →
+    Library →
     Job HaskellLibrary
 buildLibrary
     ar_configuration
+    package_name
+    path_to_ghc
+    additional_compiler_options
+    package_database
     known_modules
+    interface_directory
+    object_directory
+    library_directory
     Library{..}
-    archive_filepath
     =
     once (inMyNamespace archive_filepath) $ do
+        (_,known_modules) ←
+            scanForAndCompileModulesInAllOf
+                path_to_ghc
+                additional_compiler_options
+                package_database
+                known_modules
+                interface_directory
+                object_directory
+                (extractHaskellSourceDirectoriesFrom libBuildInfo)
         let exposed_modules = map display exposedModules
             (bad_exports,good_exports) =
                 partitionEithers
@@ -589,17 +624,25 @@ buildLibrary
             ,   haskellLibraryExposedModules = exposed_modules
             }
   where
+    archive_filepath = library_directory </> "HS" ++ package_name <.> "a"
     inMyNamespace = inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
 -- @-node:gcross.20101009103525.1729:buildLibrary
 -- @+node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
 buildLibraryUsingBuildEnvironment ::
     ProgramConfiguration Ar →
-    BuildEnvironment ForLibrary →
-    Library →
+    String →
+    BuildEnvironment →
     FilePath →
+    Library →
     Job HaskellLibrary
-buildLibraryUsingBuildEnvironment ar_configuration BuildEnvironment{..} =
-    buildLibrary ar_configuration buildEnvironmentKnownModules
+buildLibraryUsingBuildEnvironment ar_configuration package_name =
+    buildLibrary ar_configuration package_name
+        <$> (pathToGHC . buildEnvironmentGHC)
+        <*> buildEnvironmentLibraryCompileOptions
+        <*> buildEnvironmentPackageDatabase
+        <*> buildEnvironmentKnownModules
+        <*> buildEnvironmentLibraryInterfaceDirectory
+        <*> buildEnvironmentLibraryObjectDirectory
 -- @nonl
 -- @-node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
 -- @+node:gcross.20101012145613.1545:buildLibraryUsingConfiguration
@@ -608,14 +651,12 @@ buildLibraryUsingConfiguration ::
     FilePath →
     Library →
     Job HaskellLibrary
-buildLibraryUsingConfiguration Configuration{..} archive_destination library =
+buildLibraryUsingConfiguration =
     buildLibraryUsingBuildEnvironment
-        (fromJust configurationAr)
-        (buildEnvironmentForLibrary configurationBuildEnvironments)
-        library
-        (archive_destination </> "HS" ++ package_name <.> "a")
-  where
-    package_name = display . package $ configurationPackageDescription
+        <$> (fromJust . configurationAr)
+        <*> (display . package . configurationPackageDescription)
+        <*> configurationBuildEnvironment
+-- @nonl
 -- @-node:gcross.20101012145613.1545:buildLibraryUsingConfiguration
 -- @+node:gcross.20101012145613.1540:buildTargets
 buildTargets :: Configuration → BuildTargets → Job InstallTargets
@@ -768,23 +809,8 @@ compileToObject
             package_dependencies
 -- @nonl
 -- @-node:gcross.20100927222551.1451:compileToObject
--- @+node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
-compileToObjectUsingBuildEnvironment ::
-    BuildEnvironment α →
-    FilePath →
-    FilePath →
-    HaskellSource →
-    Job HaskellModule
-compileToObjectUsingBuildEnvironment BuildEnvironment{..} =
-    compileToObject
-        (pathToGHC buildEnvironmentGHC)
-        buildEnvironmentPackageDatabase
-        buildEnvironmentKnownModules
-        buildEnvironmentCompileOptions
--- @nonl
--- @-node:gcross.20101004145951.1474:compileToObjectUsingBuildEnvironment
--- @+node:gcross.20100927222551.1438:computeBuildEnvironments
-computeBuildEnvironments ::
+-- @+node:gcross.20100927222551.1438:computeBuildEnvironment
+computeBuildEnvironment ::
     GHCEnvironment →
     PackageDescription →
     HaskellModuleJobs →
@@ -792,8 +818,8 @@ computeBuildEnvironments ::
     [String] →
     FilePath →
     FilePath →
-    BuildEnvironments
-computeBuildEnvironments
+    BuildEnvironment
+computeBuildEnvironment
     GHCEnvironment{..}
     package_description@PackageDescription{..}
     built_modules
@@ -802,29 +828,19 @@ computeBuildEnvironments
     interface_directory
     object_directory
     =
-    BuildEnvironments
-      ( BuildEnvironment
-        {   buildEnvironmentGHC = ghcEnvironmentGHC
-        ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
-        ,   buildEnvironmentPackageLocality = ghcEnvironmentPackageLocality
-        ,   buildEnvironmentKnownModules = known_modules
-        ,   buildEnvironmentCompileOptions = "-package-name":package_name:compile_options
-        ,   buildEnvironmentLinkOptions = "-package-name":package_name:link_options
-        ,   buildEnvironmentInterfaceDirectory = interface_directory </> "library"
-        ,   buildEnvironmentObjectDirectory = object_directory </> "library"
-        }
-      )
-      ( BuildEnvironment
-        {   buildEnvironmentGHC = ghcEnvironmentGHC
-        ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
-        ,   buildEnvironmentPackageLocality = ghcEnvironmentPackageLocality
-        ,   buildEnvironmentKnownModules = known_modules
-        ,   buildEnvironmentCompileOptions = compile_options
-        ,   buildEnvironmentLinkOptions = link_options
-        ,   buildEnvironmentInterfaceDirectory = interface_directory </> "program"
-        ,   buildEnvironmentObjectDirectory = object_directory </> "progam"
-        }
-      )
+    BuildEnvironment
+    {   buildEnvironmentGHC = ghcEnvironmentGHC
+    ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
+    ,   buildEnvironmentPackageLocality = ghcEnvironmentPackageLocality
+    ,   buildEnvironmentKnownModules = known_modules
+    ,   buildEnvironmentLibraryCompileOptions = "-package-name":package_name:compile_options
+    ,   buildEnvironmentProgramCompileOptions = compile_options
+    ,   buildEnvironmentProgramLinkOptions = link_options
+    ,   buildEnvironmentLibraryInterfaceDirectory = interface_directory </> "library"
+    ,   buildEnvironmentLibraryObjectDirectory = object_directory </> "library"
+    ,   buildEnvironmentProgramInterfaceDirectory = interface_directory </> "program"
+    ,   buildEnvironmentProgramObjectDirectory = object_directory </> "progam"
+    }
   where
     installed_package_dependencies =
         map (fromJust . findSatisfyingPackage ghcEnvironmentPackageDatabase) buildDepends
@@ -838,7 +854,7 @@ computeBuildEnvironments
     link_options = interface_directory_option:additional_link_options
     package_name = display package
 -- @nonl
--- @-node:gcross.20100927222551.1438:computeBuildEnvironments
+-- @-node:gcross.20100927222551.1438:computeBuildEnvironment
 -- @+node:gcross.20101012145613.1556:computeDefaultTargets
 computeDefaultBuildTargetsIn :: PackageDescription → BuildTargets
 computeDefaultBuildTargetsIn PackageDescription{..} =
@@ -863,8 +879,8 @@ configure options = do
         if isNothing (library package_description)
             then return Nothing
             else fmap Just (configureProgramUsingOptions options)
-    let build_environments =
-            computeBuildEnvironments
+    let build_environment =
+            computeBuildEnvironment
                 ghc_environment
                 package_description
                 Map.empty
@@ -876,7 +892,7 @@ configure options = do
     return $
         Configuration
             maybe_ar_configuration
-            build_environments
+            build_environment
             package_description
             installation_environment
 -- @nonl
@@ -1156,6 +1172,12 @@ extractGHCOptions =
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
         <*> maybe User read . Map.lookup ghc_package_database_option_locality
 -- @-node:gcross.20100927161850.1442:extractGHCOptions
+-- @+node:gcross.20101015124156.1543:extractHaskellSourceDirectoriesFrom
+extractHaskellSourceDirectoriesFrom :: BuildInfo → [FilePath]
+extractHaskellSourceDirectoriesFrom BuildInfo{hsSourceDirs=[]} = ["."]
+extractHaskellSourceDirectoriesFrom BuildInfo{hsSourceDirs} = hsSourceDirs
+-- @nonl
+-- @-node:gcross.20101015124156.1543:extractHaskellSourceDirectoriesFrom
 -- @+node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
 extractImportedModulesFromHaskellSource :: L.ByteString → [String]
 extractImportedModulesFromHaskellSource =
@@ -1229,14 +1251,6 @@ findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range
     >>=
     return . head . snd
 -- @-node:gcross.20100927222551.1449:findSatisfyingPackage
--- @+node:gcross.20101012145613.1560:installBuildTargets
-installTargets :: Configuration → InstallTargets → Job ()
-installTargets configuration InstallTargets{..} = do
-    case libraryInstallTarget of
-        Nothing → return ()
-        Just library → installPackageUsingConfiguration configuration library >> return ()
-    mapM_ (installProgramUsingConfiguration configuration) executableInstallTargets
--- @-node:gcross.20101012145613.1560:installBuildTargets
 -- @+node:gcross.20101009103525.1735:installPackage
 installPackage ::
     FilePath →
@@ -1321,14 +1335,14 @@ installPackage
         ,   haddockHTMLs = []
     }
 -- @-node:gcross.20101009103525.1735:installPackage
--- @+node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
-installPackageUsingBuildEnvironment ::
-    BuildEnvironment ForLibrary →
+-- @+node:gcross.20101010201506.1510:installPackageUsingEnvironments
+installPackageUsingEnvironments ::
+    BuildEnvironment →
     InstallationEnvironment →
     PackageDescription →
     HaskellLibrary →
     Job InstalledPackageInfo
-installPackageUsingBuildEnvironment
+installPackageUsingEnvironments
     BuildEnvironment{..}
     InstallationEnvironment{..}
     package_description
@@ -1340,15 +1354,15 @@ installPackageUsingBuildEnvironment
         library
         installationLibraryDirectory
 -- @nonl
--- @-node:gcross.20101010201506.1510:installPackageUsingBuildEnvironment
+-- @-node:gcross.20101010201506.1510:installPackageUsingEnvironments
 -- @+node:gcross.20101012145613.1564:installPackageUsingConfiguration
 installPackageUsingConfiguration ::
     Configuration →
     HaskellLibrary →
     Job InstalledPackageInfo
 installPackageUsingConfiguration =
-    liftA3 installPackageUsingBuildEnvironment
-        (buildEnvironmentForLibrary . configurationBuildEnvironments)
+    liftA3 installPackageUsingEnvironments
+        configurationBuildEnvironment
         configurationInstallationEnvironment
         configurationPackageDescription
 -- @-node:gcross.20101012145613.1564:installPackageUsingConfiguration
@@ -1369,6 +1383,14 @@ installProgramUsingInstallationEnvironment = installProgram . installationExecut
 installProgramUsingConfiguration :: Configuration → ProgramFile → Job ()
 installProgramUsingConfiguration = installProgramUsingInstallationEnvironment . configurationInstallationEnvironment
 -- @-node:gcross.20101012145613.1566:installProgramUsingConfiguration
+-- @+node:gcross.20101012145613.1560:installTargets
+installTargets :: Configuration → InstallTargets → Job ()
+installTargets configuration InstallTargets{..} = do
+    case libraryInstallTarget of
+        Nothing → return ()
+        Just library → installPackageUsingConfiguration configuration library >> return ()
+    mapM_ (installProgramUsingConfiguration configuration) executableInstallTargets
+-- @-node:gcross.20101012145613.1560:installTargets
 -- @+node:gcross.20101004145951.1467:linkProgram
 linkProgram ::
     FilePath →
@@ -1415,14 +1437,14 @@ linkProgram
 -- @-node:gcross.20101004145951.1467:linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
-    BuildEnvironment ForPrograms →
+    BuildEnvironment →
     FilePath →
     HaskellModule →
     Job ProgramFile
 linkProgramUsingBuildEnvironment BuildEnvironment{..} =
     linkProgram
         (pathToGHC buildEnvironmentGHC)
-        buildEnvironmentLinkOptions
+        buildEnvironmentProgramLinkOptions
 -- @-node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 -- @+node:gcross.20100927161850.1436:loadInstalledPackageInformation
 loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
@@ -1525,28 +1547,36 @@ runTarget mode _ = liftIO $ do
     putStrLn ""
     displayModesMessage
 -- @-node:gcross.20101012145613.1553:runTarget
--- @+node:gcross.20101010201506.1516:scanForModulesAndUpdateBuildEnvironment
-scanForModulesAndUpdateBuildEnvironment ::
-    BuildEnvironment α →
+-- @+node:gcross.20101015124156.1544:scanForAndCompileModulesInAllOf
+scanForAndCompileModulesInAllOf ::
+    FilePath →
+    [String] →
+    PackageDatabase →
+    KnownModules →
+    FilePath →
+    FilePath →
     [FilePath] →
-    Job (BuildEnvironment α)
-scanForModulesAndUpdateBuildEnvironment build_environment [] =
-    scanForModulesAndUpdateBuildEnvironment build_environment ["."]
-scanForModulesAndUpdateBuildEnvironment build_environment source_directories =
+    Job (HaskellModuleJobs,KnownModules)
+scanForAndCompileModulesInAllOf
+    path_to_ghc
+    additional_compiler_options
+    package_database
+    known_modules
+    interface_directory
+    object_directory
+    =
     fmap (
-        snd
-        .
-        updateBuildEnvironmentToIncludeModules build_environment
+        createCompilationJobsForModules
+            path_to_ghc
+            package_database
+            Map.empty
+            additional_compiler_options
+            interface_directory
+            object_directory
     )
-    $
-    once (inMyNamespace (unwords source_directories)) (
-        fmap (Map.unions . reverse) $
-            traverse scanForModulesIn source_directories
-    )
-  where
-    inMyNamespace = inNamespace (uuid "2d0b03c0-7f06-4ad8-aa48-1628d8e213f1")
--- @nonl
--- @-node:gcross.20101010201506.1516:scanForModulesAndUpdateBuildEnvironment
+    .
+    scanForModulesInAllOf
+-- @-node:gcross.20101015124156.1544:scanForAndCompileModulesInAllOf
 -- @+node:gcross.20101006110010.1481:scanForModulesIn
 scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
 scanForModulesIn root = once (inMyNamespace root) $ scanForModulesWithParentIn Nothing root
@@ -1554,6 +1584,13 @@ scanForModulesIn root = once (inMyNamespace root) $ scanForModulesWithParentIn N
     inMyNamespace = inNamespace (uuid "cd195cae-ff8f-4d16-9884-9fb924af2a7f")
 -- @nonl
 -- @-node:gcross.20101006110010.1481:scanForModulesIn
+-- @+node:gcross.20101015124156.1542:scanForModulesInAllOf
+scanForModulesInAllOf :: [FilePath] → Job (Map String (Job HaskellSource))
+scanForModulesInAllOf roots = once (inMyNamespace roots) . fmap Map.unions . traverse scanForModulesIn $ roots
+  where
+    inMyNamespace = inNamespace (uuid "ce7a5c4a-2e7b-49c3-8d31-0bbc29fceb23") . unwords
+-- @nonl
+-- @-node:gcross.20101015124156.1542:scanForModulesInAllOf
 -- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
 scanForModulesWithParentIn ::
     Maybe String →
@@ -1570,7 +1607,7 @@ scanForModulesWithParentIn maybe_parent root =
         if isUpper (head entry)
             then do
                 let filepath = root </> entry
-                is_directory ← liftIO (doesDirectoryExist entry)
+                is_directory ← liftIO (doesDirectoryExist filepath)
                 case is_directory of
                     True →
                         scanForModulesWithParentIn
@@ -1592,23 +1629,6 @@ scanForModulesWithParentIn maybe_parent root =
     inMyNamespace = inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792")
     appendToParent child = maybe child (<.> child) maybe_parent
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
--- @+node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
-updateBuildEnvironmentToIncludeModules ::
-    BuildEnvironment α →
-    Map String (Job HaskellSource) →
-    (HaskellModuleJobs,BuildEnvironment α)
-updateBuildEnvironmentToIncludeModules build_environment@BuildEnvironment{..}
-  = second (\new_known_modules → build_environment { buildEnvironmentKnownModules = new_known_modules })
-    .
-    createCompilationJobsForModules
-        (pathToGHC buildEnvironmentGHC)
-        buildEnvironmentPackageDatabase
-        buildEnvironmentKnownModules
-        buildEnvironmentCompileOptions
-        buildEnvironmentInterfaceDirectory
-        buildEnvironmentObjectDirectory
--- @nonl
--- @-node:gcross.20101006110010.1487:updateBuildEnvironmentToIncludeModules
 -- @-node:gcross.20100927123234.1448:Functions
 -- @+node:gcross.20101010201506.1518:Options
 -- @+node:gcross.20100927123234.1432:GHC
