@@ -21,7 +21,7 @@ import Control.Monad.IO.Class
 import Data.Binary
 import Data.DeriveTH
 import Data.Digest.Pure.MD5
-import Data.List.Tagged (TaggedList(..),toT)
+import Data.List.Tagged (TaggedList(..),toTuple)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
@@ -76,11 +76,12 @@ makeArchive
             "(Ar) Creating archive " ++ archive_filepath
         liftIO . infoM "Blueprint.Tools.Ar" $
             "(Ar) Executing '" ++ (unwords (programFilePath:ar_arguments)) ++ "'"
-        fmap toT $
+        fmap toTuple $
             runProductionCommandAndDigestOutputs
                 (archive_filepath :. E)
                 programFilePath
                 ar_arguments
+-- @nonl
 -- @-node:gcross.20101005114926.1477:makeArchive
 -- @-node:gcross.20101005114926.1475:Functions
 -- @-others

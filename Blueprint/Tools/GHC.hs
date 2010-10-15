@@ -42,7 +42,7 @@ import Data.Either
 import Data.Function
 import Data.List
 import Data.List.Split
-import Data.List.Tagged (TaggedList(..),fromT,toT)
+import Data.List.Tagged (TaggedList(..),fromTuple,toTuple)
 import qualified Data.List.Tagged as T
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -706,7 +706,7 @@ compileToObject
         .
         traverse digestFileIfExists
         .
-        fromT
+        fromTuple
         $
         (interface_filepath,object_filepath)
 
@@ -1406,11 +1406,12 @@ linkProgram
     build = do
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Linking program " ++ program_filepath
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Executing '" ++ (unwords (path_to_ghc:ghc_arguments)) ++ "'"
-        fmap toT $
+        fmap toTuple $
             runProductionCommandAndDigestOutputs
                 (program_filepath :. E)
                 path_to_ghc
                 ghc_arguments
+-- @nonl
 -- @-node:gcross.20101004145951.1467:linkProgram
 -- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
 linkProgramUsingBuildEnvironment ::
