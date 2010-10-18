@@ -1581,7 +1581,7 @@ scanForAndCompileModulesInAllOf
         createCompilationJobsForModules
             path_to_ghc
             package_database
-            Map.empty
+            known_modules
             additional_compiler_options
             interface_directory
             object_directory
