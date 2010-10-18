@@ -34,32 +34,37 @@ import Blueprint.Miscellaneous
 -- @+others
 -- @+node:gcross.20100927123234.1385:Types
 -- @+node:gcross.20100927123234.1386:Identifier
-data Identifier a = Identifier
+data Identifier α = Identifier
     {   identifierUUID :: !UUID
     ,   identifierDescription :: !String
     } deriving (Typeable)
+-- @nonl
 -- @-node:gcross.20100927123234.1386:Identifier
 -- @-node:gcross.20100927123234.1385:Types
 -- @+node:gcross.20100927123234.1387:Instances
--- @+node:gcross.20100927123234.1388:Binary (Identifier a)
-instance Binary (Identifier a) where
-    put (Identifier a b) = do { put a; put b }
+-- @+node:gcross.20100927123234.1388:Binary (Identifier α)
+instance Binary (Identifier α) where
+    put (Identifier α β) = do { put α; put β }
     get = liftM2 Identifier get get
--- @-node:gcross.20100927123234.1388:Binary (Identifier a)
--- @+node:gcross.20100927123234.1389:Eq (Identifier a)
-instance Eq (Identifier a) where
+-- @nonl
+-- @-node:gcross.20100927123234.1388:Binary (Identifier α)
+-- @+node:gcross.20100927123234.1389:Eq (Identifier α)
+instance Eq (Identifier α) where
     (==) = (==) `on` identifierUUID
--- @-node:gcross.20100927123234.1389:Eq (Identifier a)
--- @+node:gcross.20100927123234.1390:Ord (Identifier a)
-instance Ord (Identifier a) where
+-- @nonl
+-- @-node:gcross.20100927123234.1389:Eq (Identifier α)
+-- @+node:gcross.20100927123234.1390:Ord (Identifier α)
+instance Ord (Identifier α) where
     compare = compare `on` identifierUUID
--- @-node:gcross.20100927123234.1390:Ord (Identifier a)
--- @+node:gcross.20100927123234.1391:Show (Identifier a)
-instance Show (Identifier a) where
+-- @nonl
+-- @-node:gcross.20100927123234.1390:Ord (Identifier α)
+-- @+node:gcross.20100927123234.1391:Show (Identifier α)
+instance Show (Identifier α) where
     show = identifierDescription
--- @-node:gcross.20100927123234.1391:Show (Identifier a)
--- @+node:gcross.20100927123234.1392:Monoid (Identifier a)
-instance Monoid (Identifier a) where
+-- @nonl
+-- @-node:gcross.20100927123234.1391:Show (Identifier α)
+-- @+node:gcross.20100927123234.1392:Monoid (Identifier α)
+instance Monoid (Identifier α) where
     mempty = Identifier nil ""
     i1 `mappend` i2
       | UUID.null (identifierUUID i1) = i2
@@ -68,28 +73,30 @@ instance Monoid (Identifier a) where
             identifierInNamespace
                 (identifierUUID i1)
                 (identifierDescription i1 ++ ", " ++ identifierDescription i2)
--- @-node:gcross.20100927123234.1392:Monoid (Identifier a)
+-- @nonl
+-- @-node:gcross.20100927123234.1392:Monoid (Identifier α)
 -- @-node:gcross.20100927123234.1387:Instances
 -- @+node:gcross.20100927123234.1393:Functions
 -- @+node:gcross.20100927123234.1394:identifier
-identifier :: String → String → Identifier a
+identifier :: String → String → Identifier α
 identifier = Identifier . uuid
+-- @nonl
 -- @-node:gcross.20100927123234.1394:identifier
 -- @+node:gcross.20100927123234.1395:identifierInNamespace
-identifierInNamespace :: UUID → String → Identifier a
+identifierInNamespace :: UUID → String → Identifier α
 identifierInNamespace namespace name =
     identifierInNamespaceWithDifferentDisplayName namespace name name
 -- @nonl
 -- @-node:gcross.20100927123234.1395:identifierInNamespace
 -- @+node:gcross.20101018094310.1823:identifierInNamespaceWithDifferentDisplayName
-identifierInNamespaceWithDifferentDisplayName :: UUID → String → String → Identifier a
+identifierInNamespaceWithDifferentDisplayName :: UUID → String → String → Identifier α
 identifierInNamespaceWithDifferentDisplayName namespace name display_name =
     Identifier
         (generateNamed namespace . UTF8.encode $ name)
         display_name
 -- @-node:gcross.20101018094310.1823:identifierInNamespaceWithDifferentDisplayName
 -- @+node:gcross.20100927123234.1396:sortIntoLabeledBins
-sortIntoLabeledBins :: [(Identifier a, b)] → Map (Identifier a) [b]
+sortIntoLabeledBins :: [(Identifier α, β)] → Map (Identifier α) [β]
 sortIntoLabeledBins =
     foldr
         (\(k,v) bins →
@@ -102,16 +109,19 @@ sortIntoLabeledBins =
             bins
         )
         Map.empty
+-- @nonl
 -- @-node:gcross.20100927123234.1396:sortIntoLabeledBins
 -- @+node:gcross.20100927123234.1397:getContentsOfBinLabeledBy
-getContentsOfBinLabeledBy :: Identifier a → Map (Identifier a) [b] → [b]
+getContentsOfBinLabeledBy :: Identifier α → Map (Identifier α) [β] → [β]
 getContentsOfBinLabeledBy key = fromMaybe [] . Map.lookup key
+-- @nonl
 -- @-node:gcross.20100927123234.1397:getContentsOfBinLabeledBy
 -- @-node:gcross.20100927123234.1393:Functions
 -- @+node:gcross.20100927123234.1398:Values
 -- @+node:gcross.20100927123234.1399:null_identifier
-null_identifier :: Identifier a
+null_identifier :: Identifier α
 null_identifier = Identifier UUID.nil ""
+-- @nonl
 -- @-node:gcross.20100927123234.1399:null_identifier
 -- @-node:gcross.20100927123234.1398:Values
 -- @-others
