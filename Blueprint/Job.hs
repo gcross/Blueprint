@@ -89,7 +89,8 @@ instance Show JobError where
         unlines (
             concatMap
                 (\(heading,exceptions) →
-                     ("Error " ++ heading ++ ":")
+                     ""
+                    :("Error " ++ heading ++ ":")
                     :(  map ('\t':) -- '
                         .
                         concatMap (lines . show)
@@ -97,7 +98,9 @@ instance Show JobError where
                 )
                 (Map.assocs jobErrorsWithHeadings)
             ++
-            Map.keys jobErrors
+            concatMap
+                (("":) . (:[]))
+                (Map.keys jobErrors)
         )
 
 instance Exception JobError
