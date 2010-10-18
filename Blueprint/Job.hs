@@ -78,6 +78,24 @@ type JobIdentifier = Identifier OfJob
 -- @-node:gcross.20101018094310.1532:JobIdentifier
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20101007134409.1485:Exceptions
+-- @+node:gcross.20101018094310.1533:CycleDetected
+data CycleDetected = CycleDetected deriving Typeable
+
+instance Show CycleDetected where
+    show CycleDetected = "Cycle detected."
+
+instance Exception CycleDetected
+-- @nonl
+-- @-node:gcross.20101018094310.1533:CycleDetected
+-- @+node:gcross.20101018094310.1824:ErrorInDependency
+data ErrorInDependency = ErrorInDependency String deriving Typeable
+
+instance Show ErrorInDependency where
+    show (ErrorInDependency dependency) = "Error " ++ dependency ++ "."
+
+instance Exception ErrorInDependency
+-- @nonl
+-- @-node:gcross.20101018094310.1824:ErrorInDependency
 -- @+node:gcross.20101007134409.1486:JobError
 data JobError = JobError
     {   jobErrorsWithHeadings :: Map String [SomeException]
@@ -106,15 +124,6 @@ instance Show JobError where
 instance Exception JobError
 -- @nonl
 -- @-node:gcross.20101007134409.1486:JobError
--- @+node:gcross.20101018094310.1533:CycleDetected
-data CycleDetected = CycleDetected deriving Typeable
-
-instance Show CycleDetected where
-    show CycleDetected = "Cycle detected."
-
-instance Exception CycleDetected
--- @nonl
--- @-node:gcross.20101018094310.1533:CycleDetected
 -- @-node:gcross.20101007134409.1485:Exceptions
 -- @+node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100924174906.1278:Applicative Job
@@ -261,7 +270,10 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                             {   jobErrorsWithHeadings =
                                     Map.insert
                                         description
-                                        (Map.elems jobErrors)
+                                        (map (toException . ErrorInDependency) (Map.keys jobErrorsWithHeadings)
+                                         ++
+                                         Map.elems jobErrors
+                                        )
                                         jobErrorsWithHeadings
                             ,   jobErrors = Map.empty
                             }
