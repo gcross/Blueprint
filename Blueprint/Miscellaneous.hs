@@ -33,6 +33,8 @@ import Data.Version
 import Data.UUID
 import Data.UUID.V5
 
+import Debug.Trace
+
 import Text.ParserCombinators.ReadP (readP_to_S)
 import Text.Regex.Base
 -- @-node:gcross.20100925004153.1325:<< Import needed modules >>
@@ -51,6 +53,14 @@ deriving instance Typeable MD5Digest
 -- @+node:gcross.20100927123234.1419:doubleton
 doubleton x y = [x,y]
 -- @-node:gcross.20100927123234.1419:doubleton
+-- @+node:gcross.20101018141146.1542:echo
+echo x = trace (show x) x
+-- @nonl
+-- @-node:gcross.20101018141146.1542:echo
+-- @+node:gcross.20101018141146.1544:echo
+echoWith h x = trace (h ++ " " ++ show x) x
+-- @nonl
+-- @-node:gcross.20101018141146.1544:echo
 -- @+node:gcross.20100927161850.1428:extractVersion
 extractVersion ::
     RegexLike regex String =>
