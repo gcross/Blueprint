@@ -39,6 +39,8 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Typeable
 import Data.UUID
 
@@ -84,6 +86,15 @@ instance Show JobError where
 
 instance Exception JobError
 -- @-node:gcross.20101007134409.1486:JobError
+-- @+node:gcross.20101018094310.1533:CycleDetected
+data CycleDetected = CycleDetected deriving Typeable
+
+instance Show CycleDetected where
+    show CycleDetected = "Cycle detected."
+
+instance Exception CycleDetected
+-- @nonl
+-- @-node:gcross.20101018094310.1533:CycleDetected
 -- @-node:gcross.20101007134409.1485:Exceptions
 -- @+node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100924174906.1278:Applicative Job
@@ -141,7 +152,7 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
         newJobEnvironment
             maximum_number_of_simultaneous_IO_tasks
             input_cache
-    result ← runJobInEnvironment job_environment job
+    result ← runJobInEnvironment job_environment Set.empty job
     cache_updates ←
         whileM
             (fmap not (isEmptyChan environmentOutputCache))
@@ -159,8 +170,8 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
         )
 -- @-node:gcross.20100927123234.1302:runJob
 -- @+node:gcross.20100925004153.1307:runJobInEnvironment
-runJobInEnvironment :: JobEnvironment → Job α → IO (Either (Map String SomeException) α)
-runJobInEnvironment job_environment@JobEnvironment{..} job =
+runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either (Map String SomeException) α)
+runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
     (case job of
         Result x → return (Right x)
         Task io computeNextJob →
@@ -201,7 +212,11 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                         (Left errors, _) → return . Left $ errors
                         (_, Left errors) → return . Left $ errors
         Errors errors → return (Left errors)
-        Once (Identifier uuid _) job computeNextJob → do
+        Once job_id@(Identifier uuid _) job computeNextJob 
+          | Set.member job_id active_jobs
+            → throwIO CycleDetected
+          | otherwise
+            → do
             result_ivar ← IVar.new
             maybe_previous_result ←
                 atomicModifyIORef environmentCompletedJobs $ \completed_jobs →
@@ -216,7 +231,11 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                             )
             case maybe_previous_result of
                 Nothing → do
-                    job_result ← nestedRunJob job
+                    job_result ←
+                        runJobInEnvironment
+                            job_environment
+                            (Set.insert job_id active_jobs)
+                            job
                     case job_result of
                         Left errors → return (Left errors)
                         Right result → do
@@ -232,7 +251,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                     fromDynamic
                     $
                     previous_result
-        Cache (Identifier uuid _) computeJob computeNextJob → do
+        Cache job_id@(Identifier uuid _) computeJob computeNextJob → do
             let maybe_old_cached_value =
                     fmap decode
                     .
@@ -247,7 +266,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                     nestedRunJob (computeNextJob job_result)
     ) `catch` (return . Left . (\e → Map.singleton (show e) e))
   where
-    nestedRunJob = runJobInEnvironment job_environment
+    nestedRunJob = runJobInEnvironment job_environment active_jobs
 
     simplify :: Job α → IO (Job α)
     simplify job@(Once (Identifier uuid _) _ computeNextJob) = do
