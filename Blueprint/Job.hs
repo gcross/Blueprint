@@ -58,7 +58,6 @@ data Job α where
     Result :: α → Job α
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
-    Errors :: Map String SomeException → Job α
     Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
   deriving Typeable
@@ -101,7 +100,6 @@ instance Exception CycleDetected
 instance Applicative Job where
     pure = Result
     Result f <*> x = fmap f x
-    Errors e1 <*> Errors e2 = Errors (Map.union e1 e2)
     f <*> x = Fork f x Result
 -- @-node:gcross.20100924174906.1278:Applicative Job
 -- @+node:gcross.20100924174906.1281:Functor Job
@@ -109,7 +107,6 @@ instance Functor Job where
     fmap f (Result x) = Result (f x)
     fmap f (Task io g) = Task io (fmap f . g)
     fmap f (Fork jf jx g) = Fork jf jx (fmap f . g)
-    fmap f (Errors errors) = Errors errors
     fmap f (Once uuid jx g) = Once uuid jx (fmap f . g)
     fmap f (Cache uuid g h) = Cache uuid g (fmap f . h)
 -- @-node:gcross.20100924174906.1281:Functor Job
@@ -119,7 +116,6 @@ instance Monad Job where
     Result x >>= f = f x
     Task io f >>= g = Task io (f >=> g)
     Fork jf jx f >>= g = Fork jf jx (f >=> g)
-    Errors errors >>= _ = Errors errors
     Once uuid x f >>= g = Once uuid x (f >=> g)
     Cache uuid f g >>= h = Cache uuid f (g >=> h)
 -- @-node:gcross.20100924174906.1277:Monad Job
@@ -197,9 +193,6 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     case f_or_error of
                         Left errors → return (Left errors)
                         Right f → computeAndRunNextJob (f x)
-                (Errors errors1, Errors errors2) → return . Left $ Map.union errors1 errors2
-                (Errors errors, _) → return . Left $ errors
-                (_, Errors errors) → return . Left $ errors
                 _ → do
                     x_or_error ← do
                         x_ivar ← IVar.new
@@ -211,7 +204,6 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                         (Left errors1, Left errors2) → return . Left $ Map.union errors1 errors2
                         (Left errors, _) → return . Left $ errors
                         (_, Left errors) → return . Left $ errors
-        Errors errors → return (Left errors)
         Once job_id@(Identifier uuid _) job computeNextJob 
           | Set.member job_id active_jobs
             → throwIO CycleDetected
