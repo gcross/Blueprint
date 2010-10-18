@@ -177,7 +177,7 @@ data InstalledPackage = InstalledPackage
     ,   installedPackageName :: String
     ,   installedPackageVersion :: Version
     ,   installedPackageModules :: [String]
-    } deriving (Typeable, Eq);
+    } deriving (Typeable, Eq, Show)
 
 $( derive makeBinary ''InstalledPackageId )
 $( derive makeBinary ''InstalledPackage )
