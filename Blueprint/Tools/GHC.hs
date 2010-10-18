@@ -832,8 +832,8 @@ computeBuildEnvironment
     GHCEnvironment{..}
     package_description@PackageDescription{..}
     built_modules
-    additional_compile_options
-    additional_link_options
+    compile_options
+    link_options
     interface_directory
     object_directory
     =
@@ -842,13 +842,13 @@ computeBuildEnvironment
     ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
     ,   buildEnvironmentPackageLocality = ghcEnvironmentPackageLocality
     ,   buildEnvironmentKnownModules = known_modules
-    ,   buildEnvironmentLibraryCompileOptions = "-package-name":package_name:compile_options
-    ,   buildEnvironmentProgramCompileOptions = compile_options
-    ,   buildEnvironmentProgramLinkOptions = link_options
-    ,   buildEnvironmentLibraryInterfaceDirectory = interface_directory </> "library"
-    ,   buildEnvironmentLibraryObjectDirectory = object_directory </> "library"
-    ,   buildEnvironmentProgramInterfaceDirectory = interface_directory </> "program"
-    ,   buildEnvironmentProgramObjectDirectory = object_directory </> "progam"
+    ,   buildEnvironmentLibraryCompileOptions = "-i":("-i"++library_interface_directory):"-package-name":package_name:compile_options
+    ,   buildEnvironmentProgramCompileOptions = "-i":("-i"++program_interface_directory):compile_options
+    ,   buildEnvironmentProgramLinkOptions = "-i":("-i"++program_interface_directory):link_options
+    ,   buildEnvironmentLibraryInterfaceDirectory = library_interface_directory
+    ,   buildEnvironmentLibraryObjectDirectory = library_object_directory
+    ,   buildEnvironmentProgramInterfaceDirectory = program_interface_directory
+    ,   buildEnvironmentProgramObjectDirectory = program_object_directory
     }
   where
     installed_package_dependencies =
@@ -858,10 +858,12 @@ computeBuildEnvironment
             (Map.map KnownModuleInProject built_modules
             :map extractKnownModulesFromInstalledPackage installed_package_dependencies
             )
-    interface_directory_option = "-i" ++ interface_directory
-    compile_options = interface_directory_option:additional_compile_options
-    link_options = interface_directory_option:additional_link_options
+    interface_directory_option = ["-hidir" ++ interface_directory]
     package_name = display package
+    library_interface_directory = interface_directory </> "library"
+    library_object_directory = object_directory </> "library"
+    program_interface_directory = interface_directory </> "program"
+    program_object_directory = object_directory </> "program"
 -- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironment
 -- @+node:gcross.20101012145613.1556:computeDefaultTargets
@@ -1132,8 +1134,8 @@ createCompilationJobsForModules
                 package_database
                 new_known_modules
                 additional_options
-                (interface_directory </> module_name <.> "hi")
-                (object_directory </> module_name <.> "o")
+                (interface_directory </> dotsToPath module_name <.> "hi")
+                (object_directory </> dotsToPath module_name <.> "o")
         ) module_sources
 
     new_known_modules =
