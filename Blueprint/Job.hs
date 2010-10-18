@@ -4,6 +4,7 @@
 -- @<< Language extensions >>
 -- @+node:gcross.20100924160650.2045:<< Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -42,6 +43,9 @@ import Data.Typeable
 import Data.UUID
 
 import System.Directory
+
+import Blueprint.Identifier
+-- @nonl
 -- @-node:gcross.20100924160650.2046:<< Import needed modules >>
 -- @nl
 
@@ -53,8 +57,8 @@ data Job α where
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Errors :: Map String SomeException → Job α
-    Once :: Typeable α ⇒ UUID → Job α → (α → Job β) → Job β
-    Cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
+    Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
+    Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
   deriving Typeable
 -- @-node:gcross.20100924160650.2048:Job
 -- @+node:gcross.20100925004153.1301:JobEnvironment
@@ -65,6 +69,11 @@ data JobEnvironment = JobEnvironment
     ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
 -- @-node:gcross.20100925004153.1301:JobEnvironment
+-- @+node:gcross.20101018094310.1532:JobIdentifier
+data OfJob
+type JobIdentifier = Identifier OfJob
+-- @nonl
+-- @-node:gcross.20101018094310.1532:JobIdentifier
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20101007134409.1485:Exceptions
 -- @+node:gcross.20101007134409.1486:JobError
@@ -110,7 +119,7 @@ instance MonadIO Job where
 -- @-node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100925004153.1297:Functions
 -- @+node:gcross.20100925004153.1299:cache
-cache :: Binary α ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
+cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β
 cache uuid computeJob = Cache uuid computeJob return
 -- @-node:gcross.20100925004153.1299:cache
 -- @+node:gcross.20101007134409.1484:extractResultOrThrowIO
@@ -118,11 +127,11 @@ extractResultOrThrowIO :: Either JobError α → IO α
 extractResultOrThrowIO = either throwIO evaluate
 -- @-node:gcross.20101007134409.1484:extractResultOrThrowIO
 -- @+node:gcross.20100925004153.1298:once
-once :: Typeable α ⇒ UUID → Job α → Job α
+once :: Typeable α ⇒ JobIdentifier → Job α → Job α
 once uuid job = Once uuid job return
 -- @-node:gcross.20100925004153.1298:once
 -- @+node:gcross.20101004145951.1473:onceAndCached
-onceAndCached :: (Binary α, Typeable β) ⇒ UUID → (Maybe α → Job (Maybe α,β)) → Job β
+onceAndCached :: (Binary α, Typeable β) ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β
 onceAndCached uuid = once uuid . cache uuid
 -- @-node:gcross.20101004145951.1473:onceAndCached
 -- @+node:gcross.20100927123234.1302:runJob
@@ -192,7 +201,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                         (Left errors, _) → return . Left $ errors
                         (_, Left errors) → return . Left $ errors
         Errors errors → return (Left errors)
-        Once uuid job computeNextJob → do
+        Once (Identifier uuid _) job computeNextJob → do
             result_ivar ← IVar.new
             maybe_previous_result ←
                 atomicModifyIORef environmentCompletedJobs $ \completed_jobs →
@@ -223,7 +232,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
                     fromDynamic
                     $
                     previous_result
-        Cache uuid computeJob computeNextJob → do
+        Cache (Identifier uuid _) computeJob computeNextJob → do
             let maybe_old_cached_value =
                     fmap decode
                     .
@@ -241,7 +250,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} job =
     nestedRunJob = runJobInEnvironment job_environment
 
     simplify :: Job α → IO (Job α)
-    simplify job@(Once uuid _ computeNextJob) = do
+    simplify job@(Once (Identifier uuid _) _ computeNextJob) = do
         completed_jobs ← readIORef environmentCompletedJobs
         case Map.lookup uuid completed_jobs of
             Nothing → return job

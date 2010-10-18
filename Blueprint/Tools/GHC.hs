@@ -494,7 +494,7 @@ buildExecutable
     executable_directory
     Executable{..}
     =
-    once (inMyNamespace program_filepath) $
+    once my_id $
         scanForAndCompileModulesInAllOf
             path_to_ghc
             additional_compiler_options
@@ -515,8 +515,12 @@ buildExecutable
             additional_linker_options
             program_filepath
   where
-    inMyNamespace = inNamespace (uuid "0cbcbb1f-e695-4612-b2b9-d3a9a125e04f")
     program_filepath = executable_directory </> exeName
+    my_id =
+        identifierInNamespace
+            (uuid "0cbcbb1f-e695-4612-b2b9-d3a9a125e04f")
+            ("building executable " ++ program_filepath)
+-- @nonl
 -- @-node:gcross.20101012145613.1516:buildExecutable
 -- @+node:gcross.20101012145613.1519:buildExecutableUsingBuildEnvironment
 buildExecutableUsingBuildEnvironment ::
@@ -569,7 +573,7 @@ buildLibrary
     library_directory
     Library{..}
     =
-    once (inMyNamespace archive_filepath) $ do
+    once my_id $ do
         (_,known_modules) ←
             scanForAndCompileModulesInAllOf
                 path_to_ghc
@@ -625,7 +629,11 @@ buildLibrary
             }
   where
     archive_filepath = library_directory </> "HS" ++ package_name <.> "a"
-    inMyNamespace = inNamespace (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
+    my_id =
+        identifierInNamespace
+            (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
+            ("building library " ++ archive_filepath)
+-- @nonl
 -- @-node:gcross.20101009103525.1729:buildLibrary
 -- @+node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
 buildLibraryUsingBuildEnvironment ::
@@ -712,22 +720,22 @@ compileToObject
     interface_filepath
     object_filepath
     HaskellSource{..}
-  = once my_uuid
+  = once my_id
     .
     fmap postProcess
     $
     runIfImplicitDependencyOrProductHasChanged
-        my_uuid
+        my_id
         (fileDigest haskellSourceFile)
         scan
         computeDependency
         productHasChangedFrom
         build
   where
-    my_uuid =
-        inNamespace
+    my_id =
+        identifierInNamespace
             (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
-            (filePath haskellSourceFile ++ interface_filepath ++ object_filepath)
+            ("compiling " ++ filePath haskellSourceFile ++ " --> " ++ object_filepath)
 
     scan :: Job [String]
     scan =
@@ -900,11 +908,11 @@ configure options = do
 -- @+node:gcross.20100927123234.1450:configureGHC
 configureGHC :: GHCOptions → Job GHC
 configureGHC search_options@GHCOptions{..} =
-    onceAndCached my_uuid
+    onceAndCached my_id
     $
     (liftIO . configureIt >=> \ghc → return (Just (search_options,ghc),ghc))
  where
-    my_uuid = uuid "92f13c03-9512-4b97-a7eb-8637b78840ad"
+    my_id = identifier "92f13c03-9512-4b97-a7eb-8637b78840ad" "configuring GHC"
 
     configureIt :: Maybe (GHCOptions,GHC) → IO GHC
     configureIt maybe_old_search_paths
@@ -1046,7 +1054,7 @@ configureInstallationEnvironmentUsingOptions option_values = do
 -- @+node:gcross.20100927161850.1432:configurePackageDatabase
 configurePackageDatabase :: FilePath → PackageLocality → Job PackageDatabase
 configurePackageDatabase path_to_ghc_pkg locality =
-    onceAndCached my_uuid
+    onceAndCached my_id
     $
     \maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
@@ -1068,7 +1076,7 @@ configurePackageDatabase path_to_ghc_pkg locality =
         let package_database = constructPackageDatabaseFromInstalledPackages installed_packages
         return (Just (list_of_package_atoms,installed_packages), package_database)
   where
-    my_uuid = uuid "734f6cec-8a79-4aa2-ad3b-ebe0937cd125"
+    my_id = identifier "734f6cec-8a79-4aa2-ad3b-ebe0937cd125" "configuring GHC package database"
 -- @-node:gcross.20100927161850.1432:configurePackageDatabase
 -- @+node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
 constructPackageDatabaseFromInstalledPackages :: [InstalledPackage] → PackageDatabase
@@ -1403,17 +1411,20 @@ linkProgram
     additional_options
     program_filepath
     HaskellModule{haskellModuleLinkDependencyModules,haskellModuleLinkDependencyPackages}
-  = once my_uuid
+  = once my_id
     .
     fmap (File program_filepath)
     $
     runIfDependencyOrProductHasChanged
-        my_uuid
+        my_id
         (additional_options,dependency_digests,package_digests)
         (\old_digest → fmap (/= Just old_digest) (digestFileIfExists program_filepath))
         build
   where
-    my_uuid = (inNamespace (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a") program_filepath)
+    my_id =
+        identifierInNamespace
+            (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a")
+            ("linking program " ++ program_filepath)
     haskell_object_dependencies = Map.map haskellModuleObject haskellModuleLinkDependencyModules
     dependency_digests = Map.map fileDigest haskell_object_dependencies
     package_digests = Map.map installedPackageId haskellModuleLinkDependencyPackages
@@ -1579,17 +1590,22 @@ scanForAndCompileModulesInAllOf
 -- @-node:gcross.20101015124156.1544:scanForAndCompileModulesInAllOf
 -- @+node:gcross.20101006110010.1481:scanForModulesIn
 scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
-scanForModulesIn root = once (inMyNamespace root) $ scanForModulesWithParentIn Nothing root
+scanForModulesIn root = once my_id $ scanForModulesWithParentIn Nothing root
   where
-    inMyNamespace = inNamespace (uuid "cd195cae-ff8f-4d16-9884-9fb924af2a7f")
+    my_id =
+        identifierInNamespace
+            (uuid "cd195cae-ff8f-4d16-9884-9fb924af2a7f")
+            ("scanning for haskell modules in " ++ show root)
 -- @nonl
 -- @-node:gcross.20101006110010.1481:scanForModulesIn
 -- @+node:gcross.20101015124156.1542:scanForModulesInAllOf
 scanForModulesInAllOf :: [FilePath] → Job (Map String (Job HaskellSource))
-scanForModulesInAllOf roots = once (inMyNamespace roots) . fmap Map.unions . traverse scanForModulesIn $ roots
+scanForModulesInAllOf roots = once my_id . fmap Map.unions . traverse scanForModulesIn $ roots
   where
-    inMyNamespace = inNamespace (uuid "ce7a5c4a-2e7b-49c3-8d31-0bbc29fceb23") . unwords
--- @nonl
+    my_id =
+        identifierInNamespace
+            (uuid "ce7a5c4a-2e7b-49c3-8d31-0bbc29fceb23")
+            ("scanning for haskell modules in " ++ show roots)
 -- @-node:gcross.20101015124156.1542:scanForModulesInAllOf
 -- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
 scanForModulesWithParentIn ::
@@ -1619,14 +1635,11 @@ scanForModulesWithParentIn maybe_parent root =
                         let module_name = appendToParent . dropExtension $ entry
                         in Map.singleton
                             module_name
-                            (once (inMyNamespace filepath) $
-                                fmap (HaskellSource module_name . File filepath) (digestFile filepath)
-                            )
+                            (fmap (HaskellSource module_name . File filepath) (digestFile filepath))
                     _ → return Map.empty
             else return Map.empty
     )
   where
-    inMyNamespace = inNamespace (uuid "4bbdf77f-d4db-423c-bedb-06f12aae0792")
     appendToParent child = maybe child (<.> child) maybe_parent
 -- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
 -- @-node:gcross.20100927123234.1448:Functions

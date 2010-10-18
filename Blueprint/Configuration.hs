@@ -109,9 +109,9 @@ configureProgram ::
     ProgramConfigurationOptions α →
     Job (ProgramConfiguration α)
 configureProgram options@ProgramConfigurationOptions{..} =
-    once my_uuid
+    once my_id
     .
-    cache my_uuid
+    cache my_id
     $
     liftIO . configureIt
     >=>
@@ -122,7 +122,10 @@ configureProgram options@ProgramConfigurationOptions{..} =
     )
  where
     program_name = programNameFrom options
-    my_uuid = inNamespace (uuid "432fb242-cc22-4827-baee-70a7443f9b3b") program_name
+    my_id =
+        identifierInNamespace
+            (uuid "432fb242-cc22-4827-baee-70a7443f9b3b")
+            ("configuring " ++ program_name)
 
     configureIt maybe_old_options
       | Just (old_options,old_config) ← maybe_old_options

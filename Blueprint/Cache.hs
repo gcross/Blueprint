@@ -23,13 +23,13 @@ import Blueprint.Job
 -- @+node:gcross.20100925114718.1310:runIfDependencyOrProductHasChanged
 runIfDependencyOrProductHasChanged ::
     (Binary α, Eq α, Binary β) ⇒
-    UUID →
+    JobIdentifier →
     α →
     (β → Job Bool) →
     Job β →
     Job β
-runIfDependencyOrProductHasChanged uuid dependency productHasChangedFrom run =
-    cache uuid $ \maybe_cache →
+runIfDependencyOrProductHasChanged job_id dependency productHasChangedFrom run =
+    cache job_id $ \maybe_cache →
         case maybe_cache of
             Just (old_dependency,old_product) | old_dependency == dependency → do
                 product_has_changed ← productHasChangedFrom old_product
@@ -45,7 +45,7 @@ runIfDependencyOrProductHasChanged uuid dependency productHasChangedFrom run =
 -- @+node:gcross.20101005122519.1494:runIfImplicitDependenciesOrProductHasChanged
 runIfImplicitDependencyOrProductHasChanged ::
     (Binary α, Eq α, Binary β, Eq β, Eq ɣ, Binary ɣ, Binary δ) ⇒
-    UUID →
+    JobIdentifier →
     α →
     Job β →
     (β → Job (ɣ,n)) →
@@ -53,13 +53,13 @@ runIfImplicitDependencyOrProductHasChanged ::
     (ɣ → Job δ) →
     Job (δ,n)
 runIfImplicitDependencyOrProductHasChanged
-    uuid
+    job_id
     scan_dependency
     scan
     computeDependency
     productHasChangedFrom
     run
-  = cache uuid $ \maybe_cache →
+  = cache job_id $ \maybe_cache →
         case maybe_cache of
             Just (old_scan_dependency
                  ,old_scan_result

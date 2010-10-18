@@ -34,6 +34,7 @@ import System.Exit
 import System.FilePath
 import System.Process
 
+import Blueprint.Identifier
 import Blueprint.Job
 import Blueprint.Miscellaneous
 -- @-node:gcross.20100925004153.1315:<< Import needed modules >>
@@ -86,7 +87,7 @@ declareFileType name = do
 -- @+node:gcross.20100925004153.1318:digestFile
 digestFile :: FilePath → Job MD5Digest
 digestFile filepath =
-    once (inMyNamespace filepath)
+    once my_id
     .
     liftIO
     .
@@ -96,7 +97,10 @@ digestFile filepath =
     $
     filepath
   where
-    inMyNamespace = inNamespace (uuid "50bdbf93-8a69-497a-9493-2eb1e9f87ee0")
+    my_id =
+        identifierInNamespace
+            (uuid "50bdbf93-8a69-497a-9493-2eb1e9f87ee0")
+            ("digesting " ++ filepath)
 -- @-node:gcross.20100925004153.1318:digestFile
 -- @+node:gcross.20100927222551.1459:digestFileIfExists
 digestFileIfExists :: FilePath → Job (Maybe MD5Digest)

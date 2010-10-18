@@ -30,6 +30,7 @@ import System.Log.Logger
 
 import Blueprint.Cache
 import Blueprint.Configuration
+import Blueprint.Identifier
 import Blueprint.Job
 import Blueprint.Miscellaneous
 import Blueprint.Tools
@@ -58,17 +59,20 @@ makeArchive
     ProgramConfiguration{..}
     object_digests
     archive_filepath
-  = once my_uuid
+  = once my_id
     .
     fmap (File archive_filepath)
     $
     runIfDependencyOrProductHasChanged
-        my_uuid
+        my_id
         (programExtraArguments,object_digests)
         (\old_digest → fmap (/= Just old_digest) (digestFileIfExists archive_filepath))
         build
   where
-    my_uuid = inNamespace (uuid "5a0923aa-3580-4b71-8a73-c187eced95b3") archive_filepath
+    my_id =
+        identifierInNamespace
+            (uuid "5a0923aa-3580-4b71-8a73-c187eced95b3")
+            ("creating archive " ++ archive_filepath)
 
     ar_arguments = "cqs":archive_filepath:(Map.keys object_digests ++ programExtraArguments)
     build = do
