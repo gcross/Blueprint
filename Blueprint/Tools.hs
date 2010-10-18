@@ -23,7 +23,6 @@ import qualified Data.ByteString.Lazy as L
 import Data.Digest.Pure.MD5
 import Data.List.Tagged (TaggedList)
 import qualified Data.List.Tagged as T
-import Data.NaturalNumber
 import Data.Traversable (traverse)
 import Data.Typeable
 
@@ -33,6 +32,8 @@ import System.Directory
 import System.Exit
 import System.FilePath
 import System.Process
+
+import TypeLevel.NaturalNumber.Induction
 
 import Blueprint.Identifier
 import Blueprint.Job
@@ -111,7 +112,7 @@ digestFileIfExists file_to_digest = do
         else return Nothing
 -- @-node:gcross.20100927222551.1459:digestFileIfExists
 -- @+node:gcross.20100927222551.1486:digestFiles
-digestFiles :: NaturalNumber n ⇒ TaggedList n FilePath → Job (TaggedList n MD5Digest)
+digestFiles :: Induction n ⇒ TaggedList n FilePath → Job (TaggedList n MD5Digest)
 digestFiles = traverse digestFile
 -- @-node:gcross.20100927222551.1486:digestFiles
 -- @+node:gcross.20101009103525.1737:runProductionCommand
@@ -133,7 +134,7 @@ runProductionCommand command arguments input = liftIO $ do
 -- @-node:gcross.20101009103525.1737:runProductionCommand
 -- @+node:gcross.20100927222551.1472:runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
-    NaturalNumber n ⇒
+    Induction n ⇒
     TaggedList n FilePath →
     String →
     [String] →
