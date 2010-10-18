@@ -733,9 +733,10 @@ compileToObject
         build
   where
     my_id =
-        identifierInNamespace
+        identifierInNamespaceWithDifferentDisplayName
             (uuid "a807f1d2-c62d-4e44-9e8b-4c53e8410dee")
-            ("compiling " ++ filePath haskellSourceFile ++ " --> " ++ object_filepath)
+            (filePath haskellSourceFile ++ interface_filepath ++ object_filepath)
+            ("compiling " ++ filePath haskellSourceFile)
 
     scan :: Job [String]
     scan =

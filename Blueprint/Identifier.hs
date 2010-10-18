@@ -78,10 +78,16 @@ identifier = Identifier . uuid
 -- @+node:gcross.20100927123234.1395:identifierInNamespace
 identifierInNamespace :: UUID → String → Identifier a
 identifierInNamespace namespace name =
+    identifierInNamespaceWithDifferentDisplayName namespace name name
+-- @nonl
+-- @-node:gcross.20100927123234.1395:identifierInNamespace
+-- @+node:gcross.20101018094310.1823:identifierInNamespaceWithDifferentDisplayName
+identifierInNamespaceWithDifferentDisplayName :: UUID → String → String → Identifier a
+identifierInNamespaceWithDifferentDisplayName namespace name display_name =
     Identifier
         (generateNamed namespace . UTF8.encode $ name)
-        name
--- @-node:gcross.20100927123234.1395:identifierInNamespace
+        display_name
+-- @-node:gcross.20101018094310.1823:identifierInNamespaceWithDifferentDisplayName
 -- @+node:gcross.20100927123234.1396:sortIntoLabeledBins
 sortIntoLabeledBins :: [(Identifier a, b)] → Map (Identifier a) [b]
 sortIntoLabeledBins =
