@@ -194,16 +194,13 @@ programOptionIds =
                 (identifierInNamespace
                     program_configuration_namespace
                     ("path to " ++ program_name)
-                    ("path to " ++ program_name)
                 )
                 (identifierInNamespace
                     program_configuration_namespace
                     ("paths to search for " ++ program_name)
-                    ("paths to search for " ++ program_name)
                 )
                 (identifierInNamespace
                     program_configuration_namespace
-                    ("additional arguments for " ++ program_name)
                     ("additional arguments for " ++ program_name)
                 )
         program_name = programNameFrom option_ids

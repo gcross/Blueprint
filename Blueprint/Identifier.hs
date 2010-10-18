@@ -67,7 +67,6 @@ instance Monoid (Identifier a) where
       | otherwise =
             identifierInNamespace
                 (identifierUUID i1)
-                (show . identifierUUID $ i2)
                 (identifierDescription i1 ++ ", " ++ identifierDescription i2)
 -- @-node:gcross.20100927123234.1392:Monoid (Identifier a)
 -- @-node:gcross.20100927123234.1387:Instances
@@ -77,11 +76,11 @@ identifier :: String → String → Identifier a
 identifier = Identifier . uuid
 -- @-node:gcross.20100927123234.1394:identifier
 -- @+node:gcross.20100927123234.1395:identifierInNamespace
-identifierInNamespace :: UUID → String → String → Identifier a
-identifierInNamespace namespace name_in_namespace display_name =
+identifierInNamespace :: UUID → String → Identifier a
+identifierInNamespace namespace name =
     Identifier
-        (generateNamed namespace . UTF8.encode $ name_in_namespace)
-        display_name
+        (generateNamed namespace . UTF8.encode $ name)
+        name
 -- @-node:gcross.20100927123234.1395:identifierInNamespace
 -- @+node:gcross.20100927123234.1396:sortIntoLabeledBins
 sortIntoLabeledBins :: [(Identifier a, b)] → Map (Identifier a) [b]
