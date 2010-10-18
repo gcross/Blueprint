@@ -39,6 +39,7 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable
@@ -78,12 +79,29 @@ type JobIdentifier = Identifier OfJob
 -- @-node:gcross.20100924160650.2047:Types
 -- @+node:gcross.20101007134409.1485:Exceptions
 -- @+node:gcross.20101007134409.1486:JobError
-data JobError = JobError (Map String SomeException) deriving Typeable
+data JobError = JobError
+    {   jobErrorsWithHeadings :: Map String [SomeException]
+    ,   jobErrors :: Map String SomeException
+    } deriving Typeable
 
 instance Show JobError where
-    show (JobError exceptions) = intercalate "\n" (Map.keys exceptions)
+    show (JobError{..}) =
+        unlines (
+            concatMap
+                (\(heading,exceptions) →
+                     ("Error " ++ heading ++ ":")
+                    :(  map ('\t':) -- '
+                        .
+                        concatMap (lines . show)
+                     ) exceptions
+                )
+                (Map.assocs jobErrorsWithHeadings)
+            ++
+            Map.keys jobErrors
+        )
 
 instance Exception JobError
+-- @nonl
 -- @-node:gcross.20101007134409.1486:JobError
 -- @+node:gcross.20101018094310.1533:CycleDetected
 data CycleDetected = CycleDetected deriving Typeable
@@ -123,6 +141,12 @@ instance Monad Job where
 instance MonadIO Job where
     liftIO io = Task io return
 -- @-node:gcross.20100925004153.1329:MonadIO Job
+-- @+node:gcross.20101018094310.1534:Monoid JobError
+instance Monoid JobError where
+    mempty = JobError Map.empty Map.empty
+    (JobError h1 e1) `mappend` (JobError h2 e2) = JobError (Map.union h2 h1) (Map.union e2 e1)
+-- @nonl
+-- @-node:gcross.20101018094310.1534:Monoid JobError
 -- @-node:gcross.20100924174906.1276:Instances
 -- @+node:gcross.20100925004153.1297:Functions
 -- @+node:gcross.20100925004153.1299:cache
@@ -154,7 +178,7 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
             (fmap not (isEmptyChan environmentOutputCache))
             (readChan environmentOutputCache)
     return
-        (mapLeft JobError result
+        (result
         ,foldl' -- '
             (\current_cache (key,maybe_value) →
                 case maybe_value of
@@ -166,7 +190,7 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
         )
 -- @-node:gcross.20100927123234.1302:runJob
 -- @+node:gcross.20100925004153.1307:runJobInEnvironment
-runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either (Map String SomeException) α)
+runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either JobError α)
 runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
     (case job of
         Result x → return (Right x)
@@ -186,12 +210,12 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                 (Result f,_) → do
                     x_or_error ← nestedRunJob jx
                     case x_or_error of
-                        Left errors → return (Left errors)
+                        Left e → return (Left e)
                         Right x → computeAndRunNextJob (f x)
                 (_,Result x) → do
                     f_or_error ← nestedRunJob jf
                     case f_or_error of
-                        Left errors → return (Left errors)
+                        Left e → return (Left e)
                         Right f → computeAndRunNextJob (f x)
                 _ → do
                     x_or_error ← do
@@ -201,10 +225,10 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     f_or_error ← nestedRunJob jf >>= evaluate
                     case (f_or_error, x_or_error) of
                         (Right f, Right x) → computeAndRunNextJob (f x)
-                        (Left errors1, Left errors2) → return . Left $ Map.union errors1 errors2
-                        (Left errors, _) → return . Left $ errors
-                        (_, Left errors) → return . Left $ errors
-        Once job_id@(Identifier uuid _) job computeNextJob 
+                        (Left e1, Left e2) → return . Left $ e1 `mappend` e2
+                        (Left e, _) → return . Left $ e
+                        (_, Left e) → return . Left $ e
+        Once job_id@(Identifier uuid description) job computeNextJob
           | Set.member job_id active_jobs
             → throwIO CycleDetected
           | otherwise
@@ -229,7 +253,15 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                             (Set.insert job_id active_jobs)
                             job
                     case job_result of
-                        Left errors → return (Left errors)
+                        Left JobError{..} → return . Left $
+                            JobError
+                            {   jobErrorsWithHeadings =
+                                    Map.insert
+                                        description
+                                        (Map.elems jobErrors)
+                                        jobErrorsWithHeadings
+                            ,   jobErrors = Map.empty
+                            }
                         Right result → do
                             IVar.write result_ivar (toDyn result)
                             nestedRunJob (computeNextJob result)
@@ -252,11 +284,11 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     environmentInputCache
             job_result ← nestedRunJob (computeJob maybe_old_cached_value)
             case job_result of
-                Left errors → return (Left errors)
+                Left e → return (Left e)
                 Right (maybe_new_cached_value,job_result) → do
                     writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
-    ) `catch` (return . Left . (\e → Map.singleton (show e) e))
+    ) `catch` (return . Left . (\e → JobError Map.empty (Map.singleton (show e) e)))
   where
     nestedRunJob = runJobInEnvironment job_environment active_jobs
 
