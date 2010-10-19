@@ -599,7 +599,13 @@ buildLibrary
         modules ← sequenceA good_exports
         let (collected_modules,collected_packages) = collectAllLinkDependencies modules
             collected_object_digests =
-                Map.map (fileDigest . haskellModuleObject) collected_modules
+                Map.fromList
+                .
+                map ((filePath &&& fileDigest) . haskellModuleObject)
+                .
+                Map.elems
+                $
+                collected_modules
             digest =
                 md5
                 .
