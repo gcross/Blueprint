@@ -847,9 +847,26 @@ computeBuildEnvironment
     ,   buildEnvironmentPackageDatabase = ghcEnvironmentPackageDatabase
     ,   buildEnvironmentPackageLocality = ghcEnvironmentPackageLocality
     ,   buildEnvironmentKnownModules = known_modules
-    ,   buildEnvironmentLibraryCompileOptions = "-i":("-i"++library_interface_directory):"-package-name":package_name:compile_options
-    ,   buildEnvironmentProgramCompileOptions = "-i":("-i"++program_interface_directory):compile_options
-    ,   buildEnvironmentProgramLinkOptions = "-i":("-i"++program_interface_directory):link_options
+    ,   buildEnvironmentLibraryCompileOptions =
+             "-i"
+            :("-i"++library_interface_directory)
+            :"-hidir":library_interface_directory
+            :"-odir":library_object_directory
+            :"-package-name"
+            :package_name
+            :compile_options
+    ,   buildEnvironmentProgramCompileOptions =
+             "-i"
+            :("-i"++program_interface_directory)
+            :"-hidir":program_interface_directory
+            :"-odir":program_object_directory
+            :compile_options
+    ,   buildEnvironmentProgramLinkOptions =
+             "-i"
+            :("-i"++program_interface_directory)
+            :"-hidir":program_interface_directory
+            :"-odir":program_object_directory
+            :link_options
     ,   buildEnvironmentLibraryInterfaceDirectory = library_interface_directory
     ,   buildEnvironmentLibraryObjectDirectory = library_object_directory
     ,   buildEnvironmentProgramInterfaceDirectory = program_interface_directory
