@@ -43,7 +43,6 @@ import Data.Function
 import Data.List
 import Data.List.Split
 import Data.List.Tagged (TaggedList(..),fromTuple,toTuple)
-import qualified Data.List.Tagged as T
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
