@@ -633,7 +633,7 @@ buildLibrary
             ,   haskellLibraryExposedModules = exposed_modules
             }
   where
-    archive_filepath = library_directory </> "HS" ++ package_name <.> "a"
+    archive_filepath = library_directory </> "libHS" ++ package_name <.> "a"
     my_id =
         identifierInNamespace
             (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
@@ -1313,7 +1313,7 @@ installPackage
             ("(GHC) Copying " ++ filePath ++ " -> " ++ interface_destination)
         copyFile filePath interface_destination
     let archive_source = filePath haskellLibraryArchive
-        archive_destination = destination_directory </> library_name <.> (takeExtension archive_source)
+        archive_destination = destination_directory </> ("lib" ++ library_name) <.> (takeExtension archive_source)
     infoM "Blueprint.Tools.Compilers.GHC" $
         ("(GHC) Copying " ++ archive_source ++ " -> " ++ archive_destination)
     copyFile archive_source archive_destination
