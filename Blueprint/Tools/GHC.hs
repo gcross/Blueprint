@@ -53,7 +53,7 @@ import Data.Traversable (traverse,sequenceA,sequence,mapM)
 import Data.Typeable
 
 import qualified Distribution.Compiler as Compiler
-import Distribution.InstalledPackageInfo (InstalledPackageInfo)
+import Distribution.InstalledPackageInfo (InstalledPackageInfo,showInstalledPackageInfo)
 import qualified Distribution.InstalledPackageInfo as InstalledPackageInfo
 import qualified Distribution.ModuleName as ModuleName
 import Distribution.Package (InstalledPackageId(..))
@@ -1319,8 +1319,8 @@ installPackage
     copyFile archive_source archive_destination
     runProductionCommand
         path_to_ghc_pkg
-        ["register","––auto-ghci-libs","--"++show package_locality,"-"]
-        (show installed_package_info)
+        ["register","--auto-ghci-libs","--"++show package_locality,"-"]
+        (showInstalledPackageInfo installed_package_info)
     return installed_package_info
   where
     Just Library{..} = library
