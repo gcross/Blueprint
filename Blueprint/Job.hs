@@ -32,9 +32,9 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Dynamic
 import Data.Either.Unwrap
+import Data.IORef
 import Data.IVar.Simple (IVar)
 import qualified Data.IVar.Simple as IVar
-import Data.IORef
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -62,14 +62,16 @@ data Job α where
     Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
   deriving Typeable
+-- @nonl
 -- @-node:gcross.20100924160650.2048:Job
 -- @+node:gcross.20100925004153.1301:JobEnvironment
 data JobEnvironment = JobEnvironment
-    {   environmentCompletedJobs :: IORef (Map UUID Dynamic)
+    {   environmentCompletedJobs :: IORef (Map UUID (Either JobError Dynamic))
     ,   environmentTaskSemaphore :: QSem
     ,   environmentInputCache :: Map UUID L.ByteString
     ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
+-- @nonl
 -- @-node:gcross.20100925004153.1301:JobEnvironment
 -- @+node:gcross.20101018094310.1532:JobIdentifier
 data OfJob
@@ -205,46 +207,82 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
 runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either JobError α)
 runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
     (case job of
-        Result x → return (Right x)
+        -- @        @+others
+        -- @+node:gcross.20101018233854.1540:Result
+        Result x → fmap Right (evaluate x)
+        -- @nonl
+        -- @-node:gcross.20101018233854.1540:Result
+        -- @+node:gcross.20101018233854.1541:Task
         Task io computeNextJob →
             bracket_
                 (waitQSem environmentTaskSemaphore)
                 (signalQSem environmentTaskSemaphore)
-                io
+                (io >>= evaluate)
             >>=
             nestedRunJob . computeNextJob
+        -- @nonl
+        -- @-node:gcross.20101018233854.1541:Task
+        -- @+node:gcross.20101018233854.1542:Fork
         Fork unsimplified_jf unsimplified_jx computeNextJob → do
             let computeAndRunNextJob = nestedRunJob . computeNextJob
-            jf ← simplify unsimplified_jf
-            jx ← simplify unsimplified_jx
-            case (jf,jx) of
-                (Result f,Result x) → computeAndRunNextJob (f x)
-                (Result f,_) → do
+            jf_or_error ← simplify unsimplified_jf
+            jx_or_error ← simplify unsimplified_jx
+            case (jf_or_error,jx_or_error) of
+                (Left fe, Left xe) → return . Left $ fe `mappend` xe
+                (Left fe, Right jx) → do
+                    x_or_error ← nestedRunJob jx
+                    return . Left $
+                        case x_or_error of
+                            Left xe → (fe `mappend` xe)
+                            Right _ → fe
+                (Right jf, Left xe) → do
+                    f_or_error ← nestedRunJob jf
+                    return . Left $
+                        case f_or_error of
+                            Left fe → (xe `mappend` fe)
+                            Right _ → xe
+                (Right (Result f),Right (Result x)) → computeAndRunNextJob (f x)
+                (Right (Result f),Right jx) → do
                     x_or_error ← nestedRunJob jx
                     case x_or_error of
                         Left e → return (Left e)
                         Right x → computeAndRunNextJob (f x)
-                (_,Result x) → do
+                (Right jf,Right (Result x)) → do
                     f_or_error ← nestedRunJob jf
                     case f_or_error of
                         Left e → return (Left e)
                         Right f → computeAndRunNextJob (f x)
-                _ → do
-                    x_or_error ← do
-                        x_mvar ← newEmptyMVar
-                        forkIO $ nestedRunJob jx >>= evaluate >>= putMVar x_mvar
-                        takeMVar x_mvar
+                (Right jf, Right jx) → do
+                    x_mvar ← newEmptyMVar
+                    forkIO $ nestedRunJob jx >>= putMVar x_mvar
                     f_or_error ← nestedRunJob jf >>= evaluate
+                    x_or_error ← takeMVar x_mvar
                     case (f_or_error, x_or_error) of
                         (Right f, Right x) → computeAndRunNextJob (f x)
                         (Left e1, Left e2) → return . Left $ e1 `mappend` e2
                         (Left e, _) → return . Left $ e
                         (_, Left e) → return . Left $ e
+        -- @nonl
+        -- @-node:gcross.20101018233854.1542:Fork
+        -- @+node:gcross.20101018233854.1543:Once
         Once job_id@(Identifier uuid description) job computeNextJob
           | Set.member job_id active_jobs
             → throwIO CycleDetected
           | otherwise
             → do
+            let addHeaderToErrors JobError{..} =
+                    JobError
+                    {   jobErrorsWithHeadings =
+                            Map.insert
+                                description
+                                (map (toException . ErrorInDependency)
+                                     (Map.keys jobErrorsWithHeadings)
+                                 ++
+                                 Map.elems jobErrors
+                                )
+                                jobErrorsWithHeadings
+                    ,   jobErrors = Map.empty
+                    }
             result_ivar ← IVar.new
             maybe_previous_result ←
                 atomicModifyIORef environmentCompletedJobs $ \completed_jobs →
@@ -259,28 +297,27 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                             )
             case maybe_previous_result of
                 Nothing → do
-                    job_result ←
+                    result_or_error ← try $
                         runJobInEnvironment
                             job_environment
                             (Set.insert job_id active_jobs)
                             job
-                    case job_result of
-                        Left JobError{..} → return . Left $
-                            JobError
-                            {   jobErrorsWithHeadings =
-                                    Map.insert
-                                        description
-                                        (map (toException . ErrorInDependency) (Map.keys jobErrorsWithHeadings)
-                                         ++
-                                         Map.elems jobErrors
-                                        )
-                                        jobErrorsWithHeadings
-                            ,   jobErrors = Map.empty
-                            }
+                        >>=
+                        extractResultOrThrowIO
+                        >>=
+                        evaluate
+                    case result_or_error of
                         Right result → do
-                            IVar.write result_ivar (toDyn result)
+                            IVar.write result_ivar (Right . toDyn $ result)
                             nestedRunJob (computeNextJob result)
-                Just previous_result →
+                        Left exc →
+                            let e = maybe
+                                        (JobError (Map.singleton description [exc]) Map.empty)
+                                        addHeaderToErrors
+                                        (fromException exc)
+                            in IVar.write result_ivar (Left e) >> return (Left e)
+                Just (Left job_error) → return . Left . addHeaderToErrors $ job_error
+                Just (Right previous_result) →
                     nestedRunJob
                     .
                     computeNextJob
@@ -290,6 +327,9 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     fromDynamic
                     $
                     previous_result
+        -- @nonl
+        -- @-node:gcross.20101018233854.1543:Once
+        -- @+node:gcross.20101018233854.1544:Cache
         Cache job_id@(Identifier uuid _) computeJob computeNextJob → do
             let maybe_old_cached_value =
                     fmap decode
@@ -303,18 +343,25 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                 Right (maybe_new_cached_value,job_result) → do
                     writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
-    ) `catch` (return . Left . (\e → JobError Map.empty (Map.singleton (show e) e)))
+        -- @nonl
+        -- @-node:gcross.20101018233854.1544:Cache
+        -- @-others
+    ) `catches`
+        [Handler (return . Left)
+        ,Handler (return . Left . wrapExceptionIntoJobError)
+        ]
   where
     nestedRunJob = runJobInEnvironment job_environment active_jobs
 
-    simplify :: Job α → IO (Job α)
+    simplify :: Job α → IO (Either JobError (Job α))
     simplify job@(Once (Identifier uuid _) _ computeNextJob) = do
         completed_jobs ← readIORef environmentCompletedJobs
         case Map.lookup uuid completed_jobs of
-            Nothing → return job
-            Just result → simplify . computeNextJob . fromJust . fromDynamic $ result
-    simplify job = return job
-
+            Just (Right result) → simplify . computeNextJob . fromJust . fromDynamic $ result
+            Just (Left job_error) → return (Left job_error)
+            _ → return (Right job)
+    simplify job = return (Right job)
+-- @nonl
 -- @-node:gcross.20100925004153.1307:runJobInEnvironment
 -- @+node:gcross.20101007134409.1483:runJobUsingCacheFile
 runJobUsingCacheFile :: Int → FilePath → Job α → IO (Either JobError α)
@@ -354,6 +401,10 @@ newJobEnvironment maximum_number_of_simultaneous_IO_tasks input_cache =
         (return input_cache)
         newChan
 -- @-node:gcross.20100927123234.1303:newJobEnvironment
+-- @+node:gcross.20101018183248.1539:wrapExceptionIntoJobError
+wrapExceptionIntoJobError e = JobError Map.empty (Map.singleton (show e) e)
+-- @nonl
+-- @-node:gcross.20101018183248.1539:wrapExceptionIntoJobError
 -- @-node:gcross.20100925004153.1297:Functions
 -- @-others
 -- @-node:gcross.20100924160650.2044:@thin Job.hs
