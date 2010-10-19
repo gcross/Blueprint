@@ -231,9 +231,9 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                         Right f → computeAndRunNextJob (f x)
                 _ → do
                     x_or_error ← do
-                        x_ivar ← IVar.new
-                        forkIO $ nestedRunJob jx >>= evaluate >>= IVar.write x_ivar
-                        return (IVar.read x_ivar)
+                        x_mvar ← newEmptyMVar
+                        forkIO $ nestedRunJob jx >>= evaluate >>= putMVar x_mvar
+                        takeMVar x_mvar
                     f_or_error ← nestedRunJob jf >>= evaluate
                     case (f_or_error, x_or_error) of
                         (Right f, Right x) → computeAndRunNextJob (f x)
