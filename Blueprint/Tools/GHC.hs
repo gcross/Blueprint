@@ -888,7 +888,7 @@ computeBuildEnvironment
     program_object_directory = object_directory </> "program"
 -- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironment
--- @+node:gcross.20101012145613.1556:computeDefaultTargets
+-- @+node:gcross.20101012145613.1556:computeDefaultBuildTargetsIn
 computeDefaultBuildTargetsIn :: PackageDescription → BuildTargets
 computeDefaultBuildTargetsIn PackageDescription{..} =
     BuildTargets
@@ -897,7 +897,7 @@ computeDefaultBuildTargetsIn PackageDescription{..} =
             _ → Nothing
         )
         (filter (buildable . buildInfo) executables)
--- @-node:gcross.20101012145613.1556:computeDefaultTargets
+-- @-node:gcross.20101012145613.1556:computeDefaultBuildTargetsIn
 -- @+node:gcross.20101012145613.1524:configure
 configure :: OptionValues → Job Configuration
 configure options = do
