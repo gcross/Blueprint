@@ -47,7 +47,7 @@ import Blueprint.Miscellaneous
 data FileOfType α = File
     {   filePath :: FilePath
     ,   fileDigest :: MD5Digest
-    } deriving Typeable
+    } deriving (Eq,Show,Typeable)
 -- @nonl
 -- @-node:gcross.20101010201506.1500:FileOfType
 -- @-node:gcross.20100929125042.1464:Types
