@@ -1654,24 +1654,30 @@ scanForModulesWithParentIn maybe_parent root =
     sequenceA
     .
     map (\entry → do
-        if isUpper (head entry)
-            then do
-                let filepath = root </> entry
-                is_directory ← liftIO (doesDirectoryExist filepath)
-                case is_directory of
-                    True →
-                        scanForModulesWithParentIn
-                            (Just . appendToParent $ entry)
-                            filepath
-                    False | takeExtension entry == ".hs" →
-                        return
+        let filepath = root </> entry
+            starts_with_uppercase = isUpper (head entry)
+        is_directory ← liftIO (doesDirectoryExist filepath)
+        case is_directory of
+            True | starts_with_uppercase →
+                scanForModulesWithParentIn
+                    (Just . appendToParent $ entry)
+                    filepath
+            False | takeExtension entry == ".hs" →
+                return
+                $
+                let module_name =
+                        (if starts_with_uppercase
+                            then appendToParent
+                            else id
+                        )
+                        .
+                        dropExtension
                         $
-                        let module_name = appendToParent . dropExtension $ entry
-                        in Map.singleton
-                            module_name
-                            (fmap (HaskellSource module_name . File filepath) (digestFile filepath))
-                    _ → return Map.empty
-            else return Map.empty
+                        entry
+                in Map.singleton
+                    module_name
+                    (fmap (HaskellSource module_name . File filepath) (digestFile filepath))
+            _ → return Map.empty
     )
   where
     appendToParent child = maybe child (<.> child) maybe_parent
