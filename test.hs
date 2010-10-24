@@ -151,8 +151,8 @@ main = defaultMain
             ,testCase "once" $ do
                 counter ← newIORef 0
                 (result,cache) ← runJob 2 Map.empty $ do
-                    once nil . liftIO $ (modifyIORef counter (+1))
-                    once nil . liftIO $ (modifyIORef counter (+1))
+                    once null_identifier . liftIO $ (modifyIORef counter (+1))
+                    once null_identifier . liftIO $ (modifyIORef counter (+1))
                     return ()
                 assertBool "Is the cache empty?" (Map.null cache)
                 assertBool "Was an exception thrown?" (isRight $ result)
