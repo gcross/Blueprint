@@ -787,9 +787,18 @@ compileToObject
                 haskell_module_dependencies
             (collected_module_dependencies,collected_package_dependencies) =
                 collectAllLinkDependencies haskell_module_dependencies
+            final_package_dependencies =
+                Map.union collected_package_dependencies
+                .
+                Map.fromList
+                .
+                map (installedPackageQualifiedName &&& id)
+                $
+                package_dependencies
         return
             ((package_digests,dependency_digests,additional_options)
-            ,(collected_module_dependencies,collected_package_dependencies)
+            ,(collected_module_dependencies
+             ,final_package_dependencies)
             )
 
     build (package_digests,_,_) = do
