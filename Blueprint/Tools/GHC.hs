@@ -513,6 +513,8 @@ buildExecutable
             path_to_ghc
             additional_linker_options
             program_filepath
+        .
+        (:[])
   where
     program_filepath = executable_directory </> exeName
     my_id =
@@ -1438,13 +1440,13 @@ linkProgram ::
     FilePath →
     [String] →
     FilePath →
-    HaskellModule →
+    [HaskellModule] →
     Job ProgramFile
 linkProgram
     path_to_ghc
     additional_options
     program_filepath
-    HaskellModule{haskellModuleLinkDependencyModules,haskellModuleLinkDependencyPackages}
+    program_modules
   = once my_id
     .
     fmap (File program_filepath)
@@ -1459,13 +1461,20 @@ linkProgram
         identifierInNamespace
             (uuid "eb95ef18-e0c3-476e-894c-aefb8e5b931a")
             ("linking program " ++ program_filepath)
-    haskell_object_dependencies = Map.map haskellModuleObject haskellModuleLinkDependencyModules
-    dependency_digests = Map.map fileDigest haskell_object_dependencies
-    package_digests = Map.map installedPackageId haskellModuleLinkDependencyPackages
+    (collected_program_modules,collected_program_packages) = collectAllLinkDependencies program_modules
+    dependency_digests =
+        Map.fromList
+        .
+        map ((filePath &&& fileDigest) . haskellModuleObject)
+        .
+        Map.elems
+        $
+        collected_program_modules
+    package_digests = Map.map installedPackageId collected_program_packages
     ghc_arguments =
-        Map.keys haskell_object_dependencies
+        Map.keys dependency_digests
         ++
-        concat [["-package",package_name] | package_name ← Map.keys haskellModuleLinkDependencyPackages]
+        concat [["-package",package_name] | package_name ← Map.keys package_digests]
         ++
         ["-o",program_filepath]
         ++
@@ -1484,7 +1493,7 @@ linkProgram
 linkProgramUsingBuildEnvironment ::
     BuildEnvironment →
     FilePath →
-    HaskellModule →
+    [HaskellModule] →
     Job ProgramFile
 linkProgramUsingBuildEnvironment BuildEnvironment{..} =
     linkProgram
