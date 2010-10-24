@@ -57,5 +57,15 @@ Library
         Blueprint.Tools.Ar
         Blueprint.Tools.GHC
     Extensions:      EmptyDataDecls
+
+Executable test
+    Build-depends:
+        HUnit == 1.2.*,
+        QuickCheck == 2.1.*,
+        test-framework == 0.3.*,
+        test-framework-hunit == 0.2.*,
+        test-framework-quickcheck2 == 0.2.*
+    Main-is: test
+-- @nonl
 -- @-node:gcross.20101015124156.1547:@thin Blueprint.cabal
 -- @-leo
