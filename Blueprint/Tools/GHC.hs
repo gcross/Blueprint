@@ -225,6 +225,7 @@ data GHCOptions = GHCOptions
     ,   ghcOptionDesiredVersion :: Maybe Version
     ,   ghcOptionSearchPaths :: [FilePath]
     ,   ghcOptionPackageLocality :: PackageLocality
+    ,   ghcOptionFlags :: [String]
     } deriving (Eq,Show,Typeable)
 
 $(derive makeBinary ''GHCOptions)
@@ -234,6 +235,7 @@ data GHCEnvironment = GHCEnvironment
     {   ghcEnvironmentGHC :: GHC
     ,   ghcEnvironmentPackageDatabase :: PackageDatabase
     ,   ghcEnvironmentPackageLocality :: PackageLocality
+    ,   ghcEnvironmentFlags :: [String]
     } deriving Typeable
 
 -- @-node:gcross.20100927123234.1443:GHCEnvironment
@@ -930,7 +932,6 @@ configure options = do
     (package_description,_) ←
         readAndConfigurePackageDescription
             ghc_environment
-            []
             cabal_file
     maybe_ar_configuration ←
         if isNothing (library package_description)
@@ -1071,7 +1072,12 @@ configureGHCEnvironment :: GHCOptions → Job GHCEnvironment
 configureGHCEnvironment options@GHCOptions{..} = do
     ghc@GHC{..} ← configureGHC options
     package_database ← configurePackageDatabase pathToGHCPkg ghcOptionPackageLocality
-    return $ GHCEnvironment ghc package_database ghcOptionPackageLocality
+    return $
+        GHCEnvironment
+            ghc
+            package_database
+            ghcOptionPackageLocality
+            ghcOptionFlags
 -- @-node:gcross.20100927161850.1438:configureGHCEnvironment
 -- @+node:gcross.20100927161850.1444:configureGHCEnvironmentUsingOptions
 configureGHCEnvironmentUsingOptions :: OptionValues → Job GHCEnvironment
@@ -1228,6 +1234,8 @@ extractGHCOptions =
         <*> fmap readVersion . Map.lookup ghc_search_option_desired_version
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
         <*> maybe User read . Map.lookup ghc_package_database_option_locality
+        <*> maybe [] words . Map.lookup ghc_cabal_flags
+-- @nonl
 -- @-node:gcross.20100927161850.1442:extractGHCOptions
 -- @+node:gcross.20101015124156.1543:extractHaskellSourceDirectoriesFrom
 extractHaskellSourceDirectoriesFrom :: BuildInfo → [FilePath]
@@ -1561,10 +1569,9 @@ parseGHCVersion = extractVersion ghc_version_regex
 -- @+node:gcross.20101005111309.1462:readAndConfigurePackageDescription
 readAndConfigurePackageDescription ::
     GHCEnvironment →
-    FlagAssignment →
     FilePath →
     Job (PackageDescription, FlagAssignment)
-readAndConfigurePackageDescription GHCEnvironment{..} flags =
+readAndConfigurePackageDescription GHCEnvironment{..} =
     liftIO . readPackageDescription silent
     >=>
     either
@@ -1572,7 +1579,7 @@ readAndConfigurePackageDescription GHCEnvironment{..} flags =
         return
     .
     finalizePackageDescription
-        flags
+        (zip (map FlagName ghcEnvironmentFlags) (repeat True))
         (checkForSatisfyingPackage ghcEnvironmentPackageDatabase)
         buildPlatform
         (Compiler.CompilerId Compiler.GHC (ghcVersion ghcEnvironmentGHC))
@@ -1730,10 +1737,14 @@ ghc_search_option_path_to_ghc_pkg = identifier "b832666c-f42f-4dc0-8ef9-56198733
 ghc_search_option_desired_version = identifier "87cab19e-c87a-4480-8ed3-af04e4c4f6bc" "desired GHC version"
 ghc_search_option_search_paths = identifier "fcb54ad5-4a10-419a-9e8c-12261952cfd9" "path to search for ghc"
 ghc_package_database_option_locality = identifier "4b38e6c5-8162-49ea-9ca0-5a23e58c44b1" "should the local or global GHC package database be used"
+ghc_cabal_flags = identifier "12320207-ee12-4b91-a86e-26af92907ad7" "cabal flag"
 
 ghc_options =
     Options
-        Map.empty
+        (Map.fromList
+            [('f',(ghc_cabal_flags,RequiredArgument "FLAG"))  -- '
+            ]
+        )
         (Map.fromList
             [("with-ghc",(ghc_search_option_path_to_ghc,RequiredArgument "PATH"))
             ,("with-ghc-pkg",(ghc_search_option_path_to_ghc_pkg,RequiredArgument "PATH"))
@@ -1741,6 +1752,7 @@ ghc_options =
             ,("with-ghc-located-in",(ghc_search_option_search_paths,RequiredArgument "DIRECTORY"))
             ,("user",(ghc_package_database_option_locality,NoArgument "user"))
             ,("global",(ghc_package_database_option_locality,NoArgument "global"))
+            ,("cabal-flag",(ghc_cabal_flags,RequiredArgument "FLAG"))
             ]
         )
         (Map.fromList
@@ -1749,10 +1761,12 @@ ghc_options =
             ,("tools.ghc.paths.search",ghc_search_option_search_paths)
             ,("tools.ghc.version",ghc_search_option_desired_version)
             ,("tools.ghc.package-locality",ghc_package_database_option_locality)
+            ,("tools.ghc.cabal-flags",ghc_cabal_flags)
             ]
         )
         (Map.fromList
             [(ghc_search_option_search_paths,Right . intercalate [searchPathSeparator])
+            ,(ghc_cabal_flags,Right . unwords)
             ]
         )
         (Map.fromList

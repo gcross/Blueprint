@@ -14,6 +14,10 @@ Cabal-version:       >=1.8
 Build-type:          Simple
 Category:            Type System,Data
 
+Flag Test
+    Description: Enable testing
+    Default:     False
+
 Library
     Build-depends:
         AbortT-transformers == 1.0.*,
@@ -60,6 +64,10 @@ Library
     Extensions:      EmptyDataDecls
 
 Executable test
+    if flag(test)
+        Buildable: True
+    else
+        Buildable: False
     Build-depends:
         HUnit == 1.2.*,
         QuickCheck == 2.1.*,
