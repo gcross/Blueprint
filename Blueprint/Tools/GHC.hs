@@ -67,6 +67,7 @@ import Distribution.Version
 import Distribution.Verbosity
 
 import System.Directory
+import System.Exit
 import System.FilePath
 import System.Log.Logger
 import System.Process
@@ -1213,13 +1214,15 @@ determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
 -- @-node:gcross.20100927123234.1456:determineGHCVersion
 -- @+node:gcross.20101012145613.1567:displayModesMessage
 displayModesMessage :: MonadIO m ⇒ m ()
-displayModesMessage = liftIO $ do
-    putStrLn "The possible modes of operation are:"
-    mapM_ (putStrLn . ('\t':)) -- '
+displayModesMessage = liftIO . putStrLn . render $
+    indentedListWithHeading 4
+        "The possible modes of operation are:"
         ["configure"
         ,"build [target1 target2...]"
         ,"install [target1 target2...]"
+        ,"test"
         ]
+-- @nonl
 -- @-node:gcross.20101012145613.1567:displayModesMessage
 -- @+node:gcross.20101009103525.1736:dotsToPath
 dotsToPath = map (\c → if c == '.' then pathSeparator else c)
@@ -1633,6 +1636,21 @@ runTarget ("install":targets) configuration@Configuration{..} =
     buildTargets configuration (fetchBuildTargetsIn configurationPackageDescription targets)
     >>=
     installTargets configuration
+runTarget ("test":[]) configuration@Configuration{configurationPackageDescription=PackageDescription{executables}} =
+    case find ((== "test") . exeName) executables of
+        Nothing → liftIO $ do
+            putStrLn "There is no executable target named \"test\" in this project."
+            exitFailure
+        Just executable@Executable{..}
+          | not (buildable buildInfo) → liftIO $ do
+                putStrLn "The test target is marked as being unbuildable;  most likely you need to pass in a configuration flag such as \"-ftest\" in order to enable it."
+                exitFailure
+          | otherwise →
+                buildExecutableUsingConfiguration configuration "programs" executable
+                >>=
+                liftIO . system . filePath
+                >>
+                return ()
 runTarget [] _ = displayModesMessage
 runTarget mode _ = liftIO $ do
     putStrLn $ "Unknown mode of operation: " ++ unwords mode
