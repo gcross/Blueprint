@@ -33,6 +33,7 @@ Library
         hslogger == 1.0.*,
         ivar-simple == 0.1.*,
         monad-loops == 0.3.*,
+        pretty == 1.0.*,
         process == 1.0.*,
         pureMD5 == 2.1.*,
         regex-base >= 0.93.2 && < 0.93.3,

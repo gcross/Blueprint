@@ -36,6 +36,7 @@ import Data.UUID.V5
 import Debug.Trace
 
 import Text.ParserCombinators.ReadP (readP_to_S)
+import Text.PrettyPrint
 import Text.Regex.Base
 -- @-node:gcross.20100925004153.1325:<< Import needed modules >>
 -- @nl
@@ -81,6 +82,18 @@ gather =
     .
     sortBy (compare `on` fst)
 -- @-node:gcross.20100927123234.1423:gather
+-- @+node:gcross.20101027123147.1546:indentedListWithHeading
+indentedListWithHeading :: Int → String → [String] → Doc
+indentedListWithHeading indentation heading =
+    (text heading $$)
+    .
+    nest indentation
+    .
+    vcat
+    .
+    map text
+-- @nonl
+-- @-node:gcross.20101027123147.1546:indentedListWithHeading
 -- @+node:gcross.20100925004153.1327:inNamespace
 inNamespace :: UUID → String → UUID
 inNamespace uuid =

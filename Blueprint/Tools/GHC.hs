@@ -71,6 +71,7 @@ import System.FilePath
 import System.Log.Logger
 import System.Process
 
+import Text.PrettyPrint
 import Text.Printf
 import qualified Text.Read as Read
 import qualified Text.ParserCombinators.ReadP as ReadP
@@ -302,6 +303,52 @@ instance Show BadMainModule where
 instance Exception BadMainModule
 -- @nonl
 -- @-node:gcross.20101012145613.1517:BadMainModule
+-- @+node:gcross.20101012145613.1558:BadTargets
+data BadTargets = BadTargets PackageDescription [String] [String] deriving Typeable
+
+instance Show BadTargets where
+    show (BadTargets PackageDescription{..} missing_targets unbuildable_targets) =
+        render
+        .
+        (text "Some of the specified targets are invalid:" $$)
+        .
+        (case missing_targets of
+            [] → id
+            _ → ((nest 4
+                  $
+                  indentedListWithHeading 6
+                    "*) The following targets are not part of this project:"
+                    missing_targets
+                )$$)
+        )
+        .
+        (case unbuildable_targets of
+            [] → id
+            _ → ((nest 4
+                  $
+                  indentedListWithHeading 6
+                    "*) The following targets are marked as being unbuildable:"
+                    unbuildable_targets
+                )$$)
+        )
+        .
+        indentedListWithHeading 4 "The following is the list of buildable targets in this project:"
+        .
+        (case library of
+            Just Library{..} | buildable libBuildInfo → ("library":)
+            Nothing → id
+        )
+        .
+        sort
+        .
+        map exeName
+        .
+        filter (buildable . buildInfo)
+        $
+        executables
+
+instance Exception BadTargets
+-- @-node:gcross.20101012145613.1558:BadTargets
 -- @+node:gcross.20101012145613.1525:CabalFileException
 data CabalFileException =
     NoCabalFile
@@ -386,30 +433,6 @@ instance Show MissingExposedModules where
 instance Exception MissingExposedModules
 -- @nonl
 -- @-node:gcross.20101010201506.1498:MissingExposedModules
--- @+node:gcross.20101012145613.1558:NonExistentTargets
-data NonExistentTargets = NonExistentTargets PackageDescription [String] deriving Typeable
-
-instance Show NonExistentTargets where
-    show (NonExistentTargets PackageDescription{..} targets) =
-        unlines
-        .
-        (("The following targets are not part of this project: " ++ unwords targets):)
-        .
-        map ('\t':) -- '
-        .
-        (case library of
-            Nothing → id
-            Just _ → ("library":)
-        )
-        .
-        sort
-        .
-        map exeName
-        $
-        executables
-
-instance Exception NonExistentTargets
--- @-node:gcross.20101012145613.1558:NonExistentTargets
 -- @+node:gcross.20101005111309.1479:UnknownModulesException
 data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
 
@@ -899,16 +922,6 @@ computeBuildEnvironment
     program_object_directory = object_directory </> "program"
 -- @nonl
 -- @-node:gcross.20100927222551.1438:computeBuildEnvironment
--- @+node:gcross.20101012145613.1556:computeDefaultBuildTargetsIn
-computeDefaultBuildTargetsIn :: PackageDescription → BuildTargets
-computeDefaultBuildTargetsIn PackageDescription{..} =
-    BuildTargets
-        (case library of
-            Just Library{..} | buildable libBuildInfo → library
-            _ → Nothing
-        )
-        (filter (buildable . buildInfo) executables)
--- @-node:gcross.20101012145613.1556:computeDefaultBuildTargetsIn
 -- @+node:gcross.20101012145613.1524:configure
 configure :: OptionValues → Job Configuration
 configure options = do
@@ -1244,33 +1257,51 @@ extractKnownModulesFromInstalledPackage installed_package@InstalledPackage{..} =
     $
     installedPackageModules
 -- @-node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
+-- @+node:gcross.20101012145613.1556:fetchAllBuildTargetsIn
+fetchAllBuildTargetsIn :: PackageDescription → BuildTargets
+fetchAllBuildTargetsIn PackageDescription{..} =
+    BuildTargets
+        (case library of
+            Just Library{..} | buildable libBuildInfo → library
+            _ → Nothing
+        )
+        (filter (buildable . buildInfo) executables)
+-- @-node:gcross.20101012145613.1556:fetchAllBuildTargetsIn
 -- @+node:gcross.20101012145613.1557:fetchBuildTargetsIn
 fetchBuildTargetsIn :: PackageDescription → [String] → BuildTargets
 fetchBuildTargetsIn package_description@PackageDescription{..} targets =
-    case (library_target,executable_targets_and_errors) of
-        (Just library,([],executables)) → BuildTargets library executables
-        (_,(non_existent_targets,_)) →
+    case (library_target_or_error,executable_targets_and_errors) of
+        (Right library,([],executables)) → BuildTargets library executables
+        (_,(bad_targets,_)) →
             throw
             .
-            NonExistentTargets package_description
+            uncurry (BadTargets package_description)
             .
-            (if isNothing library_target then ("library":) else id)
+            partitionEithers
+            .
+            (case library_target_or_error of { Left error → (error:); Right _ → id })
             $
-            non_existent_targets
+            bad_targets
   where
-    library_target
+    library_target_or_error
       | "library" `elem` targets
         = case library of
-            Just library → Just (Just library)
-            Nothing → Nothing
-      | otherwise = Just Nothing
+            Nothing → Left (Left "library")
+            Just library →
+                if (buildable . libBuildInfo) library
+                    then Right (Just library)
+                    else Left (Right "library")
+      | otherwise = Right (Nothing)
     executable_targets_and_errors =
         partitionEithers
         .
         map (\name →
             case find ((==name) . exeName) executables of
-                Nothing → Left name
-                Just executable → Right executable
+                Nothing → Left (Left name)
+                Just executable →
+                    if (buildable . buildInfo) executable
+                        then Right executable
+                        else Left (Right name)
         )
         .
         delete "library"
@@ -1584,11 +1615,11 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
 -- @+node:gcross.20101012145613.1553:runTarget
 runTarget :: [String] → Configuration → Job ()
 runTarget ("build":[]) configuration@Configuration{..} =
-    buildTargets configuration (computeDefaultBuildTargetsIn configurationPackageDescription) >> return ()
+    buildTargets configuration (fetchAllBuildTargetsIn configurationPackageDescription) >> return ()
 runTarget ("build":targets) configuration@Configuration{..} =
     buildTargets configuration (fetchBuildTargetsIn configurationPackageDescription targets) >> return ()
 runTarget ("install":[]) configuration@Configuration{..} =
-    buildTargets configuration (computeDefaultBuildTargetsIn configurationPackageDescription)
+    buildTargets configuration (fetchAllBuildTargetsIn configurationPackageDescription)
     >>=
     installTargets configuration
 runTarget ("install":targets) configuration@Configuration{..} =
