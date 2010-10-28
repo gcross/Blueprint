@@ -101,6 +101,9 @@ declareFileType "HaskellInterface"
 declareFileType "HaskellObject"
 -- @nonl
 -- @-node:gcross.20101010201506.1505:File Types
+-- @+node:gcross.20101028153412.1559:Programs
+data Haddock deriving Typeable; instance ProgramName Haddock where { programNameFrom _ = "haddock" }
+-- @-node:gcross.20101028153412.1559:Programs
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20101012145613.1542:BuildTargets
 data BuildTargets = BuildTargets
@@ -260,6 +263,7 @@ data BuildEnvironment = BuildEnvironment
 -- @+node:gcross.20101012145613.1551:Configuration
 data Configuration = Configuration
     {   configurationAr :: Maybe (ProgramConfiguration Ar)
+    ,   configurationHaddock :: Either JobError (ProgramConfiguration Haddock)
     ,   configurationBuildEnvironment :: BuildEnvironment
     ,   configurationPackageDescription :: PackageDescription
     ,   configurationInstallationEnvironment :: InstallationEnvironment
@@ -939,6 +943,10 @@ configure options = do
         if isNothing (library package_description)
             then return Nothing
             else fmap Just (configureProgramUsingOptions options)
+    haddock_configuration_or_error ←
+        fmap Right (configureProgramUsingOptions options)
+        `catchJobError`
+        (return . Left)
     let build_environment =
             computeBuildEnvironment
                 ghc_environment
@@ -952,6 +960,7 @@ configure options = do
     return $
         Configuration
             maybe_ar_configuration
+            haddock_configuration_or_error
             build_environment
             package_description
             installation_environment
@@ -1203,7 +1212,13 @@ createCompilationJobsForModules
 -- @+node:gcross.20101012145613.1572:defaultMain
 defaultMain =
     Main.defaultMain
-        (ghc_options `mappend` installation_options)
+        (mconcat
+            [ghc_options
+            ,ar_options
+            ,haddock_options
+            ,installation_options
+            ]
+        )
         "configuration.cfg"
         "configuration.cache"
         "build.cache"
@@ -1803,6 +1818,9 @@ ghc_options =
             ]
         )
 -- @-node:gcross.20100927123234.1432:GHC
+-- @+node:gcross.20101028153412.1560:Haddock
+haddock_options = unwrapOptions (programOptions :: OptionsFor Haddock)
+-- @-node:gcross.20101028153412.1560:Haddock
 -- @+node:gcross.20101010201506.1519:Installation
 installation_option_prefix = identifier "d85dcf36-aab1-4618-8b9a-b07caf347d41" "installation directory prefix"
 installation_option_bindir = identifier "90055f6f-9ba5-43d6-b59f-441f66ee0d1c" "installation directory for executables"
