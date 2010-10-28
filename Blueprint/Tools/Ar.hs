@@ -43,7 +43,7 @@ import Blueprint.Tools
 data Ar deriving Typeable; instance ProgramName Ar where { programNameFrom _ = "ar" }
 -- @-node:gcross.20101005114926.1472:Program
 -- @+node:gcross.20101005114926.1474:Options
-arOptions = unwrapOptions (programOptions :: OptionsFor Ar)
+ar_options = unwrapOptions (programOptions :: OptionsFor Ar)
 -- @-node:gcross.20101005114926.1474:Options
 -- @+node:gcross.20101005122519.1483:File Type
 declareFileType "Archive"
