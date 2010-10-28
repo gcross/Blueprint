@@ -61,6 +61,7 @@ data Job α where
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
+    Catch :: Job α → (JobError → Job α) → (α → Job β) → Job β
   deriving Typeable
 -- @nonl
 -- @-node:gcross.20100924160650.2048:Job
@@ -150,6 +151,8 @@ instance Monad Job where
     Fork jf jx f >>= g = Fork jf jx (f >=> g)
     Once uuid x f >>= g = Once uuid x (f >=> g)
     Cache uuid f g >>= h = Cache uuid f (g >=> h)
+    Catch x h f >>= g = Catch x h (f >=> g)
+-- @nonl
 -- @-node:gcross.20100924174906.1277:Monad Job
 -- @+node:gcross.20100925004153.1329:MonadIO Job
 instance MonadIO Job where
@@ -167,6 +170,11 @@ instance Monoid JobError where
 cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β
 cache uuid computeJob = Cache uuid computeJob return
 -- @-node:gcross.20100925004153.1299:cache
+-- @+node:gcross.20101028153412.1557:catchJobError
+catchJobError :: Job α → (JobError → Job α) → Job α
+catchJobError job handler = Catch job handler return
+-- @nonl
+-- @-node:gcross.20101028153412.1557:catchJobError
 -- @+node:gcross.20101007134409.1484:extractResultOrThrowIO
 extractResultOrThrowIO :: Either JobError α → IO α
 extractResultOrThrowIO = either throwIO evaluate
@@ -345,6 +353,13 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     nestedRunJob (computeNextJob job_result)
         -- @nonl
         -- @-node:gcross.20101018233854.1544:Cache
+        -- @+node:gcross.20101028153412.1558:Catch
+        Catch job handler computeNextJob →
+            nestedRunJob job
+            >>=
+            nestedRunJob . either (handler >=> computeNextJob) computeNextJob
+        -- @nonl
+        -- @-node:gcross.20101028153412.1558:Catch
         -- @-others
     ) `catches`
         [Handler (return . Left)
