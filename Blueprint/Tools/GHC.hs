@@ -178,6 +178,7 @@ data InstalledPackage = InstalledPackage
     ,   installedPackageName :: String
     ,   installedPackageVersion :: Version
     ,   installedPackageModules :: [String]
+    ,   installedPackageHaddockInterfaces :: [String]
     } deriving (Typeable, Eq, Show)
 
 $( derive makeBinary ''InstalledPackageId )
@@ -1553,6 +1554,10 @@ parseInstalledPackageInformation package_description =
     ,   installedPackageName = (display . Package.pkgName) sourcePackageId
     ,   installedPackageVersion = Package.pkgVersion sourcePackageId
     ,   installedPackageModules = map display exposedModules
+    ,   installedPackageHaddockInterfaces =
+            case haddockHTMLs of
+                [html_base] → map ((html_base ++ ",") ++) haddockInterfaces
+                _ → []
     }
   where
     InstalledPackageInfo.InstalledPackageInfo{..} =
