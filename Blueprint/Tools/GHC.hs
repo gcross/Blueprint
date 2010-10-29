@@ -1115,20 +1115,22 @@ configurePackageDatabase path_to_ghc_pkg locality =
     \maybe_cache → do
         liftIO . infoM "Blueprint.Tools.Compilers.GHC" $
             "(GHC) Reading package atoms..."
-        let arguments =
+        let options =
                 case locality of
-                    Global → ["--simple-output","--global","list"]
-                    User → ["--simple-output","list"]
+                    Global → ["--simple-output","--global"]
+                    User → ["--simple-output"]
         liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $
-            unwords ("(GHC) Executing":path_to_ghc_pkg:arguments)
-        list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg arguments "")
+            unwords ("(GHC) Executing":path_to_ghc_pkg:"list":options)
+        list_of_package_atoms ← fmap words (liftIO $ readProcess path_to_ghc_pkg ("list":options) "")
         installed_packages ← case maybe_cache of
             Just cache@(old_list_of_package_atoms,installed_packages)
                 | old_list_of_package_atoms == list_of_package_atoms → return installed_packages
-            _ → liftIO $
-                    infoM "Blueprint.Tools.Compilers.GHC" "Loading package database..."
-                    >>
-                    traverse (liftIO . loadInstalledPackageInformation path_to_ghc_pkg) list_of_package_atoms
+            _ → liftIO $ do
+                    infoM "Blueprint.Tools.Compilers.GHC" "(GHC) Loading package database..."
+                    liftIO . noticeM "Blueprint.Tools.Compilers.GHC" $
+                        unwords ("(GHC) Executing":path_to_ghc_pkg:"dump":options)
+                    fmap (map parseInstalledPackageInformation . splitOn "---")
+                         (readProcess path_to_ghc_pkg ("dump":options) "")
         let package_database = constructPackageDatabaseFromInstalledPackages installed_packages
         return (Just (list_of_package_atoms,installed_packages), package_database)
   where
@@ -1542,23 +1544,23 @@ linkProgramUsingBuildEnvironment BuildEnvironment{..} =
         (pathToGHC buildEnvironmentGHC)
         buildEnvironmentProgramLinkOptions
 -- @-node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
--- @+node:gcross.20100927161850.1436:loadInstalledPackageInformation
-loadInstalledPackageInformation :: FilePath → String → IO InstalledPackage
-loadInstalledPackageInformation path_to_ghc_pkg package_atom = do
-    package_description ← readProcess path_to_ghc_pkg ["describe",package_atom] ""
-    InstalledPackageInfo.InstalledPackageInfo{..} ←
+-- @+node:gcross.20100927161850.1436:parseInstalledPackageInformation
+parseInstalledPackageInformation :: String → InstalledPackage
+parseInstalledPackageInformation package_description =
+    InstalledPackage
+    {   installedPackageId = installedPackageId
+    ,   installedPackageQualifiedName = display sourcePackageId
+    ,   installedPackageName = (display . Package.pkgName) sourcePackageId
+    ,   installedPackageVersion = Package.pkgVersion sourcePackageId
+    ,   installedPackageModules = map display exposedModules
+    }
+  where
+    InstalledPackageInfo.InstalledPackageInfo{..} =
         case InstalledPackageInfo.parseInstalledPackageInfo package_description of
-            ParseOk _ installed_package_info → return installed_package_info
-            ParseFailed parse_error → error $ "Error parsing description of package " ++ package_atom ++ ": " ++ show parse_error
-    return $
-        InstalledPackage
-        {   installedPackageId = installedPackageId
-        ,   installedPackageQualifiedName = display sourcePackageId
-        ,   installedPackageName = (display . Package.pkgName) sourcePackageId
-        ,   installedPackageVersion = Package.pkgVersion sourcePackageId
-        ,   installedPackageModules = map display exposedModules
-        }
--- @-node:gcross.20100927161850.1436:loadInstalledPackageInformation
+            ParseOk _ installed_package_info → installed_package_info
+            ParseFailed parse_error → error $ "Error parsing description of package: " ++ show parse_error
+-- @nonl
+-- @-node:gcross.20100927161850.1436:parseInstalledPackageInformation
 -- @+node:gcross.20101005111309.1484:lookupPackageNamed
 lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])]
 lookupPackageNamed PackageDatabase{..} =
