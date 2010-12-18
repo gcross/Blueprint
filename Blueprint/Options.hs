@@ -1,8 +1,8 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20100927123234.1338:@thin Options.hs
+-- @+leo-ver=5-thin
+-- @+node:gcross.20100927123234.1338: * @thin Options.hs
 -- @@language Haskell
--- @<< Language extensions >>
--- @+node:gcross.20100927123234.1339:<< Language extensions >>
+-- @+<< Language extensions >>
+-- @+node:gcross.20100927123234.1339: ** << Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,13 +10,12 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100927123234.1339:<< Language extensions >>
--- @nl
+-- @-<< Language extensions >>
 
 module Blueprint.Options where
 
--- @<< Import needed modules >>
--- @+node:gcross.20100927123234.1340:<< Import needed modules >>
+-- @+<< Import needed modules >>
+-- @+node:gcross.20100927123234.1340: ** << Import needed modules >>
 import Control.Arrow
 import Control.Exception
 import Control.Monad
@@ -39,30 +38,25 @@ import System.Exit
 
 import Blueprint.Identifier
 import Blueprint.Miscellaneous
--- @-node:gcross.20100927123234.1340:<< Import needed modules >>
--- @nl
+-- @-<< Import needed modules >>
 
 -- @+others
--- @+node:gcross.20100927123234.1341:Exceptions
--- @+node:gcross.20100927123234.1342:OptionConflictsException
+-- @+node:gcross.20100927123234.1341: ** Exceptions
+-- @+node:gcross.20100927123234.1342: *3* OptionConflictsException
 data ConflictingOptionsException = ConflictingOptionsException Conflicts deriving (Typeable,Show)
 
 instance Exception ConflictingOptionsException
 
--- @-node:gcross.20100927123234.1342:OptionConflictsException
--- @+node:gcross.20100927123234.1343:ConfigurationFileException
+-- @+node:gcross.20100927123234.1343: *3* ConfigurationFileException
 data ConfigurationFileErrors = ConfigurationFileErrors FilePath [CPError] deriving (Show,Eq,Typeable)
 
 instance Exception ConfigurationFileErrors
 
--- @-node:gcross.20100927123234.1343:ConfigurationFileException
--- @-node:gcross.20100927123234.1341:Exceptions
--- @+node:gcross.20100927123234.1344:Types
--- @+node:gcross.20100927123234.1345:OptionId
+-- @+node:gcross.20100927123234.1344: ** Types
+-- @+node:gcross.20100927123234.1345: *3* OptionId
 data OfOption
 type OptionId = Identifier OfOption
--- @-node:gcross.20100927123234.1345:OptionId
--- @+node:gcross.20100927123234.1346:ArgumentType
+-- @+node:gcross.20100927123234.1346: *3* ArgumentType
 data ArgumentType =
     NoArgument
     {   argumentDefaultValue :: String
@@ -75,8 +69,7 @@ data ArgumentType =
     {   argumentDescription :: String
     }
   deriving Show
--- @-node:gcross.20100927123234.1346:ArgumentType
--- @+node:gcross.20100927123234.1347:Options
+-- @+node:gcross.20100927123234.1347: *3* Options
 data Options = Options
     {   optionShortForms :: Map Char (OptionId,ArgumentType)
     ,   optionLongForms :: Map String (OptionId,ArgumentType)
@@ -84,11 +77,9 @@ data Options = Options
     ,   optionValueCombiners :: Map OptionId ([String] → Either String String)
     ,   optionDescriptions :: Map OptionId (String,String)
     }
--- @-node:gcross.20100927123234.1347:Options
--- @+node:gcross.20100927123234.1348:OptionValues
+-- @+node:gcross.20100927123234.1348: *3* OptionValues
 type OptionValues = Map OptionId String
--- @-node:gcross.20100927123234.1348:OptionValues
--- @+node:gcross.20100927123234.1349:Conflicts
+-- @+node:gcross.20100927123234.1349: *3* Conflicts
 data Conflicts = Conflicts
     {   conflictingShortForms :: Map Char [OptionId]
     ,   conflictingLongForms :: Map String [OptionId]
@@ -96,10 +87,8 @@ data Conflicts = Conflicts
     ,   conflictingValueCombiners :: Map OptionId Int
     ,   conflictingDescriptions :: Map OptionId [(String,String)]
     } deriving (Eq,Show)
--- @-node:gcross.20100927123234.1349:Conflicts
--- @-node:gcross.20100927123234.1344:Types
--- @+node:gcross.20100927123234.1350:Instances
--- @+node:gcross.20100927123234.1351:Monoid Conflicts
+-- @+node:gcross.20100927123234.1350: ** Instances
+-- @+node:gcross.20100927123234.1351: *3* Monoid Conflicts
 instance Monoid Conflicts where
     mempty = Conflicts Map.empty Map.empty Map.empty Map.empty Map.empty
     c1 `mappend` c2 =
@@ -110,8 +99,7 @@ instance Monoid Conflicts where
         ,   conflictingValueCombiners = (Map.unionWith (+) `on` conflictingValueCombiners) c1 c2
         ,   conflictingDescriptions = (Map.unionWith (++) `on` conflictingDescriptions) c1 c2
         }
--- @-node:gcross.20100927123234.1351:Monoid Conflicts
--- @+node:gcross.20100927123234.1352:Monoid Options
+-- @+node:gcross.20100927123234.1352: *3* Monoid Options
 instance Monoid Options where
     mempty = Options Map.empty Map.empty Map.empty Map.empty Map.empty
     o1 `mappend` o2 =
@@ -122,8 +110,7 @@ instance Monoid Options where
         ,   optionValueCombiners = (Map.union `on` optionValueCombiners) o1 o2
         ,   optionDescriptions = (Map.union `on` optionDescriptions) o1 o2
         }
--- @-node:gcross.20100927123234.1352:Monoid Options
--- @+node:gcross.20100927123234.1353:Monoid (Either Conflicts Options)
+-- @+node:gcross.20100927123234.1353: *3* Monoid (Either Conflicts Options)
 instance Monoid (Either Conflicts Options) where
     mempty = Right mempty
     Left x `mappend` Left y = Left (x `mappend` y)
@@ -168,14 +155,11 @@ instance Monoid (Either Conflicts Options) where
             ,   conflictingDescriptions =
                     (Map.intersectionWith doubleton `on` optionDescriptions) o1 o2
             }
--- @-node:gcross.20100927123234.1353:Monoid (Either Conflicts Options)
--- @-node:gcross.20100927123234.1350:Instances
--- @+node:gcross.20100927123234.1354:Functions
--- @+node:gcross.20100927123234.1355:extractOptionsOrError
+-- @+node:gcross.20100927123234.1354: ** Functions
+-- @+node:gcross.20100927123234.1355: *3* extractOptionsOrError
 extractOptionsOrError :: Either Conflicts Options → Options
 extractOptionsOrError = either (throw . ConflictingOptionsException) id
--- @-node:gcross.20100927123234.1355:extractOptionsOrError
--- @+node:gcross.20100927123234.1356:parseCommandLine
+-- @+node:gcross.20100927123234.1356: *3* parseCommandLine
 parseCommandLine :: Options → [String] → Either [String] ([String],OptionValues)
 parseCommandLine Options{..} arguments =
     case error_messages of
@@ -225,8 +209,7 @@ parseCommandLine Options{..} arguments =
             )
             undefined
 
--- @-node:gcross.20100927123234.1356:parseCommandLine
--- @+node:gcross.20100927123234.1357:parseConfigurationFile
+-- @+node:gcross.20100927123234.1357: *3* parseConfigurationFile
 parseConfigurationFile :: Options → ConfigParser → Either [CPError] OptionValues
 parseConfigurationFile Options{optionConfigurationKeys} cp =
     let (parse_errors,values) =
@@ -247,8 +230,7 @@ parseConfigurationFile Options{optionConfigurationKeys} cp =
     in case parse_errors of
         [] → Right (Map.fromList values)
         errors → Left errors
--- @-node:gcross.20100927123234.1357:parseConfigurationFile
--- @+node:gcross.20100927123234.1358:updateConfigurationFile
+-- @+node:gcross.20100927123234.1358: *3* updateConfigurationFile
 updateConfigurationFile :: Options → ConfigParser → OptionValues → Maybe ConfigParser
 updateConfigurationFile Options{optionConfigurationKeys} cp option_values
   | config_file_updated = Just new_config_file
@@ -275,8 +257,7 @@ updateConfigurationFile Options{optionConfigurationKeys} cp option_values
         Map.toList
         $
         optionConfigurationKeys
--- @-node:gcross.20100927123234.1358:updateConfigurationFile
--- @+node:gcross.20100927123234.1359:getAndParseCommandLineOptions
+-- @+node:gcross.20100927123234.1359: *3* getAndParseCommandLineOptions
 getAndParseCommandLineOptions :: Options → IO ([String],OptionValues)
 getAndParseCommandLineOptions =
     flip fmap getArgs . parseCommandLine
@@ -288,8 +269,7 @@ getAndParseCommandLineOptions =
             exitFailure
         )
         return
--- @-node:gcross.20100927123234.1359:getAndParseCommandLineOptions
--- @+node:gcross.20100927123234.1360:getParseAndUpdateConfigurationFile
+-- @+node:gcross.20100927123234.1360: *3* getParseAndUpdateConfigurationFile
 getParseAndUpdateConfigurationFile :: Options → FilePath → OptionValues → IO OptionValues
 getParseAndUpdateConfigurationFile options configuration_filepath old_option_values = do
     cp ← getConfigurationFile configuration_filepath
@@ -302,8 +282,7 @@ getParseAndUpdateConfigurationFile options configuration_filepath old_option_val
         Nothing → return ()
         Just updated_cp → writeFile configuration_filepath (to_string updated_cp)
     return . Map.filter (/= "") $ new_option_values
--- @-node:gcross.20100927123234.1360:getParseAndUpdateConfigurationFile
--- @+node:gcross.20100927123234.1361:getAndParseConfigurationFile
+-- @+node:gcross.20100927123234.1361: *3* getAndParseConfigurationFile
 getAndParseConfigurationFile :: Options → FilePath → IO OptionValues
 getAndParseConfigurationFile options configuration_filepath = do
     getConfigurationFile configuration_filepath
@@ -313,8 +292,7 @@ getAndParseConfigurationFile options configuration_filepath = do
         return
     .
     parseConfigurationFile options
--- @-node:gcross.20100927123234.1361:getAndParseConfigurationFile
--- @+node:gcross.20100927123234.1362:getConfigurationFile
+-- @+node:gcross.20100927123234.1362: *3* getConfigurationFile
 getConfigurationFile :: FilePath → IO ConfigParser
 getConfigurationFile configuration_filepath = do
     exists ← doesFileExist configuration_filepath
@@ -326,8 +304,5 @@ getConfigurationFile configuration_filepath = do
                 (throwIO . ConfigurationFileErrors configuration_filepath . (:[]))
                 return
         else return emptyCP
--- @-node:gcross.20100927123234.1362:getConfigurationFile
--- @-node:gcross.20100927123234.1354:Functions
 -- @-others
--- @-node:gcross.20100927123234.1338:@thin Options.hs
 -- @-leo

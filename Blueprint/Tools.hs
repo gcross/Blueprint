@@ -1,18 +1,17 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20100925004153.1313:@thin Tools.hs
+-- @+leo-ver=5-thin
+-- @+node:gcross.20100925004153.1313: * @thin Tools.hs
 -- @@language Haskell
--- @<< Language extensions >>
--- @+node:gcross.20100925004153.1314:<< Language extensions >>
+-- @+<< Language extensions >>
+-- @+node:gcross.20100925004153.1314: ** << Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100925004153.1314:<< Language extensions >>
--- @nl
+-- @-<< Language extensions >>
 
 module Blueprint.Tools where
 
--- @<< Import needed modules >>
--- @+node:gcross.20100925004153.1315:<< Import needed modules >>
+-- @+<< Import needed modules >>
+-- @+node:gcross.20100925004153.1315: ** << Import needed modules >>
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
@@ -38,28 +37,21 @@ import TypeLevel.NaturalNumber.Induction
 import Blueprint.Identifier
 import Blueprint.Job
 import Blueprint.Miscellaneous
--- @-node:gcross.20100925004153.1315:<< Import needed modules >>
--- @nl
+-- @-<< Import needed modules >>
 
 -- @+others
--- @+node:gcross.20100929125042.1464:Types
--- @+node:gcross.20101010201506.1500:FileOfType
+-- @+node:gcross.20100929125042.1464: ** Types
+-- @+node:gcross.20101010201506.1500: *3* FileOfType
 data FileOfType α = File
     {   filePath :: FilePath
     ,   fileDigest :: MD5Digest
     } deriving (Eq,Show,Typeable)
--- @nonl
--- @-node:gcross.20101010201506.1500:FileOfType
--- @-node:gcross.20100929125042.1464:Types
--- @+node:gcross.20101010201506.1503:File Types
--- @+node:gcross.20101010201506.1504:Program
+-- @+node:gcross.20101010201506.1503: ** File Types
+-- @+node:gcross.20101010201506.1504: *3* Program
 data Program deriving Typeable
 type ProgramFile = FileOfType Program
--- @nonl
--- @-node:gcross.20101010201506.1504:Program
--- @-node:gcross.20101010201506.1503:File Types
--- @+node:gcross.20100927222551.1483:Exceptions
--- @+node:gcross.20100927222551.1484:ProductionError
+-- @+node:gcross.20100927222551.1483: ** Exceptions
+-- @+node:gcross.20100927222551.1484: *3* ProductionError
 data ProductionError =
     ProductionCommandFailed String String
   | FailedToProduceMandatoryOutputs [FilePath]
@@ -74,18 +66,15 @@ instance Show ProductionError where
         "The following output files were expected but not produced: " ++ show non_existing_mandatory_outputs
 
 instance Exception ProductionError
--- @-node:gcross.20100927222551.1484:ProductionError
--- @-node:gcross.20100927222551.1483:Exceptions
--- @+node:gcross.20100925004153.1317:Functions
--- @+node:gcross.20101010201506.1509:declareFileType
+-- @+node:gcross.20100925004153.1317: ** Functions
+-- @+node:gcross.20101010201506.1509: *3* declareFileType
 declareFileType :: String → Q [Dec]
 declareFileType name = do
     return
         [DataD [] (mkName name) [] [] [mkName "Typeable"]
         ,TySynD (mkName $ name ++ "File") [] (AppT (ConT (mkName "FileOfType")) (ConT (mkName name)))
         ]
--- @-node:gcross.20101010201506.1509:declareFileType
--- @+node:gcross.20100925004153.1318:digestFile
+-- @+node:gcross.20100925004153.1318: *3* digestFile
 digestFile :: FilePath → Job MD5Digest
 digestFile filepath =
     once my_id
@@ -102,20 +91,17 @@ digestFile filepath =
         identifierInNamespace
             (uuid "50bdbf93-8a69-497a-9493-2eb1e9f87ee0")
             ("digesting " ++ filepath)
--- @-node:gcross.20100925004153.1318:digestFile
--- @+node:gcross.20100927222551.1459:digestFileIfExists
+-- @+node:gcross.20100927222551.1459: *3* digestFileIfExists
 digestFileIfExists :: FilePath → Job (Maybe MD5Digest)
 digestFileIfExists file_to_digest = do
     exists ← liftIO $ doesFileExist file_to_digest
     if exists
         then fmap Just (digestFile file_to_digest)
         else return Nothing
--- @-node:gcross.20100927222551.1459:digestFileIfExists
--- @+node:gcross.20100927222551.1486:digestFiles
+-- @+node:gcross.20100927222551.1486: *3* digestFiles
 digestFiles :: Induction n ⇒ TaggedList n FilePath → Job (TaggedList n MD5Digest)
 digestFiles = traverse digestFile
--- @-node:gcross.20100927222551.1486:digestFiles
--- @+node:gcross.20101009103525.1737:runProductionCommand
+-- @+node:gcross.20101009103525.1737: *3* runProductionCommand
 runProductionCommand ::
     MonadIO m ⇒
     String →
@@ -130,9 +116,7 @@ runProductionCommand command arguments input = liftIO $ do
             input
     when (exit_code /= ExitSuccess) . throwIO $
         ProductionCommandFailed (unwords (command:arguments)) output
--- @nonl
--- @-node:gcross.20101009103525.1737:runProductionCommand
--- @+node:gcross.20100927222551.1472:runProductionCommandAndDigestOutputs
+-- @+node:gcross.20100927222551.1472: *3* runProductionCommandAndDigestOutputs
 runProductionCommandAndDigestOutputs ::
     Induction n ⇒
     TaggedList n FilePath →
@@ -153,9 +137,5 @@ runProductionCommandAndDigestOutputs
         when (not . null $ mandatory_products_not_existing) . throwIO $
             FailedToProduceMandatoryOutputs mandatory_products_not_existing
     digestFiles mandatory_product_filepaths
--- @nonl
--- @-node:gcross.20100927222551.1472:runProductionCommandAndDigestOutputs
--- @-node:gcross.20100925004153.1317:Functions
 -- @-others
--- @-node:gcross.20100925004153.1313:@thin Tools.hs
 -- @-leo
