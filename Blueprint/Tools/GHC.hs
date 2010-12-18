@@ -101,9 +101,6 @@ declareFileType "HaskellInterface"
 declareFileType "HaskellObject"
 -- @nonl
 -- @-node:gcross.20101010201506.1505:File Types
--- @+node:gcross.20101028153412.1559:Programs
-data Haddock deriving Typeable; instance ProgramName Haddock where { programNameFrom _ = "haddock" }
--- @-node:gcross.20101028153412.1559:Programs
 -- @+node:gcross.20100927123234.1433:Types
 -- @+node:gcross.20101012145613.1542:BuildTargets
 data BuildTargets = BuildTargets
@@ -1818,9 +1815,6 @@ ghc_options =
             ]
         )
 -- @-node:gcross.20100927123234.1432:GHC
--- @+node:gcross.20101028153412.1560:Haddock
-haddock_options = unwrapOptions (programOptions :: OptionsFor Haddock)
--- @-node:gcross.20101028153412.1560:Haddock
 -- @+node:gcross.20101010201506.1519:Installation
 installation_option_prefix = identifier "d85dcf36-aab1-4618-8b9a-b07caf347d41" "installation directory prefix"
 installation_option_bindir = identifier "90055f6f-9ba5-43d6-b59f-441f66ee0d1c" "installation directory for executables"

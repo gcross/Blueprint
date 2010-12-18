@@ -21,6 +21,7 @@
 <v t="gcross.20100927123234.1424"><vh>@path Tools</vh>
 <v t="gcross.20101005114926.1468"><vh>@thin Ar.hs</vh></v>
 <v t="gcross.20100927123234.1428"><vh>@thin GHC.hs</vh></v>
+<v t="gcross.20101217170933.1576"><vh>@thin Haddock.hs</vh></v>
 </v>
 </v>
 <v t="gcross.20100924174906.1279"><vh>@thin test.hs</vh></v>
