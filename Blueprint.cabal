@@ -11,7 +11,7 @@ Stability:           Unstable
 Synopsis:            Blueprint
 Description:         Blueprint
 Cabal-version:       >=1.8
-Build-type:          Simple
+Build-type:          Custom
 Category:            Type System,Data
 
 Flag Test
