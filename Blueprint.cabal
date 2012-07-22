@@ -71,4 +71,4 @@ Executable test
         test-framework >= 0.3 && < 0.7,
         test-framework-hunit == 0.2.*,
         test-framework-quickcheck2 == 0.2.*
-    Main-is: test
+    Main-is: test.hs
