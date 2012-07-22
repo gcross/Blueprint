@@ -1,8 +1,4 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20100927123234.1428:@thin GHC.hs
--- @@language Haskell
--- @<< Language extensions >>
--- @+node:gcross.20100927123234.1429:<< Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
@@ -13,13 +9,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100927123234.1429:<< Language extensions >>
--- @nl
+-- }}}
 
 module Blueprint.Tools.GHC where
 
--- @<< Import needed modules >>
--- @+node:gcross.20100927123234.1430:<< Import needed modules >>
+-- Imports {{{
 import Prelude hiding (sequence)
 
 import Control.Applicative
@@ -91,25 +85,20 @@ import Blueprint.Miscellaneous
 import Blueprint.Options
 import Blueprint.Tools
 import Blueprint.Tools.Ar
--- @nonl
--- @-node:gcross.20100927123234.1430:<< Import needed modules >>
--- @nl
+-- }}}
 
--- @+others
--- @+node:gcross.20101010201506.1505:File Types
+-- File types {{{
 declareFileType "HaskellInterface"
 declareFileType "HaskellObject"
--- @nonl
--- @-node:gcross.20101010201506.1505:File Types
--- @+node:gcross.20100927123234.1433:Types
--- @+node:gcross.20101012145613.1542:BuildTargets
-data BuildTargets = BuildTargets
+-- }}}
+
+-- Types {{{
+data BuildTargets = BuildTargets -- {{{
     {   libraryBuildTarget :: Maybe Library
     ,   executableBuildTargets :: [Executable]
     }
--- @-node:gcross.20101012145613.1542:BuildTargets
--- @+node:gcross.20100929213846.1453:CompileCache
-data CompileCache = CompileCache
+-- }}}
+data CompileCache = CompileCache -- {{{
     {   compileCacheSourceDigest :: MD5Digest
     ,   compileCacheImportedModules :: [String]
     ,   compileCacheDependencyDigests :: Map FilePath MD5Digest
@@ -117,25 +106,16 @@ data CompileCache = CompileCache
     ,   compileCacheInterfaceDigest :: MD5Digest
     ,   compileCacheObjectDigest :: MD5Digest
     } deriving Typeable; $( derive makeBinary ''CompileCache )
--- @nonl
--- @-node:gcross.20100929213846.1453:CompileCache
--- @+node:gcross.20101009103525.1721:ForLibrary
+-- }}}
 data ForLibrary
--- @nonl
--- @-node:gcross.20101009103525.1721:ForLibrary
--- @+node:gcross.20101009103525.1723:ForPrograms
 data ForPrograms
--- @nonl
--- @-node:gcross.20101009103525.1723:ForPrograms
--- @+node:gcross.20100927123234.1441:GHC
-data GHC = GHC
+data GHC = GHC -- {{{
     {   ghcVersion :: Version
     ,   pathToGHC :: FilePath
     ,   pathToGHCPkg :: FilePath
     } deriving Typeable; $( derive makeBinary ''GHC )
--- @-node:gcross.20100927123234.1441:GHC
--- @+node:gcross.20101009103525.1726:HaskellLibrary
-data HaskellLibrary = HaskellLibrary
+-- }}}
+data HaskellLibrary = HaskellLibrary -- {{{
     {   haskellLibraryModuleInterfaces :: Map String HaskellInterfaceFile
     ,   haskellLibraryArchive :: ArchiveFile
     ,   haskellLibraryDigest :: MD5Digest
@@ -143,36 +123,28 @@ data HaskellLibrary = HaskellLibrary
     ,   haskellLibraryIsExposed :: Bool
     ,   haskellLibraryExposedModules :: [String]
     } deriving Typeable
--- @-node:gcross.20101009103525.1726:HaskellLibrary
--- @+node:gcross.20101009103525.1724:HaskellModule
-data HaskellModule = HaskellModule
+-- }}}
+data HaskellModule = HaskellModule -- {{{
     {   haskellModuleName :: String
     ,   haskellModuleInterface :: HaskellInterfaceFile
     ,   haskellModuleObject :: HaskellObjectFile
     ,   haskellModuleLinkDependencyModules :: Map String HaskellModule
     ,   haskellModuleLinkDependencyPackages :: Map String InstalledPackage
     } deriving Typeable
--- @-node:gcross.20101009103525.1724:HaskellModule
--- @+node:gcross.20101009103525.1725:HaskellModuleJobs
+-- }}}
 type HaskellModuleJobs = Map String (Job HaskellModule)
--- @nonl
--- @-node:gcross.20101009103525.1725:HaskellModuleJobs
--- @+node:gcross.20100927222551.1452:HaskellSource
-data HaskellSource = HaskellSource
+data HaskellSource = HaskellSource -- {{{
     {   haskellSourceModuleName :: String
     ,   haskellSourceFile :: HaskellSourceFile
     } deriving Typeable
 type HaskellSourceFile = FileOfType HaskellSource
--- @nonl
--- @-node:gcross.20100927222551.1452:HaskellSource
--- @+node:gcross.20101010201506.1521:InstallationEnvironment
-data InstallationEnvironment = InstallationEnvironment
+-- }}}
+data InstallationEnvironment = InstallationEnvironment -- {{{
     {   installationLibraryDirectory :: FilePath
     ,   installationExecutableDirectory :: FilePath
     }
--- @-node:gcross.20101010201506.1521:InstallationEnvironment
--- @+node:gcross.20100927123234.1435:InstalledPackage
-data InstalledPackage = InstalledPackage
+-- }}}
+data InstalledPackage = InstalledPackage -- {{{
     {   installedPackageId :: InstalledPackageId
     ,   installedPackageQualifiedName :: String
     ,   installedPackageName :: String
@@ -182,30 +154,24 @@ data InstalledPackage = InstalledPackage
 
 $( derive makeBinary ''InstalledPackageId )
 $( derive makeBinary ''InstalledPackage )
--- @-node:gcross.20100927123234.1435:InstalledPackage
--- @+node:gcross.20101012145613.1543:InstallTargets
-data InstallTargets = InstallTargets
+-- }}}
+data InstallTargets = InstallTargets -- {{{
     {   libraryInstallTarget :: Maybe HaskellLibrary
     ,   executableInstallTargets :: [ProgramFile]
     }
--- @-node:gcross.20101012145613.1543:InstallTargets
--- @+node:gcross.20100927222551.1434:KnownModule
-data KnownModule =
+-- }}}
+data KnownModule = -- {{{
     KnownModuleInExternalPackage InstalledPackage
   | KnownModuleInProject (Job HaskellModule)
--- @-node:gcross.20100927222551.1434:KnownModule
--- @+node:gcross.20100927222551.1436:KnownModules
+-- }}}
 type KnownModules = Map String KnownModule
--- @-node:gcross.20100927222551.1436:KnownModules
--- @+node:gcross.20100927123234.1437:PackageDatabase
-data PackageDatabase = PackageDatabase
+data PackageDatabase = PackageDatabase -- {{{
     {   packageDatabaseIndexedByInstalledPackageId :: Map InstalledPackageId InstalledPackage
     ,   packageDatabaseIndexedByPackageNameAndVersion :: Map String [(Version,[InstalledPackage])]
     ,   packageDatabaseIndexedByModuleName :: Map String [InstalledPackage]
     } deriving Typeable
--- @-node:gcross.20100927123234.1437:PackageDatabase
--- @+node:gcross.20100927123234.1439:PackageLocality
-data PackageLocality = Global | User deriving (Typeable,Eq)
+-- }}}
+data PackageLocality = Global | User deriving (Typeable,Eq) -- {{{
 
 $(derive makeBinary ''PackageLocality)
 
@@ -218,9 +184,8 @@ instance Read.Read PackageLocality where
         [ReadP.string "user" >> return User
         ,ReadP.string "global" >> return Global
         ]
--- @-node:gcross.20100927123234.1439:PackageLocality
--- @+node:gcross.20101010201506.1528:GHCOptions
-data GHCOptions = GHCOptions
+-- }}}
+data GHCOptions = GHCOptions -- {{{
     {   ghcOptionPathToGHC :: Maybe FilePath
     ,   ghcOptionPathToGHCPkg :: Maybe FilePath
     ,   ghcOptionDesiredVersion :: Maybe Version
@@ -230,18 +195,15 @@ data GHCOptions = GHCOptions
     } deriving (Eq,Show,Typeable)
 
 $(derive makeBinary ''GHCOptions)
--- @-node:gcross.20101010201506.1528:GHCOptions
--- @+node:gcross.20100927123234.1443:GHCEnvironment
-data GHCEnvironment = GHCEnvironment
+-- }}}
+data GHCEnvironment = GHCEnvironment -- {{{
     {   ghcEnvironmentGHC :: GHC
     ,   ghcEnvironmentPackageDatabase :: PackageDatabase
     ,   ghcEnvironmentPackageLocality :: PackageLocality
     ,   ghcEnvironmentFlags :: [String]
     } deriving Typeable
-
--- @-node:gcross.20100927123234.1443:GHCEnvironment
--- @+node:gcross.20100927222551.1446:BuildEnvironment
-data BuildEnvironment = BuildEnvironment
+-- }}}
+data BuildEnvironment = BuildEnvironment -- {{{
     {   buildEnvironmentGHC :: GHC
     ,   buildEnvironmentPackageDatabase :: PackageDatabase
     ,   buildEnvironmentPackageLocality :: PackageLocality
@@ -254,20 +216,18 @@ data BuildEnvironment = BuildEnvironment
     ,   buildEnvironmentProgramInterfaceDirectory :: FilePath
     ,   buildEnvironmentProgramObjectDirectory :: FilePath
     }
--- @nonl
--- @-node:gcross.20100927222551.1446:BuildEnvironment
--- @+node:gcross.20101012145613.1551:Configuration
-data Configuration = Configuration
+-- }}}
+data Configuration = Configuration -- {{{
     {   configurationAr :: Maybe (ProgramConfiguration Ar)
     ,   configurationBuildEnvironment :: BuildEnvironment
     ,   configurationPackageDescription :: PackageDescription
     ,   configurationInstallationEnvironment :: InstallationEnvironment
     }
--- @-node:gcross.20101012145613.1551:Configuration
--- @-node:gcross.20100927123234.1433:Types
--- @+node:gcross.20101005111309.1477:Exceptions
--- @+node:gcross.20101010201506.1499:BadLibraryExportList
-data BadLibraryExportList = BadLibraryExportList [Either String String] deriving Typeable
+-- }}}
+-- }}}
+
+-- Exceptions {{{
+data BadLibraryExportList = BadLibraryExportList [Either String String] deriving Typeable -- {{{
 
 instance Show BadLibraryExportList where
     show (BadLibraryExportList bad_exports) =
@@ -290,9 +250,8 @@ instance Show BadLibraryExportList where
         (unknown_modules,external_modules) = partitionEithers bad_exports
 
 instance Exception BadLibraryExportList
--- @-node:gcross.20101010201506.1499:BadLibraryExportList
--- @+node:gcross.20101012145613.1517:BadMainModule
-data BadMainModule =
+-- }}}
+data BadMainModule = -- {{{
     MissingMainModule String
   | ExternalMainModule String InstalledPackage
   | NoExecutableWithNameInPackageDescription String PackageDescription
@@ -304,10 +263,8 @@ instance Show BadMainModule where
     show (NoExecutableWithNameInPackageDescription executable_name package_description) = "There is no executable with the name " ++ executable_name ++ " in the package description:" ++ show package_description
 
 instance Exception BadMainModule
--- @nonl
--- @-node:gcross.20101012145613.1517:BadMainModule
--- @+node:gcross.20101012145613.1558:BadTargets
-data BadTargets = BadTargets PackageDescription [String] [String] deriving Typeable
+-- }}}
+data BadTargets = BadTargets PackageDescription [String] [String] deriving Typeable -- {{{
 
 instance Show BadTargets where
     show (BadTargets PackageDescription{..} missing_targets unbuildable_targets) =
@@ -351,9 +308,8 @@ instance Show BadTargets where
         executables
 
 instance Exception BadTargets
--- @-node:gcross.20101012145613.1558:BadTargets
--- @+node:gcross.20101012145613.1525:CabalFileException
-data CabalFileException =
+-- }}}
+data CabalFileException = -- {{{
     NoCabalFile
   | MultipleCabalFiles [FilePath]
   deriving Typeable
@@ -363,10 +319,8 @@ instance Show CabalFileException where
     show (MultipleCabalFiles cabal_file_names) = "Multiple .cabal files are present " ++ show cabal_file_names
 
 instance Exception CabalFileException
--- @nonl
--- @-node:gcross.20101012145613.1525:CabalFileException
--- @+node:gcross.20101005111309.1478:GHCConfigurationException
-data GHCConfigurationException =
+-- }}}
+data GHCConfigurationException = -- {{{
     GHCVersionParseException FilePath String
   | GHCNotFoundAt FilePath
   | GHCPkgNotFoundAt FilePath
@@ -408,18 +362,17 @@ instance Show GHCConfigurationException where
         "Unable to configure GHC:\n" ++ concat ["* " ++ show e ++ "\n" | e ← exceptions]
 
 instance Exception GHCConfigurationException
--- @-node:gcross.20101005111309.1478:GHCConfigurationException
--- @+node:gcross.20101010201506.1496:LibraryMissingFromPackageDescription
-data LibraryMissingFromPackageDescription = LibraryMissingFromPackageDescription PackageDescription deriving Typeable
+
+-- }}}
+data LibraryMissingFromPackageDescription = LibraryMissingFromPackageDescription PackageDescription deriving Typeable -- {{{
 
 instance Show LibraryMissingFromPackageDescription where
     show (LibraryMissingFromPackageDescription package_description) =
         "A library section is missing from the package description:\n" ++ show package_description
 
 instance Exception LibraryMissingFromPackageDescription
--- @-node:gcross.20101010201506.1496:LibraryMissingFromPackageDescription
--- @+node:gcross.20101010201506.1498:MissingExposedModules
-data MissingExposedModules = MissingExposedModules (Set String) deriving Typeable
+-- }}}
+data MissingExposedModules = MissingExposedModules (Set String) deriving Typeable -- {{{
 
 instance Show MissingExposedModules where
     show (MissingExposedModules missing_module_names) =
@@ -434,10 +387,8 @@ instance Show MissingExposedModules where
         missing_module_names
 
 instance Exception MissingExposedModules
--- @nonl
--- @-node:gcross.20101010201506.1498:MissingExposedModules
--- @+node:gcross.20101005111309.1479:UnknownModulesException
-data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable
+-- }}}
+data UnknownModulesException = UnknownModulesException [(String,[String])] deriving Typeable -- {{{
 
 instance Show UnknownModulesException where
     show (UnknownModulesException unknown_modules_with_exporters) =
@@ -455,10 +406,8 @@ instance Show UnknownModulesException where
         unknown_modules_with_exporters
 
 instance Exception UnknownModulesException
--- @nonl
--- @-node:gcross.20101005111309.1479:UnknownModulesException
--- @+node:gcross.20101005111309.1480:UnresolvedPackageDependenciesError
-data UnresolvedPackageDependenciesError =
+-- }}}
+data UnresolvedPackageDependenciesError = -- {{{
     UnresolvedPackageDependenciesError PackageDatabase [Package.Dependency]
   deriving Typeable
 
@@ -484,20 +433,18 @@ instance Show UnresolvedPackageDependenciesError where
         unresolved_dependencies
 
 instance Exception UnresolvedPackageDependenciesError
--- @-node:gcross.20101005111309.1480:UnresolvedPackageDependenciesError
--- @-node:gcross.20101005111309.1477:Exceptions
--- @+node:gcross.20100927123234.1459:Values
--- @+node:gcross.20100927123234.1461:ghc_version_regex
+-- }}}
+-- }}}
+
+-- Values {{{
 ghc_version_regex = makeRegex "version ([0-9.]*)" :: Regex
--- @-node:gcross.20100927123234.1461:ghc_version_regex
--- @+node:gcross.20100927222551.1456:import_regex
+
 import_regex :: Regex
 import_regex = makeRegex "^\\s*import\\s+(?:qualified\\s+)?([A-Z][A-Za-z0-9_.]*)"
--- @-node:gcross.20100927222551.1456:import_regex
--- @-node:gcross.20100927123234.1459:Values
--- @+node:gcross.20100927123234.1448:Functions
--- @+node:gcross.20101012145613.1516:buildExecutable
-buildExecutable ::
+-- }}}
+
+-- Functions {{{
+buildExecutable :: -- {{{
     FilePath →
     [String] →
     [String] →
@@ -547,10 +494,8 @@ buildExecutable
         identifierInNamespace
             (uuid "0cbcbb1f-e695-4612-b2b9-d3a9a125e04f")
             ("building executable " ++ program_filepath)
--- @nonl
--- @-node:gcross.20101012145613.1516:buildExecutable
--- @+node:gcross.20101012145613.1519:buildExecutableUsingBuildEnvironment
-buildExecutableUsingBuildEnvironment ::
+-- }}}
+buildExecutableUsingBuildEnvironment :: -- {{{
     BuildEnvironment →
     FilePath →
     Executable →
@@ -564,19 +509,15 @@ buildExecutableUsingBuildEnvironment =
         <*> buildEnvironmentKnownModules
         <*> buildEnvironmentProgramInterfaceDirectory
         <*> buildEnvironmentProgramObjectDirectory
--- @nonl
--- @-node:gcross.20101012145613.1519:buildExecutableUsingBuildEnvironment
--- @+node:gcross.20101015124156.1546:buildExecutableUsingConfiguration
-buildExecutableUsingConfiguration ::
+-- }}}
+buildExecutableUsingConfiguration :: -- {{{
     Configuration →
     FilePath →
     Executable →
     Job ProgramFile
 buildExecutableUsingConfiguration = buildExecutableUsingBuildEnvironment . configurationBuildEnvironment
--- @nonl
--- @-node:gcross.20101015124156.1546:buildExecutableUsingConfiguration
--- @+node:gcross.20101009103525.1729:buildLibrary
-buildLibrary ::
+-- }}}
+buildLibrary :: -- {{{
     ProgramConfiguration Ar →
     String →
     FilePath →
@@ -666,10 +607,8 @@ buildLibrary
         identifierInNamespace
             (uuid "dd31d5fd-b093-43c9-bde5-8ea43ece1224")
             ("building library " ++ archive_filepath)
--- @nonl
--- @-node:gcross.20101009103525.1729:buildLibrary
--- @+node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
-buildLibraryUsingBuildEnvironment ::
+-- }}}
+buildLibraryUsingBuildEnvironment :: -- {{{
     ProgramConfiguration Ar →
     String →
     BuildEnvironment →
@@ -684,10 +623,8 @@ buildLibraryUsingBuildEnvironment ar_configuration package_name =
         <*> buildEnvironmentKnownModules
         <*> buildEnvironmentLibraryInterfaceDirectory
         <*> buildEnvironmentLibraryObjectDirectory
--- @nonl
--- @-node:gcross.20101010201506.1511:buildLibraryUsingBuildEnvironment
--- @+node:gcross.20101012145613.1545:buildLibraryUsingConfiguration
-buildLibraryUsingConfiguration ::
+-- }}}
+buildLibraryUsingConfiguration :: -- {{{
     Configuration →
     FilePath →
     Library →
@@ -697,10 +634,8 @@ buildLibraryUsingConfiguration =
         <$> (fromJust . configurationAr)
         <*> (display . package . configurationPackageDescription)
         <*> configurationBuildEnvironment
--- @nonl
--- @-node:gcross.20101012145613.1545:buildLibraryUsingConfiguration
--- @+node:gcross.20101012145613.1540:buildTargets
-buildTargets :: Configuration → BuildTargets → Job InstallTargets
+-- }}}
+buildTargets :: Configuration → BuildTargets → Job InstallTargets -- {{{
 buildTargets configuration BuildTargets{..} =
     liftA2 InstallTargets
         (case libraryBuildTarget of
@@ -717,13 +652,11 @@ buildTargets configuration BuildTargets{..} =
             (buildExecutableUsingConfiguration configuration "programs")
             executableBuildTargets
         )
--- @-node:gcross.20101012145613.1540:buildTargets
--- @+node:gcross.20101005111309.1482:checkForSatisfyingPackage
-checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool
+-- }}}
+checkForSatisfyingPackage :: PackageDatabase → Package.Dependency → Bool -- {{{
 checkForSatisfyingPackage package_database dependency = isJust (findSatisfyingPackage package_database dependency)
--- @-node:gcross.20101005111309.1482:checkForSatisfyingPackage
--- @+node:gcross.20100929125042.1466:collectAllLinkDependencies
-collectAllLinkDependencies :: [HaskellModule] → (Map String HaskellModule,Map String InstalledPackage)
+-- }}}
+collectAllLinkDependencies :: [HaskellModule] → (Map String HaskellModule,Map String InstalledPackage) -- {{{
 collectAllLinkDependencies haskell_modules =
     (Map.union
         (Map.fromList . map (haskellModuleName &&& id) $ haskell_modules)
@@ -734,9 +667,8 @@ collectAllLinkDependencies haskell_modules =
         $
         haskell_modules
     )
--- @-node:gcross.20100929125042.1466:collectAllLinkDependencies
--- @+node:gcross.20100927222551.1451:compileToObject
-compileToObject ::
+-- }}}
+compileToObject :: -- {{{
     FilePath →
     PackageDatabase →
     KnownModules →
@@ -858,10 +790,8 @@ compileToObject
             (File object_filepath object_digest)
             module_dependencies
             package_dependencies
--- @nonl
--- @-node:gcross.20100927222551.1451:compileToObject
--- @+node:gcross.20100927222551.1438:computeBuildEnvironment
-computeBuildEnvironment ::
+-- }}}
+computeBuildEnvironment :: -- {{{
     GHCEnvironment →
     PackageDescription →
     HaskellModuleJobs →
@@ -923,10 +853,8 @@ computeBuildEnvironment
     library_object_directory = object_directory </> "library"
     program_interface_directory = interface_directory </> "program"
     program_object_directory = object_directory </> "program"
--- @nonl
--- @-node:gcross.20100927222551.1438:computeBuildEnvironment
--- @+node:gcross.20101012145613.1524:configure
-configure :: OptionValues → Job Configuration
+-- }}}
+configure :: OptionValues → Job Configuration -- {{{
 configure options = do
     cabal_file ← findDefaultCabalFile
     ghc_environment ← configureGHCEnvironmentUsingOptions options
@@ -954,10 +882,8 @@ configure options = do
             build_environment
             package_description
             installation_environment
--- @nonl
--- @-node:gcross.20101012145613.1524:configure
--- @+node:gcross.20100927123234.1450:configureGHC
-configureGHC :: GHCOptions → Job GHC
+-- }}}
+configureGHC :: GHCOptions → Job GHC -- {{{
 configureGHC search_options@GHCOptions{..} =
     onceAndCached my_id
     $
@@ -1067,9 +993,8 @@ configureGHC search_options@GHCOptions{..} =
                 throwIO (GHCVersionParseException filepath output)
             Right version →
                 return version
--- @-node:gcross.20100927123234.1450:configureGHC
--- @+node:gcross.20100927161850.1438:configureGHCEnvironment
-configureGHCEnvironment :: GHCOptions → Job GHCEnvironment
+-- }}}
+configureGHCEnvironment :: GHCOptions → Job GHCEnvironment -- {{{
 configureGHCEnvironment options@GHCOptions{..} = do
     ghc@GHC{..} ← configureGHC options
     package_database ← configurePackageDatabase pathToGHCPkg ghcOptionPackageLocality
@@ -1079,17 +1004,14 @@ configureGHCEnvironment options@GHCOptions{..} = do
             package_database
             ghcOptionPackageLocality
             ghcOptionFlags
--- @-node:gcross.20100927161850.1438:configureGHCEnvironment
--- @+node:gcross.20100927161850.1444:configureGHCEnvironmentUsingOptions
-configureGHCEnvironmentUsingOptions :: OptionValues → Job GHCEnvironment
+-- }}}
+configureGHCEnvironmentUsingOptions :: OptionValues → Job GHCEnvironment -- {{{
 configureGHCEnvironmentUsingOptions = configureGHCEnvironment . extractGHCOptions
--- @-node:gcross.20100927161850.1444:configureGHCEnvironmentUsingOptions
--- @+node:gcross.20100927161850.1440:configureGHCUsingOptions
-configureGHCUsingOptions :: OptionValues → Job GHC
+-- }}}
+configureGHCUsingOptions :: OptionValues → Job GHC -- {{{
 configureGHCUsingOptions = configureGHC . extractGHCOptions
--- @-node:gcross.20100927161850.1440:configureGHCUsingOptions
--- @+node:gcross.20101010201506.1526:configureInstallationEnvironmentUsingOptions
-configureInstallationEnvironmentUsingOptions :: OptionValues → Job InstallationEnvironment
+-- }}}
+configureInstallationEnvironmentUsingOptions :: OptionValues → Job InstallationEnvironment -- {{{
 configureInstallationEnvironmentUsingOptions option_values = do
     prefix ←
         case (Map.lookup installation_option_prefix
@@ -1106,9 +1028,8 @@ configureInstallationEnvironmentUsingOptions option_values = do
             (fromMaybe (prefix </> "bin") . Map.lookup installation_option_bindir)
         $
         option_values
--- @-node:gcross.20101010201506.1526:configureInstallationEnvironmentUsingOptions
--- @+node:gcross.20100927161850.1432:configurePackageDatabase
-configurePackageDatabase :: FilePath → PackageLocality → Job PackageDatabase
+-- }}}
+configurePackageDatabase :: FilePath → PackageLocality → Job PackageDatabase -- {{{
 configurePackageDatabase path_to_ghc_pkg locality =
     onceAndCached my_id
     $
@@ -1135,9 +1056,8 @@ configurePackageDatabase path_to_ghc_pkg locality =
         return (Just (list_of_package_atoms,installed_packages), package_database)
   where
     my_id = identifier "734f6cec-8a79-4aa2-ad3b-ebe0937cd125" "configuring GHC package database"
--- @-node:gcross.20100927161850.1432:configurePackageDatabase
--- @+node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
-constructPackageDatabaseFromInstalledPackages :: [InstalledPackage] → PackageDatabase
+-- }}}
+constructPackageDatabaseFromInstalledPackages :: [InstalledPackage] → PackageDatabase -- {{{
 constructPackageDatabaseFromInstalledPackages =
     liftA3 PackageDatabase
         (Map.fromList . map (installedPackageId &&& id))
@@ -1159,9 +1079,8 @@ constructPackageDatabaseFromInstalledPackages =
             , module_name ← installedPackageModules
             ]
         )
--- @-node:gcross.20100927161850.1434:constructPackageDatabaseFromInstalledPackages
--- @+node:gcross.20101006110010.1483:createCompilationJobsForModules
-createCompilationJobsForModules ::
+-- }}}
+createCompilationJobsForModules :: -- {{{
     FilePath →
     PackageDatabase →
     KnownModules →
@@ -1197,10 +1116,8 @@ createCompilationJobsForModules
         Map.union
             (Map.map KnownModuleInProject jobs)
             known_modules
--- @nonl
--- @-node:gcross.20101006110010.1483:createCompilationJobsForModules
--- @+node:gcross.20101012145613.1572:defaultMain
-defaultMain =
+-- }}}
+defaultMain = -- {{{
     Main.defaultMain
         (ghc_options `mappend` installation_options)
         "configuration.cfg"
@@ -1209,13 +1126,11 @@ defaultMain =
         configure
         runTarget
         displayModesMessage
--- @-node:gcross.20101012145613.1572:defaultMain
--- @+node:gcross.20100927123234.1456:determineGHCVersion
-determineGHCVersion :: FilePath → IO Version
+-- }}}
+determineGHCVersion :: FilePath → IO Version -- {{{
 determineGHCVersion = determineProgramVersion parseGHCVersion ["--version"]
--- @-node:gcross.20100927123234.1456:determineGHCVersion
--- @+node:gcross.20101012145613.1567:displayModesMessage
-displayModesMessage :: MonadIO m ⇒ m ()
+-- }}}
+displayModesMessage :: MonadIO m ⇒ m () -- {{{
 displayModesMessage = liftIO . putStrLn . render $
     indentedListWithHeading 4
         "The possible modes of operation are:"
@@ -1224,14 +1139,9 @@ displayModesMessage = liftIO . putStrLn . render $
         ,"install [target1 target2...]"
         ,"test"
         ]
--- @nonl
--- @-node:gcross.20101012145613.1567:displayModesMessage
--- @+node:gcross.20101009103525.1736:dotsToPath
+-- }}}
 dotsToPath = map (\c → if c == '.' then pathSeparator else c)
--- @nonl
--- @-node:gcross.20101009103525.1736:dotsToPath
--- @+node:gcross.20100927161850.1442:extractGHCOptions
-extractGHCOptions :: OptionValues → GHCOptions
+extractGHCOptions :: OptionValues → GHCOptions -- {{{
 extractGHCOptions =
     GHCOptions
         <$> Map.lookup ghc_search_option_path_to_ghc
@@ -1240,16 +1150,12 @@ extractGHCOptions =
         <*> maybe [] splitSearchPath . Map.lookup ghc_search_option_search_paths
         <*> maybe User read . Map.lookup ghc_package_database_option_locality
         <*> maybe [] words . Map.lookup ghc_cabal_flags
--- @nonl
--- @-node:gcross.20100927161850.1442:extractGHCOptions
--- @+node:gcross.20101015124156.1543:extractHaskellSourceDirectoriesFrom
-extractHaskellSourceDirectoriesFrom :: BuildInfo → [FilePath]
+-- }}}
+extractHaskellSourceDirectoriesFrom :: BuildInfo → [FilePath] -- {{{
 extractHaskellSourceDirectoriesFrom BuildInfo{hsSourceDirs=[]} = ["."]
 extractHaskellSourceDirectoriesFrom BuildInfo{hsSourceDirs} = hsSourceDirs
--- @nonl
--- @-node:gcross.20101015124156.1543:extractHaskellSourceDirectoriesFrom
--- @+node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
-extractImportedModulesFromHaskellSource :: L.ByteString → [String]
+-- }}}
+extractImportedModulesFromHaskellSource :: L.ByteString → [String] -- {{{
 extractImportedModulesFromHaskellSource =
     map (
         LU.toString
@@ -1260,18 +1166,16 @@ extractImportedModulesFromHaskellSource =
     )
     .
     matchAllText import_regex
--- @-node:gcross.20100927222551.1454:extractImportedModulesFromHaskellSource
--- @+node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
-extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules
+-- }}}
+extractKnownModulesFromInstalledPackage :: InstalledPackage → KnownModules -- {{{
 extractKnownModulesFromInstalledPackage installed_package@InstalledPackage{..} =
     Map.fromList
     .
     map (,KnownModuleInExternalPackage installed_package)
     $
     installedPackageModules
--- @-node:gcross.20100927222551.1440:extractKnownModulesFromInstalledPackage
--- @+node:gcross.20101012145613.1556:fetchAllBuildTargetsIn
-fetchAllBuildTargetsIn :: PackageDescription → BuildTargets
+-- }}}
+fetchAllBuildTargetsIn :: PackageDescription → BuildTargets -- {{{
 fetchAllBuildTargetsIn PackageDescription{..} =
     BuildTargets
         (case library of
@@ -1279,9 +1183,8 @@ fetchAllBuildTargetsIn PackageDescription{..} =
             _ → Nothing
         )
         (filter (buildable . buildInfo) executables)
--- @-node:gcross.20101012145613.1556:fetchAllBuildTargetsIn
--- @+node:gcross.20101012145613.1557:fetchBuildTargetsIn
-fetchBuildTargetsIn :: PackageDescription → [String] → BuildTargets
+-- }}}
+fetchBuildTargetsIn :: PackageDescription → [String] → BuildTargets -- {{{
 fetchBuildTargetsIn package_description@PackageDescription{..} targets =
     case (library_target_or_error,executable_targets_and_errors) of
         (Right library,([],executables)) → BuildTargets library executables
@@ -1320,27 +1223,24 @@ fetchBuildTargetsIn package_description@PackageDescription{..} targets =
         delete "library"
         $
         targets
--- @-node:gcross.20101012145613.1557:fetchBuildTargetsIn
--- @+node:gcross.20101012145613.1568:findDefaultCabalFile
-findDefaultCabalFile :: MonadIO m ⇒ m FilePath
+-- }}}
+findDefaultCabalFile :: MonadIO m ⇒ m FilePath -- {{{
 findDefaultCabalFile = liftIO $ do
     cabal_files ← fmap (filter ((== ".cabal") . takeExtension)) (getDirectoryContents ".")
     case cabal_files of
         [cabal_file] → return cabal_file
         [] → throwIO NoCabalFile
         _ → throwIO $ MultipleCabalFiles cabal_files
--- @-node:gcross.20101012145613.1568:findDefaultCabalFile
--- @+node:gcross.20100927222551.1449:findSatisfyingPackage
-findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackage
+-- }}}
+findSatisfyingPackage :: PackageDatabase → Package.Dependency → Maybe InstalledPackage -- {{{
 findSatisfyingPackage PackageDatabase{..} (Package.Dependency name version_range) =
     Map.lookup (display name) packageDatabaseIndexedByPackageNameAndVersion
     >>=
     find (flip withinRange version_range . fst)
     >>=
     return . head . snd
--- @-node:gcross.20100927222551.1449:findSatisfyingPackage
--- @+node:gcross.20101009103525.1735:installPackage
-installPackage ::
+-- }}}
+installPackage :: -- {{{
     FilePath →
     PackageLocality →
     PackageDescription →
@@ -1422,9 +1322,8 @@ installPackage
         ,   haddockInterfaces = []
         ,   haddockHTMLs = []
     }
--- @-node:gcross.20101009103525.1735:installPackage
--- @+node:gcross.20101010201506.1510:installPackageUsingEnvironments
-installPackageUsingEnvironments ::
+-- }}}
+installPackageUsingEnvironments :: -- {{{
     BuildEnvironment →
     InstallationEnvironment →
     PackageDescription →
@@ -1441,10 +1340,8 @@ installPackageUsingEnvironments
         package_description
         library
         installationLibraryDirectory
--- @nonl
--- @-node:gcross.20101010201506.1510:installPackageUsingEnvironments
--- @+node:gcross.20101012145613.1564:installPackageUsingConfiguration
-installPackageUsingConfiguration ::
+-- }}}
+installPackageUsingConfiguration :: -- {{{
     Configuration →
     HaskellLibrary →
     Job InstalledPackageInfo
@@ -1453,34 +1350,29 @@ installPackageUsingConfiguration =
         configurationBuildEnvironment
         configurationInstallationEnvironment
         configurationPackageDescription
--- @-node:gcross.20101012145613.1564:installPackageUsingConfiguration
--- @+node:gcross.20101012145613.1561:installProgram
-installProgram :: FilePath → ProgramFile → Job ()
+-- }}}
+installProgram :: FilePath → ProgramFile → Job () -- {{{
 installProgram program_directory File{..} = liftIO $ do
     noticeM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Installing program " ++ takeFileName filePath ++ "..."
     infoM "Blueprint.Tools.Compilers.GHC" $ "(GHC) Copying " ++ filePath ++ " -> " ++ program_destination
     copyFile filePath program_destination
   where
     program_destination = replaceDirectory filePath program_directory
--- @-node:gcross.20101012145613.1561:installProgram
--- @+node:gcross.20101012145613.1563:installProgramUsingInstallationEnvironment
-installProgramUsingInstallationEnvironment :: InstallationEnvironment → ProgramFile → Job ()
+-- }}}
+installProgramUsingInstallationEnvironment :: InstallationEnvironment → ProgramFile → Job () -- {{{
 installProgramUsingInstallationEnvironment = installProgram . installationExecutableDirectory
--- @-node:gcross.20101012145613.1563:installProgramUsingInstallationEnvironment
--- @+node:gcross.20101012145613.1566:installProgramUsingConfiguration
-installProgramUsingConfiguration :: Configuration → ProgramFile → Job ()
+-- }}}
+installProgramUsingConfiguration :: Configuration → ProgramFile → Job () -- {{{
 installProgramUsingConfiguration = installProgramUsingInstallationEnvironment . configurationInstallationEnvironment
--- @-node:gcross.20101012145613.1566:installProgramUsingConfiguration
--- @+node:gcross.20101012145613.1560:installTargets
-installTargets :: Configuration → InstallTargets → Job ()
+-- }}}
+installTargets :: Configuration → InstallTargets → Job () -- {{{
 installTargets configuration InstallTargets{..} = do
     case libraryInstallTarget of
         Nothing → return ()
         Just library → installPackageUsingConfiguration configuration library >> return ()
     mapM_ (installProgramUsingConfiguration configuration) executableInstallTargets
--- @-node:gcross.20101012145613.1560:installTargets
--- @+node:gcross.20101004145951.1467:linkProgram
-linkProgram ::
+-- }}}
+linkProgram :: -- {{{
     FilePath →
     [String] →
     FilePath →
@@ -1531,10 +1423,8 @@ linkProgram
                 (program_filepath :. E)
                 path_to_ghc
                 ghc_arguments
--- @nonl
--- @-node:gcross.20101004145951.1467:linkProgram
--- @+node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
-linkProgramUsingBuildEnvironment ::
+-- }}}
+linkProgramUsingBuildEnvironment :: -- {{{
     BuildEnvironment →
     FilePath →
     [HaskellModule] →
@@ -1543,9 +1433,8 @@ linkProgramUsingBuildEnvironment BuildEnvironment{..} =
     linkProgram
         (pathToGHC buildEnvironmentGHC)
         buildEnvironmentProgramLinkOptions
--- @-node:gcross.20101004145951.1475:linkProgramUsingBuildEnvironment
--- @+node:gcross.20100927161850.1436:parseInstalledPackageInformation
-parseInstalledPackageInformation :: String → InstalledPackage
+-- }}}
+parseInstalledPackageInformation :: String → InstalledPackage -- {{{
 parseInstalledPackageInformation package_description =
     InstalledPackage
     {   installedPackageId = installedPackageId
@@ -1559,20 +1448,15 @@ parseInstalledPackageInformation package_description =
         case InstalledPackageInfo.parseInstalledPackageInfo package_description of
             ParseOk _ installed_package_info → installed_package_info
             ParseFailed parse_error → error $ "Error parsing description of package: " ++ show parse_error
--- @nonl
--- @-node:gcross.20100927161850.1436:parseInstalledPackageInformation
--- @+node:gcross.20101005111309.1484:lookupPackageNamed
-lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])]
+-- }}}
+lookupPackageNamed :: PackageDatabase → Package.PackageName → Maybe [(Version,[InstalledPackage])] -- {{{
 lookupPackageNamed PackageDatabase{..} =
     flip Map.lookup packageDatabaseIndexedByPackageNameAndVersion
     .
     display
--- @-node:gcross.20101005111309.1484:lookupPackageNamed
--- @+node:gcross.20100927123234.1458:parseGHCVersion
+-- }}}
 parseGHCVersion = extractVersion ghc_version_regex
--- @-node:gcross.20100927123234.1458:parseGHCVersion
--- @+node:gcross.20101005111309.1462:readAndConfigurePackageDescription
-readAndConfigurePackageDescription ::
+readAndConfigurePackageDescription :: -- {{{
     GHCEnvironment →
     FilePath →
     Job (PackageDescription, FlagAssignment)
@@ -1589,14 +1473,11 @@ readAndConfigurePackageDescription GHCEnvironment{..} =
         buildPlatform
         (Compiler.CompilerId Compiler.GHC (ghcVersion ghcEnvironmentGHC))
         []
--- @nonl
--- @-node:gcross.20101005111309.1462:readAndConfigurePackageDescription
--- @+node:gcross.20101012145613.1571:loadDefaultPackageDescription
-loadDefaultPackageDescription :: MonadIO m ⇒ m GenericPackageDescription
+-- }}}
+loadDefaultPackageDescription :: MonadIO m ⇒ m GenericPackageDescription -- {{{
 loadDefaultPackageDescription = findDefaultCabalFile >>= liftIO . readPackageDescription silent
--- @-node:gcross.20101012145613.1571:loadDefaultPackageDescription
--- @+node:gcross.20100928173417.1463:resolveModuleDependencies
-resolveModuleDependencies ::
+-- }}}
+resolveModuleDependencies :: -- {{{
     PackageDatabase →
     KnownModules →
     [String] →
@@ -1623,9 +1504,8 @@ resolveModuleDependencies PackageDatabase{..} known_modules module_names =
                     $
                     Map.lookup module_name packageDatabaseIndexedByModuleName
         ) module_names
--- @-node:gcross.20100928173417.1463:resolveModuleDependencies
--- @+node:gcross.20101012145613.1553:runTarget
-runTarget :: [String] → Configuration → Job ()
+-- }}}
+runTarget :: [String] → Configuration → Job () -- {{{
 runTarget ("build":[]) configuration@Configuration{..} =
     buildTargets configuration (fetchAllBuildTargetsIn configurationPackageDescription) >> return ()
 runTarget ("build":targets) configuration@Configuration{..} =
@@ -1658,9 +1538,8 @@ runTarget mode _ = liftIO $ do
     putStrLn $ "Unknown mode of operation: " ++ unwords mode
     putStrLn ""
     displayModesMessage
--- @-node:gcross.20101012145613.1553:runTarget
--- @+node:gcross.20101015124156.1544:scanForAndCompileModulesInAllOf
-scanForAndCompileModulesInAllOf ::
+-- }}}
+scanForAndCompileModulesInAllOf :: -- {{{
     FilePath →
     [String] →
     PackageDatabase →
@@ -1688,28 +1567,24 @@ scanForAndCompileModulesInAllOf
     )
     .
     scanForModulesInAllOf
--- @-node:gcross.20101015124156.1544:scanForAndCompileModulesInAllOf
--- @+node:gcross.20101006110010.1481:scanForModulesIn
-scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource))
+-- }}}
+scanForModulesIn :: FilePath → Job (Map String (Job HaskellSource)) -- {{{
 scanForModulesIn root = once my_id $ scanForModulesWithParentIn Nothing root
   where
     my_id =
         identifierInNamespace
             (uuid "cd195cae-ff8f-4d16-9884-9fb924af2a7f")
             ("scanning for haskell modules in " ++ show root)
--- @nonl
--- @-node:gcross.20101006110010.1481:scanForModulesIn
--- @+node:gcross.20101015124156.1542:scanForModulesInAllOf
-scanForModulesInAllOf :: [FilePath] → Job (Map String (Job HaskellSource))
+-- }}}
+scanForModulesInAllOf :: [FilePath] → Job (Map String (Job HaskellSource)) -- {{{
 scanForModulesInAllOf roots = once my_id . fmap Map.unions . traverse scanForModulesIn $ roots
   where
     my_id =
         identifierInNamespace
             (uuid "ce7a5c4a-2e7b-49c3-8d31-0bbc29fceb23")
             ("scanning for haskell modules in " ++ show roots)
--- @-node:gcross.20101015124156.1542:scanForModulesInAllOf
--- @+node:gcross.20101006110010.1480:scanForModulesWithParentIn
-scanForModulesWithParentIn ::
+-- }}}
+scanForModulesWithParentIn :: -- {{{
     Maybe String →
     FilePath →
     Job (Map String (Job HaskellSource))
@@ -1748,10 +1623,11 @@ scanForModulesWithParentIn maybe_parent root =
     )
   where
     appendToParent child = maybe child (<.> child) maybe_parent
--- @-node:gcross.20101006110010.1480:scanForModulesWithParentIn
--- @-node:gcross.20100927123234.1448:Functions
--- @+node:gcross.20101010201506.1518:Options
--- @+node:gcross.20100927123234.1432:GHC
+-- }}}
+-- }}}
+
+-- Options {{{
+-- GHC {{{
 ghc_search_option_path_to_ghc = identifier "8a0b2f67-9ff8-417d-aed0-372149d791d6" "path to ghc"
 ghc_search_option_path_to_ghc_pkg = identifier "b832666c-f42f-4dc0-8ef9-561987334c37" "path to ghc-pkg"
 ghc_search_option_desired_version = identifier "87cab19e-c87a-4480-8ed3-af04e4c4f6bc" "desired GHC version"
@@ -1797,8 +1673,8 @@ ghc_options =
             ,(ghc_package_database_option_locality,("GHC","Use the (user|global) package database for both configuration and package installation;  defaults to global."))
             ]
         )
--- @-node:gcross.20100927123234.1432:GHC
--- @+node:gcross.20101010201506.1519:Installation
+-- }}}
+-- Installation {{{
 installation_option_prefix = identifier "d85dcf36-aab1-4618-8b9a-b07caf347d41" "installation directory prefix"
 installation_option_bindir = identifier "90055f6f-9ba5-43d6-b59f-441f66ee0d1c" "installation directory for executables"
 installation_option_libdir = identifier "1963880f-3f8d-4142-9132-a5efdc1f7264" "installation directory for libraries"
@@ -1825,9 +1701,5 @@ installation_options =
             ,(installation_option_libdir,("Installation","Installation directory for libraries"))
             ]
         )
--- @nonl
--- @-node:gcross.20101010201506.1519:Installation
--- @-node:gcross.20101010201506.1518:Options
--- @-others
--- @-node:gcross.20100927123234.1428:@thin GHC.hs
--- @-leo
+-- }}}
+-- }}}

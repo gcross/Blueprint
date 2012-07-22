@@ -1,20 +1,14 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20100924160650.2044:@thin Job.hs
--- @@language Haskell
--- @<< Language extensions >>
--- @+node:gcross.20100924160650.2045:<< Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100924160650.2045:<< Language extensions >>
--- @nl
+-- }}}
 
 module Blueprint.Job where
 
--- @<< Import needed modules >>
--- @+node:gcross.20100924160650.2046:<< Import needed modules >>
+-- Imports {{{
 import Prelude hiding (catch)
 
 import Control.Applicative
@@ -48,58 +42,46 @@ import Data.UUID
 import System.Directory
 
 import Blueprint.Identifier
--- @nonl
--- @-node:gcross.20100924160650.2046:<< Import needed modules >>
--- @nl
+-- }}}
 
--- @+others
--- @+node:gcross.20100924160650.2047:Types
--- @+node:gcross.20100924160650.2048:Job
-data Job α where
+-- Types {{{
+data Job α where -- {{{
     Result :: α → Job α
     Task :: IO α → (α → Job β) → Job β
     Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
     Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
     Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
   deriving Typeable
--- @nonl
--- @-node:gcross.20100924160650.2048:Job
--- @+node:gcross.20100925004153.1301:JobEnvironment
-data JobEnvironment = JobEnvironment
+-- }}}
+data JobEnvironment = JobEnvironment -- {{{
     {   environmentCompletedJobs :: IORef (Map UUID (Either JobError Dynamic))
     ,   environmentTaskSemaphore :: QSem
     ,   environmentInputCache :: Map UUID L.ByteString
     ,   environmentOutputCache :: Chan (UUID,Maybe L.ByteString)
     }
--- @nonl
--- @-node:gcross.20100925004153.1301:JobEnvironment
--- @+node:gcross.20101018094310.1532:JobIdentifier
+-- }}}
+-- type JobIdentifier {{{
 data OfJob
 type JobIdentifier = Identifier OfJob
--- @nonl
--- @-node:gcross.20101018094310.1532:JobIdentifier
--- @-node:gcross.20100924160650.2047:Types
--- @+node:gcross.20101007134409.1485:Exceptions
--- @+node:gcross.20101018094310.1533:CycleDetected
-data CycleDetected = CycleDetected deriving Typeable
+-- }}}
+-- }}}
+
+-- Exceptions {{{
+data CycleDetected = CycleDetected deriving Typeable -- {{{
 
 instance Show CycleDetected where
     show CycleDetected = "Cycle detected."
 
 instance Exception CycleDetected
--- @nonl
--- @-node:gcross.20101018094310.1533:CycleDetected
--- @+node:gcross.20101018094310.1824:ErrorInDependency
-data ErrorInDependency = ErrorInDependency String deriving Typeable
+-- }}}
+data ErrorInDependency = ErrorInDependency String deriving Typeable -- {{{
 
 instance Show ErrorInDependency where
     show (ErrorInDependency dependency) = "Error " ++ dependency ++ "."
 
 instance Exception ErrorInDependency
--- @nonl
--- @-node:gcross.20101018094310.1824:ErrorInDependency
--- @+node:gcross.20101007134409.1486:JobError
-data JobError = JobError
+-- }}}
+data JobError = JobError -- {{{
     {   jobErrorsWithHeadings :: Map String [SomeException]
     ,   jobErrors :: Map String SomeException
     } deriving Typeable
@@ -124,63 +106,53 @@ instance Show JobError where
         )
 
 instance Exception JobError
--- @nonl
--- @-node:gcross.20101007134409.1486:JobError
--- @-node:gcross.20101007134409.1485:Exceptions
--- @+node:gcross.20100924174906.1276:Instances
--- @+node:gcross.20100924174906.1278:Applicative Job
-instance Applicative Job where
+-- }}}
+-- }}}
+
+-- Instances {{{
+instance Applicative Job where -- {{{
     pure = Result
     Result f <*> x = fmap f x
     f <*> x = Fork f x Result
--- @-node:gcross.20100924174906.1278:Applicative Job
--- @+node:gcross.20100924174906.1281:Functor Job
-instance Functor Job where
+-- }}}
+instance Functor Job where -- {{{
     fmap f (Result x) = Result (f x)
     fmap f (Task io g) = Task io (fmap f . g)
     fmap f (Fork jf jx g) = Fork jf jx (fmap f . g)
     fmap f (Once uuid jx g) = Once uuid jx (fmap f . g)
     fmap f (Cache uuid g h) = Cache uuid g (fmap f . h)
--- @-node:gcross.20100924174906.1281:Functor Job
--- @+node:gcross.20100924174906.1277:Monad Job
-instance Monad Job where
+-- }}}
+instance Monad Job where -- {{{
     return = Result
     Result x >>= f = f x
     Task io f >>= g = Task io (f >=> g)
     Fork jf jx f >>= g = Fork jf jx (f >=> g)
     Once uuid x f >>= g = Once uuid x (f >=> g)
     Cache uuid f g >>= h = Cache uuid f (g >=> h)
--- @-node:gcross.20100924174906.1277:Monad Job
--- @+node:gcross.20100925004153.1329:MonadIO Job
-instance MonadIO Job where
+-- }}}
+instance MonadIO Job where -- {{{
     liftIO io = Task io return
--- @-node:gcross.20100925004153.1329:MonadIO Job
--- @+node:gcross.20101018094310.1534:Monoid JobError
-instance Monoid JobError where
+-- }}}
+instance Monoid JobError where -- {{{
     mempty = JobError Map.empty Map.empty
     (JobError h1 e1) `mappend` (JobError h2 e2) = JobError (Map.union h2 h1) (Map.union e2 e1)
--- @nonl
--- @-node:gcross.20101018094310.1534:Monoid JobError
--- @-node:gcross.20100924174906.1276:Instances
--- @+node:gcross.20100925004153.1297:Functions
--- @+node:gcross.20100925004153.1299:cache
-cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β
+-- }}}
+-- }}}
+
+-- Functions {{{
+cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β -- {{{
 cache uuid computeJob = Cache uuid computeJob return
--- @-node:gcross.20100925004153.1299:cache
--- @+node:gcross.20101007134409.1484:extractResultOrThrowIO
-extractResultOrThrowIO :: Either JobError α → IO α
+-- }}}
+extractResultOrThrowIO :: Either JobError α → IO α -- {{{
 extractResultOrThrowIO = either throwIO evaluate
--- @-node:gcross.20101007134409.1484:extractResultOrThrowIO
--- @+node:gcross.20100925004153.1298:once
-once :: Typeable α ⇒ JobIdentifier → Job α → Job α
+-- }}}
+once :: Typeable α ⇒ JobIdentifier → Job α → Job α -- {{{
 once uuid job = Once uuid job return
--- @-node:gcross.20100925004153.1298:once
--- @+node:gcross.20101004145951.1473:onceAndCached
-onceAndCached :: (Binary α, Typeable β) ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β
+-- }}}
+onceAndCached :: (Binary α, Typeable β) ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β -- {{{
 onceAndCached uuid = once uuid . cache uuid
--- @-node:gcross.20101004145951.1473:onceAndCached
--- @+node:gcross.20100927123234.1302:runJob
-runJob :: Int → Map UUID L.ByteString → Job α → IO (Either JobError α,Map UUID L.ByteString)
+-- }}}
+runJob :: Int → Map UUID L.ByteString → Job α → IO (Either JobError α,Map UUID L.ByteString) -- {{{
 runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
     job_environment@JobEnvironment{..} ←
         newJobEnvironment
@@ -202,28 +174,20 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
             environmentInputCache
             cache_updates
         )
--- @-node:gcross.20100927123234.1302:runJob
--- @+node:gcross.20100925004153.1307:runJobInEnvironment
-runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either JobError α)
+-- }}}
+runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either JobError α) -- {{{
 runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
     (case job of
-        -- @        @+others
-        -- @+node:gcross.20101018233854.1540:Result
         Result x → fmap Right (evaluate x)
-        -- @nonl
-        -- @-node:gcross.20101018233854.1540:Result
-        -- @+node:gcross.20101018233854.1541:Task
-        Task io computeNextJob →
+        Task io computeNextJob → -- {{{
             bracket_
                 (waitQSem environmentTaskSemaphore)
                 (signalQSem environmentTaskSemaphore)
                 (io >>= evaluate)
             >>=
             nestedRunJob . computeNextJob
-        -- @nonl
-        -- @-node:gcross.20101018233854.1541:Task
-        -- @+node:gcross.20101018233854.1542:Fork
-        Fork unsimplified_jf unsimplified_jx computeNextJob → do
+        -- }}}
+        Fork unsimplified_jf unsimplified_jx computeNextJob → do -- {{{
             let computeAndRunNextJob = nestedRunJob . computeNextJob
             jf_or_error ← simplify unsimplified_jf
             jx_or_error ← simplify unsimplified_jx
@@ -262,10 +226,8 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                         (Left e1, Left e2) → return . Left $ e1 `mappend` e2
                         (Left e, _) → return . Left $ e
                         (_, Left e) → return . Left $ e
-        -- @nonl
-        -- @-node:gcross.20101018233854.1542:Fork
-        -- @+node:gcross.20101018233854.1543:Once
-        Once job_id@(Identifier uuid description) job computeNextJob
+        -- }}}
+        Once job_id@(Identifier uuid description) job computeNextJob -- {{{
           | Set.member job_id active_jobs
             → throwIO CycleDetected
           | otherwise
@@ -327,10 +289,8 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                     fromDynamic
                     $
                     previous_result
-        -- @nonl
-        -- @-node:gcross.20101018233854.1543:Once
-        -- @+node:gcross.20101018233854.1544:Cache
-        Cache job_id@(Identifier uuid _) computeJob computeNextJob → do
+        -- }}}
+        Cache job_id@(Identifier uuid _) computeJob computeNextJob → do -- {{{
             let maybe_old_cached_value =
                     fmap decode
                     .
@@ -343,9 +303,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                 Right (maybe_new_cached_value,job_result) → do
                     writeChan environmentOutputCache (uuid,fmap encode maybe_new_cached_value)
                     nestedRunJob (computeNextJob job_result)
-        -- @nonl
-        -- @-node:gcross.20101018233854.1544:Cache
-        -- @-others
+        -- }}}
     ) `catches`
         [Handler (return . Left)
         ,Handler (return . Left . wrapExceptionIntoJobError)
@@ -361,10 +319,8 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
             Just (Left job_error) → return (Left job_error)
             _ → return (Right job)
     simplify job = return (Right job)
--- @nonl
--- @-node:gcross.20100925004153.1307:runJobInEnvironment
--- @+node:gcross.20101007134409.1483:runJobUsingCacheFile
-runJobUsingCacheFile :: Int → FilePath → Job α → IO (Either JobError α)
+-- }}}
+runJobUsingCacheFile :: Int → FilePath → Job α → IO (Either JobError α) -- {{{
 runJobUsingCacheFile maximum_number_of_simultaneous_IO_tasks cache_filepath job = do
     cache ← do
         cache_exists ← doesFileExist cache_filepath
@@ -381,9 +337,8 @@ runJobUsingCacheFile maximum_number_of_simultaneous_IO_tasks cache_filepath job 
     (result,new_cache) ← runJob maximum_number_of_simultaneous_IO_tasks cache job
     encodeFile cache_filepath new_cache
     return result
--- @-node:gcross.20101007134409.1483:runJobUsingCacheFile
--- @+node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
-runJobUsingCacheFileAndExtractResult :: Int → FilePath → Job α → IO α
+-- }}}
+runJobUsingCacheFileAndExtractResult :: Int → FilePath → Job α → IO α -- {{{
 runJobUsingCacheFileAndExtractResult maximum_number_of_simultaneous_IO_tasks cache_filepath job =
     runJobUsingCacheFile
         maximum_number_of_simultaneous_IO_tasks
@@ -391,21 +346,15 @@ runJobUsingCacheFileAndExtractResult maximum_number_of_simultaneous_IO_tasks cac
         job
     >>=
     extractResultOrThrowIO
--- @-node:gcross.20101007134409.1488:runJobUsingCacheFileAndExtractResult
--- @+node:gcross.20100927123234.1303:newJobEnvironment
-newJobEnvironment :: Int → Map UUID L.ByteString → IO JobEnvironment
+-- }}}
+newJobEnvironment :: Int → Map UUID L.ByteString → IO JobEnvironment -- {{{
 newJobEnvironment maximum_number_of_simultaneous_IO_tasks input_cache =
     liftM4 JobEnvironment
         (newIORef Map.empty)
         (newQSem maximum_number_of_simultaneous_IO_tasks)
         (return input_cache)
         newChan
--- @-node:gcross.20100927123234.1303:newJobEnvironment
--- @+node:gcross.20101018183248.1539:wrapExceptionIntoJobError
+-- }}}
 wrapExceptionIntoJobError e = JobError Map.empty (Map.singleton (show e) e)
--- @nonl
--- @-node:gcross.20101018183248.1539:wrapExceptionIntoJobError
--- @-node:gcross.20100925004153.1297:Functions
--- @-others
--- @-node:gcross.20100924160650.2044:@thin Job.hs
--- @-leo
+-- }}}
+

@@ -1,27 +1,18 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20100925114718.1301:@thin Cache.hs
--- @@language Haskell
--- @<< Language extensions >>
--- @+node:gcross.20100925114718.1302:<< Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE UnicodeSyntax #-}
--- @-node:gcross.20100925114718.1302:<< Language extensions >>
--- @nl
+-- }}}
 
 module Blueprint.Cache where
 
--- @<< Import needed modules >>
--- @+node:gcross.20100925114718.1303:<< Import needed modules >>
+-- Imports {{{
 import Data.Binary
 import Data.UUID
 
 import Blueprint.Job
--- @-node:gcross.20100925114718.1303:<< Import needed modules >>
--- @nl
+-- }}}
 
--- @+others
--- @+node:gcross.20100925114718.1304:Functions
--- @+node:gcross.20100925114718.1310:runIfDependencyOrProductHasChanged
-runIfDependencyOrProductHasChanged ::
+-- Functions {{{
+runIfDependencyOrProductHasChanged :: -- {{{
     (Binary α, Eq α, Binary β) ⇒
     JobIdentifier →
     α →
@@ -41,9 +32,8 @@ runIfDependencyOrProductHasChanged job_id dependency productHasChangedFrom run =
     runIt = do
         product ← run
         return (Just (dependency,product),product)
--- @-node:gcross.20100925114718.1310:runIfDependencyOrProductHasChanged
--- @+node:gcross.20101005122519.1494:runIfImplicitDependenciesOrProductHasChanged
-runIfImplicitDependencyOrProductHasChanged ::
+-- }}}
+runIfImplicitDependencyOrProductHasChanged :: -- {{{
     (Binary α, Eq α, Binary β, Eq β, Eq ɣ, Binary ɣ, Binary δ) ⇒
     JobIdentifier →
     α →
@@ -90,8 +80,5 @@ runIfImplicitDependencyOrProductHasChanged
                 )
             ,(product,miscellaneous)
             )
--- @-node:gcross.20101005122519.1494:runIfImplicitDependenciesOrProductHasChanged
--- @-node:gcross.20100925114718.1304:Functions
--- @-others
--- @-node:gcross.20100925114718.1301:@thin Cache.hs
--- @-leo
+-- }}}
+-- }}}
