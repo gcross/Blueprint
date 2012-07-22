@@ -309,6 +309,7 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
         ,Handler (return . Left . wrapExceptionIntoJobError)
         ]
   where
+    nestedRunJob :: Job α → IO (Either JobError α)
     nestedRunJob = runJobInEnvironment job_environment active_jobs
 
     simplify :: Job α → IO (Either JobError (Job α))
