@@ -1,7 +1,10 @@
+
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
@@ -12,11 +15,13 @@ module Blueprint.Job where
 import Prelude hiding (catch)
 
 import Control.Applicative
+import Control.Arrow (second)
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
+import Control.Monad.Free
 import Control.Monad.IO.Class
 import Control.Monad.Loops
 import Control.Monad.Trans.Reader
@@ -24,6 +29,7 @@ import Control.Monad.Trans.Reader
 import Data.Binary
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
+import Data.Composition
 import Data.Dynamic
 import Data.Either.Unwrap
 import Data.IORef
@@ -45,14 +51,14 @@ import Blueprint.Identifier
 -- }}}
 
 -- Types {{{
-data Job α where -- {{{
-    Result :: α → Job α
-    Task :: IO α → (α → Job β) → Job β
-    Fork :: Job (α → β) → Job α → (β → Job ɣ) → Job ɣ
-    Once :: Typeable α ⇒ JobIdentifier → Job α → (α → Job β) → Job β
-    Cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → (β → Job ɣ) → Job ɣ
+data JobStep α = -- {{{
+    Task (IO α)
+  | ∀ β. Fork (Job (β → α)) (Job β)
+  | Typeable α ⇒ Once JobIdentifier (Job α)
+  | ∀ β. Binary β ⇒ Cache JobIdentifier (Maybe β → Job (Maybe β,α))
   deriving Typeable
 -- }}}
+newtype Job α = Job { unwrapJob :: Free JobStep α } deriving (Functor,Monad)
 data JobEnvironment = JobEnvironment -- {{{
     {   environmentCompletedJobs :: IORef (Map UUID (Either JobError Dynamic))
     ,   environmentTaskSemaphore :: QSem
@@ -111,27 +117,18 @@ instance Exception JobError
 
 -- Instances {{{
 instance Applicative Job where -- {{{
-    pure = Result
-    Result f <*> x = fmap f x
-    f <*> x = Fork f x Result
+    pure = Job . Pure
+    Job (Pure f) <*> Job x = Job (f <$> x)
+    f <*> x = Job (Impure (Fork f x))
 -- }}}
-instance Functor Job where -- {{{
-    fmap f (Result x) = Result (f x)
-    fmap f (Task io g) = Task io (fmap f . g)
-    fmap f (Fork jf jx g) = Fork jf jx (fmap f . g)
-    fmap f (Once uuid jx g) = Once uuid jx (fmap f . g)
-    fmap f (Cache uuid g h) = Cache uuid g (fmap f . h)
--- }}}
-instance Monad Job where -- {{{
-    return = Result
-    Result x >>= f = f x
-    Task io f >>= g = Task io (f >=> g)
-    Fork jf jx f >>= g = Fork jf jx (f >=> g)
-    Once uuid x f >>= g = Once uuid x (f >=> g)
-    Cache uuid f g >>= h = Cache uuid f (g >=> h)
+instance Functor JobStep where -- {{{
+    fmap f (Task io) = Task (f <$> io)
+    fmap f (Fork jf jx) = Fork ((f .) <$> jf) jx
+    fmap f (Once uuid jx) = Once uuid (f <$> jx)
+    fmap f (Cache uuid g) = Cache uuid (second f <$> g)
 -- }}}
 instance MonadIO Job where -- {{{
-    liftIO io = Task io return
+    liftIO = Job . Impure . Task
 -- }}}
 instance Monoid JobError where -- {{{
     mempty = JobError Map.empty Map.empty
@@ -141,13 +138,13 @@ instance Monoid JobError where -- {{{
 
 -- Functions {{{
 cache :: Binary α ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β -- {{{
-cache uuid computeJob = Cache uuid computeJob return
+cache = (Job . Impure) .* Cache
 -- }}}
 extractResultOrThrowIO :: Either JobError α → IO α -- {{{
 extractResultOrThrowIO = either throwIO evaluate
 -- }}}
 once :: Typeable α ⇒ JobIdentifier → Job α → Job α -- {{{
-once uuid job = Once uuid job return
+once = (Job . Impure) .* Once
 -- }}}
 onceAndCached :: (Binary α, Typeable β) ⇒ JobIdentifier → (Maybe α → Job (Maybe α,β)) → Job β -- {{{
 onceAndCached uuid = once uuid . cache uuid
@@ -177,18 +174,17 @@ runJob maximum_number_of_simultaneous_IO_tasks input_cache job = do
 -- }}}
 runJobInEnvironment :: JobEnvironment → Set JobIdentifier → Job α → IO (Either JobError α) -- {{{
 runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
-    (case job of
-        Result x → fmap Right (evaluate x)
-        Task io computeNextJob → -- {{{
+    (case unwrapJob job of
+        Pure x → fmap Right (evaluate x)
+        Impure (Task io) → -- {{{
             bracket_
                 (waitQSem environmentTaskSemaphore)
                 (signalQSem environmentTaskSemaphore)
                 (io >>= evaluate)
             >>=
-            nestedRunJob . computeNextJob
+            nestedRunJob'
         -- }}}
-        Fork unsimplified_jf unsimplified_jx computeNextJob → do -- {{{
-            let computeAndRunNextJob = nestedRunJob . computeNextJob
+        Impure (Fork unsimplified_jf unsimplified_jx) → do -- {{{
             jf_or_error ← simplify unsimplified_jf
             jx_or_error ← simplify unsimplified_jx
             case (jf_or_error,jx_or_error) of
@@ -205,24 +201,24 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
                         case f_or_error of
                             Left fe → (xe `mappend` fe)
                             Right _ → xe
-                (Right (Result f),Right (Result x)) → computeAndRunNextJob (f x)
-                (Right (Result f),Right jx) → do
+                (Right (Pure f),Right (Pure x)) → nestedRunJob' (Pure (f x))
+                (Right (Pure f),Right jx) → do
                     x_or_error ← nestedRunJob jx
                     case x_or_error of
                         Left e → return (Left e)
-                        Right x → computeAndRunNextJob (f x)
-                (Right jf,Right (Result x)) → do
+                        Right x → nestedRunJob (f x)
+                (Right jf,Right (Pure x)) → do
                     f_or_error ← nestedRunJob jf
                     case f_or_error of
                         Left e → return (Left e)
-                        Right f → computeAndRunNextJob (f x)
+                        Right f → nestedRunJob (f x)
                 (Right jf, Right jx) → do
                     x_mvar ← newEmptyMVar
                     forkIO $ nestedRunJob jx >>= putMVar x_mvar
                     f_or_error ← nestedRunJob jf >>= evaluate
                     x_or_error ← takeMVar x_mvar
                     case (f_or_error, x_or_error) of
-                        (Right f, Right x) → computeAndRunNextJob (f x)
+                        (Right f, Right x) → nestedRunJob (f x)
                         (Left e1, Left e2) → return . Left $ e1 `mappend` e2
                         (Left e, _) → return . Left $ e
                         (_, Left e) → return . Left $ e
@@ -312,11 +308,13 @@ runJobInEnvironment job_environment@JobEnvironment{..} active_jobs job =
     nestedRunJob :: Job α → IO (Either JobError α)
     nestedRunJob = runJobInEnvironment job_environment active_jobs
 
+    nestedRunJob' = nestedRunJob . Job
+
     simplify :: Job α → IO (Either JobError (Job α))
-    simplify job@(Once (Identifier uuid _) _ computeNextJob) = do
+    simplify job@(Job (Impure (Once (Identifier uuid _) _))) = do
         completed_jobs ← readIORef environmentCompletedJobs
         case Map.lookup uuid completed_jobs of
-            Just (Right result) → simplify . computeNextJob . fromJust . fromDynamic $ result
+            Just (Right result) → simplify . fromJust . fromDynamic $ result
             Just (Left job_error) → return (Left job_error)
             _ → return (Right job)
     simplify job = return (Right job)
